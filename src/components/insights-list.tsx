@@ -15,13 +15,13 @@ interface Insight {
 const priorityBorder = {
   high: "border-l-2 border-l-rose-400",
   medium: "border-l-2 border-l-amber-400",
-  low: "border-l-2 border-l-teal-300",
+  low: "border-l-2 border-l-sky-300",
 };
 
 const priorityBadge = {
   high: "bg-rose-100/70 text-rose-700",
   medium: "bg-amber-100/70 text-amber-700",
-  low: "bg-teal-100/60 text-teal-700",
+  low: "bg-sky-100/60 text-sky-700",
 };
 
 const priorityIcon = {
@@ -55,18 +55,18 @@ export function InsightsList({ insights }: { insights: Insight[] }) {
                     <Icon className="h-2.5 w-2.5" />
                     {insight.priority}
                   </span>
-                  <span className="text-[11px] text-teal-600">
+                  <span className="text-[11px] text-sky-600">
                     {insight.currentValue}
                   </span>
                 </div>
-                <h3 className="mt-2 text-sm font-medium text-teal-900">
+                <h3 className="mt-2 text-sm font-medium text-sky-900">
                   {insight.title}
                 </h3>
-                <p className="mt-0.5 text-xs leading-relaxed text-teal-700">
+                <p className="mt-0.5 text-xs leading-relaxed text-sky-700">
                   {insight.description}
                 </p>
-                <p className="mt-2 rounded-lg bg-teal-50/40 px-2.5 py-1.5 text-[11px] text-teal-600">
-                  <span className="font-semibold text-teal-700">Action:</span>{" "}
+                <p className="mt-2 rounded-lg bg-sky-50/40 px-2.5 py-1.5 text-[11px] text-sky-600">
+                  <span className="font-semibold text-sky-700">Action:</span>{" "}
                   {insight.recommendedAction}
                 </p>
               </div>
@@ -76,7 +76,7 @@ export function InsightsList({ insights }: { insights: Insight[] }) {
       })}
       {insights.length === 0 && (
         <div className="glass rounded-2xl py-16 text-center">
-          <p className="text-sm text-teal-600">
+          <p className="text-sm text-sky-600">
             No insights yet. Add candidates and send communications to see
             recommendations.
           </p>

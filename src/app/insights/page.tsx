@@ -55,7 +55,7 @@ export default function InsightsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center p-6 py-24">
-        <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
+        <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
       </div>
     );
   }
@@ -63,8 +63,8 @@ export default function InsightsPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-lg font-semibold text-teal-900">Insights</h1>
-        <p className="text-sm text-teal-700">
+        <h1 className="text-lg font-semibold text-sky-900">Insights</h1>
+        <p className="text-sm text-sky-700">
           Data-driven recommendations
         </p>
       </div>
@@ -73,8 +73,8 @@ export default function InsightsPage() {
       <div className="stagger-children mb-6 grid gap-4 lg:grid-cols-2">
         <div className="glass rounded-2xl px-5 py-5">
           <div className="mb-3 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-teal-500" />
-            <h2 className="text-sm font-semibold text-teal-800">
+            <BarChart3 className="h-4 w-4 text-sky-500" />
+            <h2 className="text-sm font-semibold text-sky-800">
               Response Rate
             </h2>
           </div>
@@ -82,8 +82,8 @@ export default function InsightsPage() {
         </div>
         <div className="glass rounded-2xl px-5 py-5">
           <div className="mb-3 flex items-center gap-2">
-            <PieIcon className="h-4 w-4 text-teal-500" />
-            <h2 className="text-sm font-semibold text-teal-800">
+            <PieIcon className="h-4 w-4 text-sky-500" />
+            <h2 className="text-sm font-semibold text-sky-800">
               Communications
             </h2>
           </div>
@@ -93,8 +93,8 @@ export default function InsightsPage() {
 
       {/* Recommendations */}
       <div className="mb-3 flex items-center gap-2">
-        <Lightbulb className="h-4 w-4 text-teal-500" />
-        <h2 className="text-sm font-semibold text-teal-800">
+        <Lightbulb className="h-4 w-4 text-sky-500" />
+        <h2 className="text-sm font-semibold text-sky-800">
           Recommendations
         </h2>
       </div>

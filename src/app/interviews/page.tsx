@@ -151,14 +151,14 @@ export default function InterviewsPage() {
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-teal-900">Interviews</h1>
-          <p className="text-sm text-teal-700">
+          <h1 className="text-lg font-semibold text-sky-900">Interviews</h1>
+          <p className="text-sm text-sky-700">
             Upcoming sessions & reminders
           </p>
         </div>
         <button
           onClick={handleOpenBooking}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-teal-500/20 transition-all hover:shadow-teal-500/30 hover:brightness-110"
+          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-sky-500/20 transition-all hover:shadow-sky-500/30 hover:brightness-110"
         >
           <Plus className="h-4 w-4" />
           Book Interview
@@ -170,14 +170,14 @@ export default function InterviewsPage() {
         <div className="glass mb-6 rounded-2xl px-6 py-5 animate-in">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CalendarPlus className="h-4 w-4 text-teal-600" />
-              <h2 className="text-sm font-semibold text-teal-900">
+              <CalendarPlus className="h-4 w-4 text-sky-600" />
+              <h2 className="text-sm font-semibold text-sky-900">
                 Schedule Interview
               </h2>
             </div>
             <button
               onClick={() => setShowBooking(false)}
-              className="rounded-lg p-1 text-teal-500 hover:bg-teal-50/60"
+              className="rounded-lg p-1 text-sky-500 hover:bg-sky-50/60"
             >
               <X className="h-4 w-4" />
             </button>
@@ -185,13 +185,13 @@ export default function InterviewsPage() {
 
           {/* Step 1: Select candidate */}
           <div className="mb-4">
-            <label className="mb-1.5 block text-xs font-medium text-teal-700">
+            <label className="mb-1.5 block text-xs font-medium text-sky-700">
               Select Candidate
             </label>
             <select
               value={selectedCandidate}
               onChange={(e) => handleSelectCandidate(e.target.value)}
-              className="w-full rounded-xl border border-teal-100/60 bg-white/50 px-3 py-2.5 text-sm text-teal-900 focus:border-teal-300 focus:outline-none"
+              className="w-full rounded-xl border border-sky-100/60 bg-white/50 px-3 py-2.5 text-sm text-sky-900 focus:border-sky-300 focus:outline-none"
             >
               <option value="">Choose a candidate...</option>
               {candidates.map((c) => (
@@ -205,16 +205,16 @@ export default function InterviewsPage() {
           {/* Step 2: Select time slot */}
           {selectedCandidate && (
             <div className="mb-4">
-              <label className="mb-1.5 block text-xs font-medium text-teal-700">
+              <label className="mb-1.5 block text-xs font-medium text-sky-700">
                 Available Time Slots
               </label>
               {slotsLoading ? (
-                <div className="flex items-center gap-2 py-3 text-xs text-teal-600">
+                <div className="flex items-center gap-2 py-3 text-xs text-sky-600">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Checking availability...
                 </div>
               ) : slots.length === 0 ? (
-                <p className="py-2 text-xs text-teal-600">
+                <p className="py-2 text-xs text-sky-600">
                   No available slots found for the next 7 days.
                 </p>
               ) : (
@@ -228,16 +228,16 @@ export default function InterviewsPage() {
                         onClick={() => setSelectedSlot(slot)}
                         className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-all ${
                           isSelected
-                            ? "border-teal-400 bg-teal-50/80 text-teal-900 shadow-sm"
-                            : "border-teal-100/40 bg-white/30 text-teal-700 hover:border-teal-200 hover:bg-white/50"
+                            ? "border-sky-400 bg-sky-50/80 text-sky-900 shadow-sm"
+                            : "border-sky-100/40 bg-white/30 text-sky-700 hover:border-sky-200 hover:bg-white/50"
                         }`}
                       >
-                        <Clock className="h-3.5 w-3.5 flex-shrink-0 text-teal-500" />
+                        <Clock className="h-3.5 w-3.5 flex-shrink-0 text-sky-500" />
                         <div>
                           <div className="font-medium">
                             {format(d, "EEE, MMM d")}
                           </div>
-                          <div className="text-teal-600">
+                          <div className="text-sky-600">
                             {format(d, "h:mm a")}
                           </div>
                         </div>
@@ -254,7 +254,7 @@ export default function InterviewsPage() {
             <button
               onClick={handleBook}
               disabled={bookingLoading}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-teal-500/20 transition-all hover:shadow-teal-500/30 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-sky-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-sky-500/20 transition-all hover:shadow-sky-500/30 disabled:opacity-50"
             >
               {bookingLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -271,7 +271,7 @@ export default function InterviewsPage() {
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
+          <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
         </div>
       ) : (
         <div className="space-y-3">
@@ -287,11 +287,11 @@ export default function InterviewsPage() {
           ))}
           {interviews.length === 0 && (
             <div className="glass rounded-2xl py-16 text-center">
-              <Calendar className="mx-auto h-8 w-8 text-teal-300" />
-              <p className="mt-3 text-sm font-medium text-teal-800">
+              <Calendar className="mx-auto h-8 w-8 text-sky-300" />
+              <p className="mt-3 text-sm font-medium text-sky-800">
                 No upcoming interviews
               </p>
-              <p className="mt-1 text-xs text-teal-600">
+              <p className="mt-1 text-xs text-sky-600">
                 Click &quot;Book Interview&quot; to schedule one
               </p>
             </div>

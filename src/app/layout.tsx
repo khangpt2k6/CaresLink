@@ -14,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="bg-orbs min-h-screen antialiased">
+      <body className="min-h-screen bg-white antialiased">
         <Sidebar />
         <main className="pl-56">
           {children}

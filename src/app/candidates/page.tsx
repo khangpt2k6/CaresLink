@@ -117,13 +117,13 @@ export default function CandidatesPage() {
   };
 
   const inputClass =
-    "rounded-xl border border-teal-100/60 bg-white/50 px-3.5 py-2.5 text-sm text-teal-900 placeholder:text-teal-400 transition-all focus:border-teal-300 focus:bg-white/70 focus:outline-none focus:ring-2 focus:ring-teal-200/30";
+    "rounded-xl border border-sky-100/60 bg-white/50 px-3.5 py-2.5 text-sm text-sky-900 placeholder:text-sky-400 transition-all focus:border-sky-300 focus:bg-white/70 focus:outline-none focus:ring-2 focus:ring-sky-200/30";
 
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-lg font-semibold text-teal-900">Candidates</h1>
-        <p className="text-sm text-teal-700">
+        <h1 className="text-lg font-semibold text-sky-900">Candidates</h1>
+        <p className="text-sm text-sky-700">
           Manage candidates and AI outreach
         </p>
       </div>
@@ -131,8 +131,8 @@ export default function CandidatesPage() {
       {/* Add Candidate Form */}
       <div className="glass mb-6 rounded-2xl px-6 py-5">
         <div className="mb-3 flex items-center gap-2">
-          <UserPlus className="h-4 w-4 text-teal-600" />
-          <h2 className="text-sm font-semibold text-teal-800">
+          <UserPlus className="h-4 w-4 text-sky-600" />
+          <h2 className="text-sm font-semibold text-sky-800">
             Add Candidate
           </h2>
         </div>
@@ -176,7 +176,7 @@ export default function CandidatesPage() {
           <button
             type="submit"
             disabled={adding}
-            className="rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-teal-500/20 transition-all hover:shadow-teal-500/30 hover:brightness-110 disabled:opacity-40"
+            className="rounded-xl bg-gradient-to-r from-sky-500 to-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-sky-500/20 transition-all hover:shadow-sky-500/30 hover:brightness-110 disabled:opacity-40"
           >
             {adding ? "Adding..." : "Add"}
           </button>
@@ -185,14 +185,14 @@ export default function CandidatesPage() {
 
       {/* AI Response */}
       {aiPrompt && (
-        <div className="glass animate-in mb-5 rounded-2xl border-l-2 border-l-teal-400 px-5 py-4">
+        <div className="glass animate-in mb-5 rounded-2xl border-l-2 border-l-sky-400 px-5 py-4">
           <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-gradient-to-br from-teal-100 to-teal-50 p-1.5">
-              <Bot className="h-4 w-4 text-teal-600" />
+            <div className="rounded-lg bg-gradient-to-br from-sky-100 to-sky-50 p-1.5">
+              <Bot className="h-4 w-4 text-sky-600" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-teal-800">AI Agent</p>
-              <p className="mt-1 text-xs leading-relaxed text-teal-700">
+              <p className="text-xs font-semibold text-sky-800">AI Agent</p>
+              <p className="mt-1 text-xs leading-relaxed text-sky-700">
                 {aiPrompt}
               </p>
             </div>
@@ -203,7 +203,7 @@ export default function CandidatesPage() {
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
+          <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
         </div>
       ) : (
         <CandidateTable

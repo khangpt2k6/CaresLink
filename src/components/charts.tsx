@@ -32,9 +32,9 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
     <div className="h-56 w-full min-h-[224px]">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(13,148,136,0.08)" vertical={false} />
-          <XAxis dataKey="channel" tick={{ fontSize: 11, fill: "#0d9488" }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 11, fill: "#0d9488" }} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(14,165,233,0.08)" vertical={false} />
+          <XAxis dataKey="channel" tick={{ fontSize: 11, fill: "#0ea5e9" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 11, fill: "#0ea5e9" }} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} />
           <Tooltip
             formatter={(value) => `${Number(value).toFixed(0)}%`}
             contentStyle={{
@@ -45,7 +45,7 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
               fontSize: "12px",
             }}
           />
-          <Bar dataKey="rate" fill="#5eead4" name="Response Rate" radius={[6, 6, 0, 0]} barSize={36} />
+          <Bar dataKey="rate" fill="#7dd3fc" name="Response Rate" radius={[6, 6, 0, 0]} barSize={36} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -54,13 +54,13 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
 
 export function CommunicationPieChart({ metrics }: { metrics: Metrics }) {
   const data = [
-    { name: "Email", value: metrics.emailsSent, color: "#0d9488" },
-    { name: "SMS", value: metrics.smsSent, color: "#5eead4" },
+    { name: "Email", value: metrics.emailsSent, color: "#0ea5e9" },
+    { name: "SMS", value: metrics.smsSent, color: "#7dd3fc" },
   ].filter((d) => d.value > 0);
 
   if (data.length === 0) {
     return (
-      <div className="flex h-44 items-center justify-center text-sm text-teal-600">
+      <div className="flex h-44 items-center justify-center text-sm text-sky-600">
         No data yet
       </div>
     );
@@ -93,7 +93,7 @@ export function CommunicationPieChart({ metrics }: { metrics: Metrics }) {
               fontSize: "12px",
             }}
           />
-          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px", color: "#0d9488" }} />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px", color: "#0ea5e9" }} />
         </PieChart>
       </ResponsiveContainer>
     </div>

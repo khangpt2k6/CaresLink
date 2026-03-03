@@ -24,21 +24,21 @@ export function MetricCard({
       )}
     >
       {/* Subtle gradient accent on top */}
-      <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-teal-400/0 via-teal-400/40 to-teal-400/0" />
+      <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-sky-400/0 via-sky-400/40 to-sky-400/0" />
 
       <div className="flex items-center justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wider text-teal-600">
+          <p className="text-xs font-medium uppercase tracking-wider text-sky-600">
             {title}
           </p>
-          <p className="mt-1.5 text-2xl font-bold text-teal-950">{value}</p>
+          <p className="mt-1.5 text-2xl font-bold text-sky-950">{value}</p>
           {subtitle && (
-            <p className="mt-0.5 text-[11px] text-teal-600">{subtitle}</p>
+            <p className="mt-0.5 text-[11px] text-sky-600">{subtitle}</p>
           )}
         </div>
         {Icon && (
-          <div className="rounded-xl bg-gradient-to-br from-teal-50 to-teal-100/60 p-2.5 transition-transform group-hover:scale-105">
-            <Icon className="h-5 w-5 text-teal-500" />
+          <div className="rounded-xl bg-gradient-to-br from-sky-50 to-sky-100/60 p-2.5 transition-transform group-hover:scale-105">
+            <Icon className="h-5 w-5 text-sky-500" />
           </div>
         )}
       </div>

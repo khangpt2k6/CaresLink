@@ -45,29 +45,29 @@ export function InterviewCard({
       <div className="flex items-center justify-between gap-4">
         {/* Left: candidate info */}
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-100 to-teal-50 text-sm font-semibold text-teal-700">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-100 to-sky-50 text-sm font-semibold text-sky-700">
             {interview.candidate.name.charAt(0)}
           </div>
           <div>
-            <h3 className="text-sm font-medium text-teal-900">
+            <h3 className="text-sm font-medium text-sky-900">
               {interview.candidate.name}
             </h3>
-            <p className="text-[11px] text-teal-600">{interview.position}</p>
+            <p className="text-[11px] text-sky-600">{interview.position}</p>
           </div>
         </div>
 
         {/* Middle: schedule info */}
-        <div className="flex items-center gap-4 text-[12px] text-teal-700">
+        <div className="flex items-center gap-4 text-[12px] text-sky-700">
           <span className="flex items-center gap-1.5">
-            <Calendar className="h-3.5 w-3.5 text-teal-500" />
+            <Calendar className="h-3.5 w-3.5 text-sky-500" />
             {format(scheduledDate, "MMM d, yyyy")}
           </span>
           <span className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-teal-500" />
+            <Clock className="h-3.5 w-3.5 text-sky-500" />
             {format(scheduledDate, "h:mm a")}
           </span>
-          <span className="flex items-center gap-1.5 text-teal-600">
-            <Video className="h-3.5 w-3.5 text-teal-500" />
+          <span className="flex items-center gap-1.5 text-sky-600">
+            <Video className="h-3.5 w-3.5 text-sky-500" />
             {interview.duration}m
           </span>
         </div>
@@ -102,7 +102,7 @@ export function InterviewCard({
             <button
               onClick={() => onSendReminder(interview.id)}
               disabled={reminderLoading === interview.id}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-700 transition-colors hover:bg-teal-500/20 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-500/20 disabled:opacity-40"
             >
               {reminderLoading === interview.id ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -112,7 +112,7 @@ export function InterviewCard({
               Remind
             </button>
           ) : interview.reminderSent ? (
-            <span className="flex items-center gap-1 rounded-lg bg-teal-50/60 px-2.5 py-1.5 text-[11px] font-medium text-teal-600">
+            <span className="flex items-center gap-1 rounded-lg bg-sky-50/60 px-2.5 py-1.5 text-[11px] font-medium text-sky-600">
               <CheckCircle2 className="h-3 w-3" />
               Reminded
             </span>

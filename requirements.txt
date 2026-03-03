@@ -1,0 +1,16 @@
+# CaresLink - AI Recruitment Agent
+# Core
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.5.0
+
+# Data & Analytics
+sqlalchemy>=2.0.25
+pandas>=2.1.0
+
+# Date/Time
+python-dateutil>=2.8.2
+
+# Optional: For production email/SMS (placeholders used for demo)
+# twilio>=8.10.0
+# sendgrid>=6.11.0

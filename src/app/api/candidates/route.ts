@@ -1,6 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, name, email, phone, position } = body;
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    const candidate = await prisma.candidate.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(email !== undefined && { email }),
+        ...(phone !== undefined && { phone: phone || null }),
+        ...(position !== undefined && { position }),
+      },
+    });
+    return NextResponse.json(candidate);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: "Failed to update candidate" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    await prisma.event.deleteMany({ where: { candidateId: id } });
+    await prisma.interview.deleteMany({ where: { candidateId: id } });
+    await prisma.candidate.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: "Failed to delete candidate" }, { status: 500 });
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

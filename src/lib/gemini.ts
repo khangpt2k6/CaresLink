@@ -8,7 +8,7 @@ import {
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
 import { sendSms } from "./twilio";
-import { scheduleInterview, sendReminder } from "./scheduling";
+import { scheduleInterview, sendReminder, findNextAvailableSlots } from "./scheduling";
 
 const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
 if (!apiKey) {
@@ -67,8 +67,19 @@ const functionDeclarations: FunctionDeclaration[] = [
     },
   },
   {
+    name: "get_available_slots",
+    description: "Get available interview time slots for a candidate in the next 7 days. Returns up to 8 slots that don't conflict with existing interviews or calendar events.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
+      },
+      required: ["candidate_id"],
+    },
+  },
+  {
     name: "schedule_interview",
-    description: "Schedule an interview for a candidate",
+    description: "Schedule an interview for a candidate. Creates a Google Calendar event automatically.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -153,6 +164,17 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
       }
       return { success: false, error: result.error };
     }
+    case "get_available_slots": {
+      try {
+        const slots = await findNextAvailableSlots(String(args.candidate_id));
+        return {
+          slots: slots.map((s) => s.toISOString()),
+          count: slots.length,
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Failed to get slots" };
+      }
+    }
     case "schedule_interview": {
       try {
         const scheduledAt = new Date(String(args.scheduled_at));
@@ -218,10 +240,21 @@ export async function runAgent(userMessage: string): Promise<string> {
         mode: FunctionCallingMode.AUTO,
       },
     },
-    systemInstruction: `You are CaresLink, an AI recruitment assistant. You help employers contact candidates, schedule interviews, and send reminders. 
-When the user asks to contact a candidate, use send_email and optionally send_sms if the candidate has a phone number.
-When asked to schedule an interview, use schedule_interview with an ISO datetime.
-Be concise and confirm actions taken.`,
+    systemInstruction: `You are CaresLink, an AI recruitment assistant. You help employers contact candidates, schedule interviews, and send reminders.
+
+When contacting a candidate:
+1. First get their info with get_candidate_info
+2. Send a professional email introducing the opportunity
+3. If they don't already have an interview scheduled, automatically find available slots with get_available_slots and book the earliest one with schedule_interview
+4. Include the interview date/time in the email so the candidate knows when to expect it
+
+When auto-booking:
+- Use get_available_slots to find open times
+- Pick the earliest available slot
+- Schedule it with schedule_interview
+- Mention the scheduled time in your email to the candidate
+
+Be concise and confirm all actions taken (email sent, interview booked, etc).`,
   });
 
   const chat = model.startChat({

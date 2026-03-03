@@ -9,6 +9,7 @@ import {
   Loader2,
   ExternalLink,
   Video,
+  Trash2,
 } from "lucide-react";
 
 interface Interview {
@@ -25,11 +26,15 @@ interface Interview {
 export function InterviewCard({
   interview,
   onSendReminder,
+  onDelete,
   reminderLoading,
+  deleteLoading,
 }: {
   interview: Interview;
   onSendReminder: (id: string) => void;
+  onDelete: (id: string) => void;
   reminderLoading: string | null;
+  deleteLoading: string | null;
 }) {
   const scheduledDate = new Date(interview.scheduledAt);
   const isPast = scheduledDate < new Date();
@@ -80,7 +85,7 @@ export function InterviewCard({
             </a>
           )}
 
-          {!interview.reminderSent && interview.candidate.phone && !isPast ? (
+          {!interview.reminderSent && !isPast ? (
             <button
               onClick={() => onSendReminder(interview.id)}
               disabled={reminderLoading === interview.id}
@@ -99,6 +104,21 @@ export function InterviewCard({
               Reminded
             </span>
           ) : null}
+
+          <button
+            onClick={() => {
+              if (confirm("Cancel this interview?")) onDelete(interview.id);
+            }}
+            disabled={deleteLoading === interview.id}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50/80 px-2.5 py-1.5 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-100/80 disabled:opacity-40"
+          >
+            {deleteLoading === interview.id ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+            Cancel
+          </button>
         </div>
       </div>
     </div>

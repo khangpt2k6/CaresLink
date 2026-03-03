@@ -12,74 +12,40 @@ interface Insight {
   priority: "high" | "medium" | "low";
 }
 
-const priorityBorder = {
-  high: "border-l-2 border-l-rose-400",
-  medium: "border-l-2 border-l-amber-400",
-  low: "border-l-2 border-l-sky-300",
+const priorityStyles = {
+  high: { border: "border-l-2 border-l-[#e03e3e]", badge: "bg-[#ffe2dd] text-[#93392e]" },
+  medium: { border: "border-l-2 border-l-[#d9730d]", badge: "bg-[#fdecc8] text-[#89632a]" },
+  low: { border: "border-l-2 border-l-[#0f7b6c]", badge: "bg-[#dbeddb] text-[#2b593f]" },
 };
 
-const priorityBadge = {
-  high: "bg-rose-100/70 text-rose-700",
-  medium: "bg-amber-100/70 text-amber-700",
-  low: "bg-sky-100/60 text-sky-700",
-};
-
-const priorityIcon = {
-  high: AlertTriangle,
-  medium: Info,
-  low: CheckCircle2,
-};
+const priorityIcon = { high: AlertTriangle, medium: Info, low: CheckCircle2 };
 
 export function InsightsList({ insights }: { insights: Insight[] }) {
   return (
-    <div className="stagger-children space-y-3">
+    <div className="space-y-3">
       {insights.map((insight, i) => {
         const Icon = priorityIcon[insight.priority];
+        const style = priorityStyles[insight.priority];
         return (
-          <div
-            key={i}
-            className={cn(
-              "glass card-hover rounded-2xl px-5 py-4",
-              priorityBorder[insight.priority]
-            )}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                      priorityBadge[insight.priority]
-                    )}
-                  >
-                    <Icon className="h-2.5 w-2.5" />
-                    {insight.priority}
-                  </span>
-                  <span className="text-[11px] text-sky-600">
-                    {insight.currentValue}
-                  </span>
-                </div>
-                <h3 className="mt-2 text-sm font-medium text-sky-900">
-                  {insight.title}
-                </h3>
-                <p className="mt-0.5 text-xs leading-relaxed text-sky-700">
-                  {insight.description}
-                </p>
-                <p className="mt-2 rounded-lg bg-sky-50/40 px-2.5 py-1.5 text-[11px] text-sky-600">
-                  <span className="font-semibold text-sky-700">Action:</span>{" "}
-                  {insight.recommendedAction}
-                </p>
-              </div>
+          <div key={i} className={cn("card px-5 py-4", style.border)}>
+            <div className="flex items-center gap-2">
+              <span className={cn("inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-[10px] font-semibold uppercase", style.badge)}>
+                <Icon className="h-2.5 w-2.5" />
+                {insight.priority}
+              </span>
+              <span className="text-xs text-[#9b9a97]">{insight.currentValue}</span>
             </div>
+            <h3 className="mt-2 text-sm font-medium text-[#37352f]">{insight.title}</h3>
+            <p className="mt-0.5 text-xs leading-relaxed text-[#73726e]">{insight.description}</p>
+            <p className="mt-2 rounded-md bg-[#f7f7f5] px-2.5 py-1.5 text-xs text-[#73726e]">
+              <span className="font-semibold text-[#37352f]">Action:</span> {insight.recommendedAction}
+            </p>
           </div>
         );
       })}
       {insights.length === 0 && (
-        <div className="glass rounded-2xl py-16 text-center">
-          <p className="text-sm text-sky-600">
-            No insights yet. Add candidates and send communications to see
-            recommendations.
-          </p>
+        <div className="card py-16 text-center">
+          <p className="text-sm text-[#9b9a97]">No insights yet. Add candidates and send communications to see recommendations.</p>
         </div>
       )}
     </div>

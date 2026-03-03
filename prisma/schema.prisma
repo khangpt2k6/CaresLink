@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./careslink.db"
+}
+
+model Candidate {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  position  String
+  status    String   @default("applied")
+  appliedAt DateTime @default(now())
+
+  interviews Interview[]
+  events     Event[]
+}
+
+model Interview {
+  id           String   @id @default(cuid())
+  candidateId  String
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  position     String
+  scheduledAt  DateTime
+  duration     Int      @default(60)
+  location     String   @default("Video Call")
+  reminderSent Boolean  @default(false)
+  completed    Boolean  @default(false)
+  noShow       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  events Event[]
+}
+
+model Event {
+  id          String     @id @default(cuid())
+  type        String
+  candidateId String?
+  candidate   Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  interviewId String?
+  interview   Interview? @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  channel     String?
+  metadata    String?
+  cost        Float      @default(0)
+  createdAt   DateTime   @default(now())
+}

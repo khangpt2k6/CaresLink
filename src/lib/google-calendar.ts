@@ -47,14 +47,17 @@ export async function createCalendarEvent(params: {
     params.startTime.getTime() + params.durationMinutes * 60 * 1000
   );
 
+  // Generate a unique Jitsi Meet link (free, no account needed)
+  const meetId = `careslink-${Date.now().toString(36)}`;
+  const meetLink = `https://meet.jit.si/${meetId}`;
+
   try {
     const event = await cal.events.insert({
       calendarId,
-      conferenceDataVersion: 1,
       requestBody: {
         summary: params.summary,
-        description: `${params.description}\n\nCandidate: ${params.attendeeEmail}`,
-        location: params.location || "Google Meet",
+        description: `${params.description}\n\nCandidate: ${params.attendeeEmail}\n\nJoin video call: ${meetLink}`,
+        location: meetLink,
         start: {
           dateTime: params.startTime.toISOString(),
           timeZone: "America/New_York",
@@ -62,12 +65,6 @@ export async function createCalendarEvent(params: {
         end: {
           dateTime: endTime.toISOString(),
           timeZone: "America/New_York",
-        },
-        conferenceData: {
-          createRequest: {
-            requestId: `careslink-${Date.now()}`,
-            conferenceSolutionKey: { type: "hangoutsMeet" },
-          },
         },
         reminders: {
           useDefault: false,
@@ -77,10 +74,6 @@ export async function createCalendarEvent(params: {
         },
       },
     });
-
-    const meetLink = event.data.conferenceData?.entryPoints?.find(
-      (ep) => ep.entryPointType === "video"
-    )?.uri || null;
 
     return {
       eventId: event.data.id || "",

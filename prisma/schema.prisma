@@ -33,6 +33,7 @@ model Interview {
   noShow          Boolean  @default(false)
   calendarEventId String?
   calendarLink    String?
+  meetLink        String?
   createdAt       DateTime @default(now())
 
   events Event[]

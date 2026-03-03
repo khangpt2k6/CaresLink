@@ -70,6 +70,7 @@ export async function scheduleInterview(
   // Create Google Calendar event if configured
   let calendarEventId: string | null = null;
   let calendarLink: string | null = null;
+  let meetLink: string | null = null;
 
   if (isCalendarConfigured()) {
     const calResult = await createCalendarEvent({
@@ -83,6 +84,7 @@ export async function scheduleInterview(
     if (calResult) {
       calendarEventId = calResult.eventId;
       calendarLink = calResult.calendarLink;
+      meetLink = calResult.meetLink;
     }
   }
 
@@ -92,9 +94,10 @@ export async function scheduleInterview(
       position: candidate.position,
       scheduledAt,
       duration,
-      location,
+      location: meetLink ? "Google Meet" : location,
       calendarEventId,
       calendarLink,
+      meetLink,
     },
   });
 

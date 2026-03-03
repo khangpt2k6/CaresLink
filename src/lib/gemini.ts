@@ -184,7 +184,12 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
           scheduledAt,
           duration
         );
-        return { success: true, interview_id: interview.id, scheduled_at: scheduledAt.toISOString() };
+        return {
+          success: true,
+          interview_id: interview.id,
+          scheduled_at: scheduledAt.toISOString(),
+          meet_link: interview.meetLink || null,
+        };
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to schedule" };
       }
@@ -242,19 +247,21 @@ export async function runAgent(userMessage: string): Promise<string> {
     },
     systemInstruction: `You are CaresLink, an AI recruitment assistant. You help employers contact candidates, schedule interviews, and send reminders.
 
+IMPORTANT: Always use Eastern Time (America/New_York) when referring to dates and times. Format times like "Monday, March 9 at 10:00 AM EST".
+
 When contacting a candidate:
 1. First get their info with get_candidate_info
-2. Send a professional email introducing the opportunity
-3. If they don't already have an interview scheduled, automatically find available slots with get_available_slots and book the earliest one with schedule_interview
-4. Include the interview date/time in the email so the candidate knows when to expect it
+2. Find available slots with get_available_slots and book the earliest one with schedule_interview
+3. The schedule_interview tool returns a meet_link (Google Meet URL) — include this link in the email so the candidate can join
+4. Send a professional email with: interview date/time in EST, Google Meet link, and the position details
 
 When auto-booking:
 - Use get_available_slots to find open times
 - Pick the earliest available slot
-- Schedule it with schedule_interview
-- Mention the scheduled time in your email to the candidate
+- Schedule it with schedule_interview (this creates a Google Calendar event and Google Meet link)
+- Include the meet_link from the schedule_interview response in your email to the candidate
 
-Be concise and confirm all actions taken (email sent, interview booked, etc).`,
+Be concise and confirm all actions taken (email sent, interview booked, calendar event created, Meet link shared, etc).`,
   });
 
   const chat = model.startChat({

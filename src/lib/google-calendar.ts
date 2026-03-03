@@ -39,7 +39,7 @@ export async function createCalendarEvent(params: {
   durationMinutes: number;
   attendeeEmail: string;
   location?: string;
-}): Promise<{ eventId: string; calendarLink: string } | null> {
+}): Promise<{ eventId: string; calendarLink: string; meetLink: string | null } | null> {
   const cal = getCalendar();
   if (!cal) return null;
 
@@ -50,17 +50,24 @@ export async function createCalendarEvent(params: {
   try {
     const event = await cal.events.insert({
       calendarId,
+      conferenceDataVersion: 1,
       requestBody: {
         summary: params.summary,
         description: `${params.description}\n\nCandidate: ${params.attendeeEmail}`,
-        location: params.location || "Video Call",
+        location: params.location || "Google Meet",
         start: {
           dateTime: params.startTime.toISOString(),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timeZone: "America/New_York",
         },
         end: {
           dateTime: endTime.toISOString(),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timeZone: "America/New_York",
+        },
+        conferenceData: {
+          createRequest: {
+            requestId: `careslink-${Date.now()}`,
+            conferenceSolutionKey: { type: "hangoutsMeet" },
+          },
         },
         reminders: {
           useDefault: false,
@@ -71,9 +78,14 @@ export async function createCalendarEvent(params: {
       },
     });
 
+    const meetLink = event.data.conferenceData?.entryPoints?.find(
+      (ep) => ep.entryPointType === "video"
+    )?.uri || null;
+
     return {
       eventId: event.data.id || "",
       calendarLink: event.data.htmlLink || "",
+      meetLink,
     };
   } catch (err) {
     console.error("Google Calendar error:", err);

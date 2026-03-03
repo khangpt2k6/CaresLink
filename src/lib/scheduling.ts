@@ -1,4 +1,9 @@
 import { prisma } from "./db";
+import {
+  createCalendarEvent,
+  getFreeBusySlots,
+  isCalendarConfigured,
+} from "./google-calendar";
 
 export async function findNextAvailableSlots(
   candidateId: string,
@@ -11,6 +16,13 @@ export async function findNextAvailableSlots(
   if (!candidate) return [];
 
   const now = new Date();
+  const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  // Get busy slots from Google Calendar if configured
+  const busySlots = isCalendarConfigured()
+    ? await getFreeBusySlots(now, weekFromNow)
+    : [];
+
   const slots: Date[] = [];
   for (let d = 1; d <= 7; d++) {
     for (const hour of [9, 10, 11, 14, 15, 16]) {
@@ -21,17 +33,29 @@ export async function findNextAvailableSlots(
       if (start <= now) continue;
 
       const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
-      const conflicts = candidate.interviews.some(
+
+      // Check against existing DB interviews
+      const dbConflict = candidate.interviews.some(
         (i) =>
           !i.completed &&
           !i.noShow &&
           i.scheduledAt < end &&
           new Date(i.scheduledAt.getTime() + i.duration * 60 * 1000) > start
       );
-      if (!conflicts) slots.push(start);
+      if (dbConflict) continue;
+
+      // Check against Google Calendar busy slots
+      const calConflict = busySlots.some((b) => {
+        const bStart = new Date(b.start);
+        const bEnd = new Date(b.end);
+        return bStart < end && bEnd > start;
+      });
+      if (calConflict) continue;
+
+      slots.push(start);
     }
   }
-  return slots.slice(0, 5);
+  return slots.slice(0, 8);
 }
 
 export async function scheduleInterview(
@@ -43,6 +67,25 @@ export async function scheduleInterview(
   const candidate = await prisma.candidate.findUnique({ where: { id: candidateId } });
   if (!candidate) throw new Error("Candidate not found");
 
+  // Create Google Calendar event if configured
+  let calendarEventId: string | null = null;
+  let calendarLink: string | null = null;
+
+  if (isCalendarConfigured()) {
+    const calResult = await createCalendarEvent({
+      summary: `Interview: ${candidate.name} - ${candidate.position}`,
+      description: `Interview with ${candidate.name} for the ${candidate.position} position.\n\nCandidate email: ${candidate.email}${candidate.phone ? `\nPhone: ${candidate.phone}` : ""}`,
+      startTime: scheduledAt,
+      durationMinutes: duration,
+      attendeeEmail: candidate.email,
+      location,
+    });
+    if (calResult) {
+      calendarEventId = calResult.eventId;
+      calendarLink = calResult.calendarLink;
+    }
+  }
+
   const interview = await prisma.interview.create({
     data: {
       candidateId,
@@ -50,6 +93,8 @@ export async function scheduleInterview(
       scheduledAt,
       duration,
       location,
+      calendarEventId,
+      calendarLink,
     },
   });
 
@@ -63,7 +108,11 @@ export async function scheduleInterview(
       type: "interview_scheduled",
       candidateId,
       interviewId: interview.id,
-      metadata: JSON.stringify({ scheduledAt: scheduledAt.toISOString(), duration }),
+      metadata: JSON.stringify({
+        scheduledAt: scheduledAt.toISOString(),
+        duration,
+        calendarEventId,
+      }),
     },
   });
 

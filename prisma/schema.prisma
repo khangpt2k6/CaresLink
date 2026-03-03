@@ -21,17 +21,19 @@ model Candidate {
 }
 
 model Interview {
-  id           String   @id @default(cuid())
-  candidateId  String
-  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  position     String
-  scheduledAt  DateTime
-  duration     Int      @default(60)
-  location     String   @default("Video Call")
-  reminderSent Boolean  @default(false)
-  completed    Boolean  @default(false)
-  noShow       Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  candidateId     String
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  position        String
+  scheduledAt     DateTime
+  duration        Int      @default(60)
+  location        String   @default("Video Call")
+  reminderSent    Boolean  @default(false)
+  completed       Boolean  @default(false)
+  noShow          Boolean  @default(false)
+  calendarEventId String?
+  calendarLink    String?
+  createdAt       DateTime @default(now())
 
   events Event[]
 }

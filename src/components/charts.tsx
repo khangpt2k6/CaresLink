@@ -29,7 +29,7 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
   ];
 
   return (
-    <div className="h-56 w-full">
+    <div className="h-56 w-full min-h-[224px]">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(13,148,136,0.08)" vertical={false} />
@@ -67,7 +67,7 @@ export function CommunicationPieChart({ metrics }: { metrics: Metrics }) {
   }
 
   return (
-    <div className="h-44 w-full">
+    <div className="h-44 w-full min-h-[176px]">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie

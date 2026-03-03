@@ -211,12 +211,11 @@ export async function runAgent(userMessage: string): Promise<string> {
   }
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     tools: [{ functionDeclarations } as FunctionDeclarationsTool],
     toolConfig: {
       functionCallingConfig: {
         mode: FunctionCallingMode.AUTO,
-        allowedFunctionNames: functionDeclarations.map((f) => f.name),
       },
     },
     systemInstruction: `You are CaresLink, an AI recruitment assistant. You help employers contact candidates, schedule interviews, and send reminders. 
@@ -229,27 +228,38 @@ Be concise and confirm actions taken.`,
     history: [],
   });
 
-  let lastResponse = await chat.sendMessage(userMessage);
-  const maxTurns = 10;
-  let turns = 0;
+  try {
+    let lastResponse = await chat.sendMessage(userMessage);
+    const maxTurns = 10;
+    let turns = 0;
 
-  while (turns < maxTurns) {
-    const functionCalls = lastResponse.response.functionCalls?.() ?? [];
-    if (functionCalls.length === 0) {
-      const text = lastResponse.response.text?.() ?? "";
-      return text || "Done.";
+    while (turns < maxTurns) {
+      const functionCalls = lastResponse.response.functionCalls?.() ?? [];
+      if (functionCalls.length === 0) {
+        const text = lastResponse.response.text?.() ?? "";
+        return text || "Done.";
+      }
+
+      const functionResponses = await Promise.all(
+        functionCalls.map(async (fc) => {
+          const result = await executeFunction(fc.name, (fc.args || {}) as Record<string, unknown>);
+          return { functionResponse: { name: fc.name, response: result } };
+        })
+      );
+
+      lastResponse = await chat.sendMessage(functionResponses);
+      turns++;
     }
 
-    const functionResponses = await Promise.all(
-      functionCalls.map(async (fc) => {
-        const result = await executeFunction(fc.name, (fc.args || {}) as Record<string, unknown>);
-        return { functionResponse: { name: fc.name, response: result } };
-      })
-    );
-
-    lastResponse = await chat.sendMessage(functionResponses);
-    turns++;
+    return lastResponse.response.text?.() ?? "Completed actions.";
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("429") || msg.includes("quota")) {
+      return "Gemini API quota exceeded. Please wait a moment and try again, or check your plan at https://ai.google.dev.";
+    }
+    if (msg.includes("403") || msg.includes("leaked") || msg.includes("API key")) {
+      return "Gemini API key is invalid or has been revoked. Please generate a new key at https://aistudio.google.com/apikey and update your .env file.";
+    }
+    throw err;
   }
-
-  return lastResponse.response.text?.() ?? "Completed actions.";
 }

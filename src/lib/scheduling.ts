@@ -58,6 +58,72 @@ export async function findNextAvailableSlots(
   return slots.slice(0, 8);
 }
 
+export async function findPublicAvailableSlots(
+  month: number, // 0-indexed (0 = January)
+  year: number,
+  durationMinutes = 60
+): Promise<Date[]> {
+  const startOfMonth = new Date(year, month, 1);
+  const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
+  const now = new Date();
+
+  const rangeStart = startOfMonth > now ? startOfMonth : now;
+  if (endOfMonth < now) return [];
+
+  const busySlots = isCalendarConfigured()
+    ? await getFreeBusySlots(rangeStart, endOfMonth)
+    : [];
+
+  const existingInterviews = await prisma.interview.findMany({
+    where: {
+      scheduledAt: { gte: rangeStart, lte: endOfMonth },
+      completed: false,
+      noShow: false,
+    },
+  });
+
+  const slots: Date[] = [];
+  const current = new Date(rangeStart);
+  current.setHours(0, 0, 0, 0);
+  if (current < now) current.setDate(current.getDate() + 1);
+
+  while (current <= endOfMonth) {
+    const dayOfWeek = current.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      current.setDate(current.getDate() + 1);
+      continue;
+    }
+
+    for (const hour of [9, 10, 11, 14, 15, 16]) {
+      const start = new Date(current);
+      start.setHours(hour, 0, 0, 0);
+      if (start <= now) continue;
+
+      const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+
+      const dbConflict = existingInterviews.some(
+        (i) =>
+          i.scheduledAt < end &&
+          new Date(i.scheduledAt.getTime() + i.duration * 60 * 1000) > start
+      );
+      if (dbConflict) continue;
+
+      const calConflict = busySlots.some((b) => {
+        const bStart = new Date(b.start);
+        const bEnd = new Date(b.end);
+        return bStart < end && bEnd > start;
+      });
+      if (calConflict) continue;
+
+      slots.push(new Date(start));
+    }
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return slots;
+}
+
 export async function scheduleInterview(
   candidateId: string,
   scheduledAt: Date,

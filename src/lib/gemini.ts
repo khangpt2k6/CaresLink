@@ -189,6 +189,8 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
           interview_id: interview.id,
           scheduled_at: scheduledAt.toISOString(),
           meet_link: interview.meetLink || null,
+          email_sent: false,
+          important: "Calendar event created on recruiter calendar, but NO email was sent to the candidate. The candidate has NO idea about this interview. You MUST call send_email next to notify them with the interview details and meet link.",
         };
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to schedule" };
@@ -249,19 +251,19 @@ export async function runAgent(userMessage: string): Promise<string> {
 
 IMPORTANT: Always use Eastern Time (America/New_York) when referring to dates and times. Format times like "Monday, March 9 at 10:00 AM EST".
 
-When contacting a candidate:
-1. First get their info with get_candidate_info
-2. Find available slots with get_available_slots and book the earliest one with schedule_interview
-3. The schedule_interview tool returns a meet_link (Google Meet URL) — include this link in the email so the candidate can join
-4. Send a professional email with: interview date/time in EST, Google Meet link, and the position details
+CRITICAL WORKFLOW — When contacting a candidate, you MUST follow ALL steps:
+1. Call get_candidate_info to get their details
+2. Call get_available_slots to find open interview times
+3. Call schedule_interview with the earliest slot — this ONLY creates a calendar event on the recruiter's calendar. The candidate does NOT receive any notification from this step.
+4. MANDATORY: Call send_email to notify the candidate. Without this step, the candidate has NO idea about the interview. Include in the email:
+   - Interview date/time in EST
+   - Video call link (the meet_link from schedule_interview response)
+   - Position they are interviewing for
+   - A note: "If this time doesn't work, you can reschedule at: http://localhost:3000/book"
 
-When auto-booking:
-- Use get_available_slots to find open times
-- Pick the earliest available slot
-- Schedule it with schedule_interview (this creates a Google Calendar event and Google Meet link)
-- Include the meet_link from the schedule_interview response in your email to the candidate
+WARNING: schedule_interview does NOT send any email or notification to the candidate. It only creates a calendar event on the recruiter's Google Calendar. You MUST ALWAYS call send_email after schedule_interview. Never skip this step. Never claim you sent an email unless you actually called send_email.
 
-Be concise and confirm all actions taken (email sent, interview booked, calendar event created, Meet link shared, etc).`,
+Be concise and confirm all actions taken. Only say "email sent" if you actually called send_email.`,
   });
 
   const chat = model.startChat({

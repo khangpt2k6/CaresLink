@@ -1,16 +1,9 @@
-import sgMail from "@sendgrid/mail";
+import { Resend } from "resend";
 
-const apiKey = process.env.SENDGRID_API_KEY;
-const fromEmail = process.env.SENDGRID_FROM_EMAIL || "recruit@example.com";
+const apiKey = process.env.RESEND_API_KEY;
+const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
-export function initSendGrid() {
-  if (!apiKey) {
-    console.warn("SENDGRID_API_KEY not set - email sending disabled");
-    return false;
-  }
-  sgMail.setApiKey(apiKey);
-  return true;
-}
+const resend = apiKey ? new Resend(apiKey) : null;
 
 export async function sendEmail(
   to: string,
@@ -19,22 +12,26 @@ export async function sendEmail(
   html?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!apiKey) {
-      throw new Error("SENDGRID_API_KEY must be set");
+    if (!resend) {
+      throw new Error("RESEND_API_KEY not set");
     }
-    sgMail.setApiKey(apiKey);
 
-    await sgMail.send({
-      to,
+    const { error } = await resend.emails.send({
       from: fromEmail,
+      to,
       subject,
-      text,
       html: html || text.replace(/\n/g, "<br>"),
+      text,
     });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    console.error("SendGrid error:", msg);
+    console.error("Resend error:", msg);
     return { success: false, error: msg };
   }
 }

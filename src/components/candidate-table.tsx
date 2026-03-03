@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { Bot, Loader2 } from "lucide-react";
 
 interface Candidate {
   id: string;
@@ -12,69 +13,87 @@ interface Candidate {
 }
 
 const statusColors: Record<string, string> = {
-  applied: "bg-slate-100 text-slate-700",
-  contacted: "bg-blue-100 text-blue-700",
-  scheduled: "bg-amber-100 text-amber-700",
-  interviewed: "bg-purple-100 text-purple-700",
-  offered: "bg-emerald-100 text-emerald-700",
-  hired: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
-  no_show: "bg-red-100 text-red-700",
+  applied: "bg-teal-50/60 text-teal-700",
+  contacted: "bg-teal-50/80 text-teal-700",
+  scheduled: "bg-teal-100/60 text-teal-700",
+  interviewed: "bg-teal-100/80 text-teal-700",
+  offered: "bg-teal-200/50 text-teal-700",
+  hired: "bg-teal-200/70 text-teal-900",
+  rejected: "bg-teal-50/40 text-teal-700",
+  no_show: "bg-teal-50/40 text-teal-700",
 };
 
 export function CandidateTable({
   candidates,
   onContactAi,
+  aiLoading,
 }: {
   candidates: Candidate[];
   onContactAi?: (candidate: Candidate) => void;
+  aiLoading?: string | null;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <table className="min-w-full divide-y divide-slate-200">
+    <div className="glass overflow-hidden rounded-xl">
+      <table className="min-w-full">
         <thead>
-          <tr className="bg-slate-50">
-            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
-              Name
+          <tr className="border-b border-teal-100/40">
+            <th className="px-5 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-teal-700">
+              Candidate
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+            <th className="px-5 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-teal-700">
               Position
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
+            <th className="px-5 py-3 text-left text-[11px] font-medium uppercase tracking-wider text-teal-700">
               Status
             </th>
-            <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500">
+            <th className="px-5 py-3 text-right text-[11px] font-medium uppercase tracking-wider text-teal-700">
               Actions
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-200 bg-white">
+        <tbody>
           {candidates.map((c) => (
-            <tr key={c.id} className="hover:bg-slate-50">
-              <td className="whitespace-nowrap px-6 py-4">
-                <div className="font-medium text-slate-900">{c.name}</div>
-                <div className="text-sm text-slate-500">{c.email}</div>
+            <tr
+              key={c.id}
+              className="border-b border-teal-50/40 transition-colors hover:bg-teal-50/20"
+            >
+              <td className="whitespace-nowrap px-5 py-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100/50 text-xs font-medium text-teal-700">
+                    {c.name.charAt(0)}
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-teal-900">{c.name}</div>
+                    <div className="text-[11px] text-teal-700">{c.email}</div>
+                  </div>
+                </div>
               </td>
-              <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
+              <td className="whitespace-nowrap px-5 py-3 text-sm text-teal-700">
                 {c.position}
               </td>
-              <td className="whitespace-nowrap px-6 py-4">
+              <td className="whitespace-nowrap px-5 py-3">
                 <span
                   className={cn(
-                    "inline-flex rounded-full px-2 py-1 text-xs font-medium",
-                    statusColors[c.status] ?? "bg-slate-100 text-slate-700"
+                    "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
+                    statusColors[c.status] ?? "bg-teal-50/60 text-teal-700"
                   )}
                 >
                   {c.status}
                 </span>
               </td>
-              <td className="whitespace-nowrap px-6 py-4 text-right">
+              <td className="whitespace-nowrap px-5 py-3 text-right">
                 {onContactAi && (
                   <button
                     onClick={() => onContactAi(c)}
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                    disabled={aiLoading === c.id}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-teal-500/10 px-3 py-1.5 text-xs font-medium text-teal-700 transition-colors hover:bg-teal-500/20 disabled:opacity-40"
                   >
-                    Contact via AI
+                    {aiLoading === c.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Bot className="h-3 w-3" />
+                    )}
+                    {aiLoading === c.id ? "Contacting..." : "Contact AI"}
                   </button>
                 )}
               </td>
@@ -83,7 +102,9 @@ export function CandidateTable({
         </tbody>
       </table>
       {candidates.length === 0 && (
-        <div className="py-12 text-center text-slate-500">No candidates yet</div>
+        <div className="py-12 text-center text-sm text-teal-700">
+          No candidates yet
+        </div>
       )}
     </div>
   );

@@ -2,6 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { MetricCard } from "@/components/metrics-cards";
+import {
+  Users,
+  CalendarCheck,
+  AlertCircle,
+  DollarSign,
+  Mail,
+  MessageSquare,
+  ArrowRight,
+} from "lucide-react";
+import Link from "next/link";
 
 interface Metrics {
   totalCandidates: number;
@@ -25,108 +35,60 @@ export default function DashboardPage() {
       .then((r) => r.json())
       .then((d) => setMetrics(d.metrics))
       .catch(console.error);
-
-    fetch("/api/candidates")
-      .then((r) => r.json())
-      .then(() => {})
-      .catch(console.error);
   }, []);
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="mt-1 text-slate-500">
-          Overview of your recruitment metrics and activity
-        </p>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold text-teal-900">Dashboard</h1>
+        <p className="text-sm text-teal-700">Recruitment overview</p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Total Candidates"
-          value={metrics?.totalCandidates ?? "—"}
-          subtitle="Last 30 days"
-        />
-        <MetricCard
-          title="Interviews Scheduled"
-          value={metrics?.interviewsScheduled ?? "—"}
-          subtitle="Last 30 days"
-        />
-        <MetricCard
-          title="No-Show Rate"
-          value={
-            metrics ? `${(metrics.noShowRate * 100).toFixed(0)}%` : "—"
-          }
-          subtitle={
-            metrics?.noShowCount
-              ? `${metrics.noShowCount} no-shows`
-              : undefined
-          }
-        />
-        <MetricCard
-          title="Total Cost"
-          value={metrics ? `$${metrics.totalCost.toFixed(2)}` : "—"}
-          subtitle={
-            metrics?.hiresCount
-              ? `$${metrics.costPerHire.toFixed(0)} per hire`
-              : undefined
-          }
-        />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard title="Candidates" value={metrics?.totalCandidates ?? "—"} subtitle="Last 30 days" icon={Users} />
+        <MetricCard title="Interviews" value={metrics?.interviewsScheduled ?? "—"} subtitle="Last 30 days" icon={CalendarCheck} />
+        <MetricCard title="No-Show Rate" value={metrics ? `${(metrics.noShowRate * 100).toFixed(0)}%` : "—"} subtitle={metrics?.noShowCount ? `${metrics.noShowCount} missed` : undefined} icon={AlertCircle} />
+        <MetricCard title="Total Cost" value={metrics ? `$${metrics.totalCost.toFixed(2)}` : "—"} subtitle={metrics?.hiresCount ? `$${metrics.costPerHire.toFixed(0)}/hire` : undefined} icon={DollarSign} />
       </div>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Communication Stats
-          </h2>
-          <dl className="mt-4 space-y-3">
-            <div className="flex justify-between">
-              <dt className="text-slate-500">Emails sent</dt>
-              <dd className="font-medium">{metrics?.emailsSent ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-slate-500">SMS sent</dt>
-              <dd className="font-medium">{metrics?.smsSent ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-slate-500">Email response rate</dt>
-              <dd className="font-medium">
-                {metrics
-                  ? `${(metrics.responseRateEmail * 100).toFixed(0)}%`
-                  : "—"}
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-slate-500">SMS response rate</dt>
-              <dd className="font-medium">
-                {metrics
-                  ? `${(metrics.responseRateSms * 100).toFixed(0)}%`
-                  : "—"}
-              </dd>
-            </div>
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="glass rounded-xl px-5 py-4">
+          <h2 className="text-sm font-medium text-teal-800">Communications</h2>
+          <dl className="mt-3 space-y-2.5">
+            {[
+              { icon: Mail, label: "Emails sent", val: metrics?.emailsSent },
+              { icon: MessageSquare, label: "SMS sent", val: metrics?.smsSent },
+              { icon: Mail, label: "Email response", val: metrics ? `${(metrics.responseRateEmail * 100).toFixed(0)}%` : null },
+              { icon: MessageSquare, label: "SMS response", val: metrics ? `${(metrics.responseRateSms * 100).toFixed(0)}%` : null },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between rounded-lg bg-teal-50/30 px-3 py-2">
+                <dt className="flex items-center gap-2 text-xs text-teal-700">
+                  <row.icon className="h-3.5 w-3.5 text-teal-500" />
+                  {row.label}
+                </dt>
+                <dd className="text-xs font-medium text-teal-900">{row.val ?? "—"}</dd>
+              </div>
+            ))}
           </dl>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Quick Actions</h2>
-          <div className="mt-4 flex flex-col gap-2">
-            <a
-              href="/candidates"
-              className="rounded-lg border border-slate-200 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Add Candidate
-            </a>
-            <a
-              href="/candidates"
-              className="rounded-lg border border-slate-200 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Contact via AI
-            </a>
-            <a
-              href="/interviews"
-              className="rounded-lg border border-slate-200 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              View Interviews
-            </a>
+
+        <div className="glass rounded-xl px-5 py-4">
+          <h2 className="text-sm font-medium text-teal-800">Quick Actions</h2>
+          <div className="mt-3 space-y-2">
+            {[
+              { href: "/candidates", label: "Add Candidate" },
+              { href: "/candidates", label: "Contact via AI" },
+              { href: "/interviews", label: "View Interviews" },
+            ].map((action) => (
+              <Link
+                key={action.label}
+                href={action.href}
+                className="group flex items-center justify-between rounded-lg bg-teal-50/30 px-3 py-2.5 text-xs font-medium text-teal-700 transition-colors hover:bg-teal-50/60"
+              >
+                {action.label}
+                <ArrowRight className="h-3 w-3 text-teal-400 transition-transform group-hover:translate-x-0.5 group-hover:text-teal-600" />
+              </Link>
+            ))}
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { InsightsList } from "@/components/insights-list";
 import { ResponseRateChart, CommunicationPieChart } from "@/components/charts";
+import { Loader2 } from "lucide-react";
 
 interface Insight {
   title: string;
@@ -27,50 +28,49 @@ interface Metrics {
   hiresCount: number;
 }
 
+const emptyMetrics = { emailsSent: 0, smsSent: 0, responseRateEmail: 0, responseRateSms: 0, noShowRate: 0 };
+
 export default function InsightsPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/analytics?days=30")
       .then((r) => r.json())
-      .then((d) => {
-        setMetrics(d.metrics);
-        setInsights(d.insights);
-      })
-      .catch(console.error);
+      .then((d) => { setMetrics(d.metrics); setInsights(d.insights); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-6 py-24">
+        <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Data-Driven Insights</h1>
-        <p className="mt-1 text-slate-500">
-          Optimization recommendations based on your recruitment data
-        </p>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold text-teal-900">Insights</h1>
+        <p className="text-sm text-teal-700">Data-driven recommendations</p>
       </div>
 
-      <div className="mb-8 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Response Rate by Channel
-          </h2>
-          <ResponseRateChart metrics={metrics ?? { emailsSent: 0, smsSent: 0, responseRateEmail: 0, responseRateSms: 0, noShowRate: 0 }} />
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <div className="glass rounded-xl px-5 py-4">
+          <h2 className="mb-2 text-sm font-medium text-teal-800">Response Rate</h2>
+          <ResponseRateChart metrics={metrics ?? emptyMetrics} />
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Communications Sent
-          </h2>
-          <CommunicationPieChart metrics={metrics ?? { emailsSent: 0, smsSent: 0, responseRateEmail: 0, responseRateSms: 0, noShowRate: 0 }} />
+        <div className="glass rounded-xl px-5 py-4">
+          <h2 className="mb-2 text-sm font-medium text-teal-800">Communications</h2>
+          <CommunicationPieChart metrics={metrics ?? emptyMetrics} />
         </div>
       </div>
 
-      <div>
-        <h2 className="mb-4 text-lg font-semibold text-slate-900">
-          Optimization Recommendations
-        </h2>
-        <InsightsList insights={insights} />
-      </div>
+      <h2 className="mb-3 text-sm font-medium text-teal-800">Recommendations</h2>
+      <InsightsList insights={insights} />
     </div>
   );
 }

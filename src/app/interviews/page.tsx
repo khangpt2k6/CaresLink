@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { InterviewCard } from "@/components/interview-card";
+import { Calendar, Loader2 } from "lucide-react";
 
 interface Interview {
   id: string;
@@ -26,52 +27,39 @@ export default function InterviewsPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    fetchInterviews();
-  }, []);
+  useEffect(() => { fetchInterviews(); }, []);
 
   const handleSendReminder = async (interviewId: string) => {
     setReminderLoading(interviewId);
     try {
-      const res = await fetch("/api/interviews/reminder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interviewId }),
-      });
+      const res = await fetch("/api/interviews/reminder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ interviewId }) });
       const data = await res.json();
       if (data.success) fetchInterviews();
-      else alert(data.error || data.message || "Failed to send reminder");
-    } catch (e) {
-      alert("Failed to send reminder");
-    } finally {
-      setReminderLoading(null);
-    }
+      else alert(data.error || data.message || "Failed");
+    } catch { alert("Failed to send reminder"); }
+    finally { setReminderLoading(null); }
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Interviews</h1>
-        <p className="mt-1 text-slate-500">
-          Upcoming interviews and reminders
-        </p>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold text-teal-900">Interviews</h1>
+        <p className="text-sm text-teal-700">Upcoming sessions & reminders</p>
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-slate-500">Loading...</div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
+        </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {interviews.map((i) => (
-            <InterviewCard
-              key={i.id}
-              interview={i}
-              onSendReminder={handleSendReminder}
-              reminderLoading={reminderLoading}
-            />
+            <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} reminderLoading={reminderLoading} />
           ))}
           {interviews.length === 0 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-12 text-center text-slate-500">
-              No upcoming interviews
+            <div className="glass rounded-xl py-12 text-center">
+              <Calendar className="mx-auto h-5 w-5 text-teal-500" />
+              <p className="mt-2 text-sm text-teal-700">No upcoming interviews</p>
             </div>
           )}
         </div>

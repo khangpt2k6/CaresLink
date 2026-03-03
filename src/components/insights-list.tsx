@@ -11,42 +11,45 @@ interface Insight {
   priority: "high" | "medium" | "low";
 }
 
-export function InsightsList({ insights }: { insights: Insight[] }) {
-  const priorityStyles = {
-    high: "border-l-4 border-l-red-500",
-    medium: "border-l-4 border-l-amber-500",
-    low: "border-l-4 border-l-slate-400",
-  };
+const priorityBorder = {
+  high: "border-l-2 border-l-teal-500",
+  medium: "border-l-2 border-l-teal-300",
+  low: "border-l-2 border-l-teal-200",
+};
 
+const priorityBadge = {
+  high: "bg-teal-100/60 text-teal-700",
+  medium: "bg-teal-50/80 text-teal-600",
+  low: "bg-teal-50/50 text-teal-700",
+};
+
+export function InsightsList({ insights }: { insights: Insight[] }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {insights.map((insight, i) => (
         <div
           key={i}
-          className={cn(
-            "rounded-xl border border-slate-200 bg-white p-5 shadow-sm",
-            priorityStyles[insight.priority]
-          )}
+          className={cn("glass card-hover rounded-xl px-5 py-4", priorityBorder[insight.priority])}
         >
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-xs font-medium uppercase text-slate-500">
-                {insight.priority}
-              </span>
-              <h3 className="mt-1 font-semibold text-slate-900">{insight.title}</h3>
-              <p className="mt-2 text-sm text-slate-600">{insight.description}</p>
-              <p className="mt-2 text-sm font-medium text-slate-700">
-                Action: {insight.recommendedAction}
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium uppercase", priorityBadge[insight.priority])}>
+                  {insight.priority}
+                </span>
+                <span className="text-[11px] text-teal-600">{insight.currentValue}</span>
+              </div>
+              <h3 className="mt-1.5 text-sm font-medium text-teal-900">{insight.title}</h3>
+              <p className="mt-0.5 text-xs text-teal-700">{insight.description}</p>
+              <p className="mt-2 text-[11px] text-teal-600">
+                <span className="font-medium text-teal-700">Action:</span> {insight.recommendedAction}
               </p>
             </div>
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-              {insight.currentValue}
-            </span>
           </div>
         </div>
       ))}
       {insights.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center text-slate-500">
+        <div className="glass rounded-xl py-12 text-center text-sm text-teal-600">
           No insights yet. Add candidates and send communications to see recommendations.
         </div>
       )}

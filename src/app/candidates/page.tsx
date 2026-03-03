@@ -55,7 +55,7 @@ export default function CandidatesPage() {
   };
 
   const handleContactAi = async (c: Candidate) => {
-    const message = `Contact candidate ${c.name} (${c.email}) for the ${c.position} position. Send them an email and SMS if they have a phone number.`;
+    const message = `Contact the candidate with ID "${c.id}" for the ${c.position} position. Send them an email first, and if they have a phone number, also send an SMS.`;
     setAiLoading(c.id);
     try {
       const res = await fetch("/api/agent", {

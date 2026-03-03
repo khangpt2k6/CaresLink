@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { MetricCard } from "@/components/metrics-cards";
-import { format } from "date-fns";
 
 interface Metrics {
   totalCandidates: number;
@@ -20,7 +19,6 @@ interface Metrics {
 
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [recentEvents, setRecentEvents] = useState<Array<{ type: string; createdAt: string }>>([]);
 
   useEffect(() => {
     fetch("/api/analytics?days=30")

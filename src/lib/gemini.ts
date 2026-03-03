@@ -1,5 +1,6 @@
 import {
   GoogleGenerativeAI,
+  FunctionCallingMode,
   type FunctionDeclaration,
   type FunctionDeclarationsTool,
   SchemaType,
@@ -112,8 +113,8 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
     case "list_candidates": {
       const candidates = await prisma.candidate.findMany({
         where: {
-          ...(args.position && { position: String(args.position) }),
-          ...(args.status && { status: String(args.status) }),
+          ...(args.position ? { position: String(args.position) } : {}),
+          ...(args.status ? { status: String(args.status) } : {}),
         },
         select: { id: true, name: true, email: true, position: true, status: true },
       });
@@ -214,7 +215,7 @@ export async function runAgent(userMessage: string): Promise<string> {
     tools: [{ functionDeclarations } as FunctionDeclarationsTool],
     toolConfig: {
       functionCallingConfig: {
-        mode: "AUTO",
+        mode: FunctionCallingMode.AUTO,
         allowedFunctionNames: functionDeclarations.map((f) => f.name),
       },
     },

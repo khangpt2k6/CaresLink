@@ -20,6 +20,7 @@ interface Interview {
   location: string;
   reminderSent: boolean;
   calendarLink: string | null;
+  meetLink: string | null;
   candidate: { name: string; email: string; phone: string | null };
 }
 

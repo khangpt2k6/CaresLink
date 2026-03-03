@@ -20,6 +20,7 @@ interface Interview {
   location: string;
   reminderSent: boolean;
   calendarLink: string | null;
+  meetLink: string | null;
   candidate: { name: string; email: string; phone: string | null };
 }
 
@@ -73,6 +74,18 @@ export function InterviewCard({
 
         {/* Right: actions */}
         <div className="flex items-center gap-2">
+          {interview.meetLink && (
+            <a
+              href={interview.meetLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-green-50/80 px-2.5 py-1.5 text-[11px] font-medium text-green-700 transition-colors hover:bg-green-100/80"
+            >
+              <Video className="h-3 w-3" />
+              Join Meet
+            </a>
+          )}
+
           {interview.calendarLink && (
             <a
               href={interview.calendarLink}

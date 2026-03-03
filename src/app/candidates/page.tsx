@@ -20,12 +20,7 @@ export default function CandidatesPage() {
   const [aiLoading, setAiLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    position: "",
-  });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", position: "" });
 
   const fetchCandidates = () => {
     setLoading(true);
@@ -36,148 +31,69 @@ export default function CandidatesPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    fetchCandidates();
-  }, []);
+  useEffect(() => { fetchCandidates(); }, []);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdding(true);
     try {
-      const res = await fetch("/api/candidates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (res.ok) {
-        setForm({ name: "", email: "", phone: "", position: "" });
-        fetchCandidates();
-      } else {
-        const data = await res.json();
-        alert(data.error || "Failed to add");
-      }
-    } finally {
-      setAdding(false);
-    }
+      const res = await fetch("/api/candidates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (res.ok) { setForm({ name: "", email: "", phone: "", position: "" }); fetchCandidates(); }
+      else { const data = await res.json(); alert(data.error || "Failed to add"); }
+    } finally { setAdding(false); }
   };
 
   const handleEdit = async (id: string, data: { name: string; email: string; phone: string; position: string }) => {
     try {
-      const res = await fetch("/api/candidates", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...data }),
-      });
-      if (res.ok) {
-        fetchCandidates();
-      } else {
-        const d = await res.json();
-        alert(d.error || "Failed to update");
-      }
-    } catch {
-      alert("Failed to update candidate");
-    }
+      const res = await fetch("/api/candidates", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...data }) });
+      if (res.ok) fetchCandidates();
+      else { const d = await res.json(); alert(d.error || "Failed to update"); }
+    } catch { alert("Failed to update candidate"); }
   };
 
   const handleDelete = async (id: string) => {
     setDeleteLoading(id);
     try {
       const res = await fetch(`/api/candidates?id=${id}`, { method: "DELETE" });
-      if (res.ok) {
-        fetchCandidates();
-      } else {
-        const d = await res.json();
-        alert(d.error || "Failed to delete");
-      }
-    } catch {
-      alert("Failed to delete candidate");
-    } finally {
-      setDeleteLoading(null);
-    }
+      if (res.ok) fetchCandidates();
+      else { const d = await res.json(); alert(d.error || "Failed to delete"); }
+    } catch { alert("Failed to delete candidate"); }
+    finally { setDeleteLoading(null); }
   };
 
   const handleContactAi = async (c: Candidate) => {
     const message = `Contact the candidate with ID "${c.id}" for the ${c.position} position. Send them a professional email, find available interview slots, and automatically book the earliest one. Include the interview time in the email.`;
     setAiLoading(c.id);
     try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
-      });
+      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
       const data = await res.json();
       if (data.response) setAiPrompt(data.response);
       else alert(data.error || "Agent failed");
       fetchCandidates();
-    } catch {
-      alert("Agent request failed");
-    } finally {
-      setAiLoading(null);
-    }
+    } catch { alert("Agent request failed"); }
+    finally { setAiLoading(null); }
   };
 
   const inputClass =
-    "rounded-xl border border-sky-100/60 bg-white/50 px-3.5 py-2.5 text-sm text-sky-900 placeholder:text-sky-400 transition-all focus:border-sky-300 focus:bg-white/70 focus:outline-none focus:ring-2 focus:ring-sky-200/30";
+    "rounded-md border border-[#e8e8e5] bg-white px-3 py-2 text-sm text-[#37352f] placeholder:text-[#b4b4b0] focus:border-[#2383e2] focus:outline-none focus:ring-1 focus:ring-[#2383e2]/20";
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold text-sky-900">Candidates</h1>
-        <p className="text-sm text-sky-700">
-          Manage candidates and AI outreach
-        </p>
-      </div>
+    <div className="p-8 max-w-5xl">
+      <h1 className="text-2xl font-bold text-[#37352f]">Candidates</h1>
+      <p className="mt-1 text-sm text-[#9b9a97]">Manage candidates and AI outreach</p>
 
       {/* Add Candidate Form */}
-      <div className="glass mb-6 rounded-2xl px-6 py-5">
+      <div className="card mt-6 mb-6 p-5">
         <div className="mb-3 flex items-center gap-2">
-          <UserPlus className="h-4 w-4 text-sky-600" />
-          <h2 className="text-sm font-semibold text-sky-800">
-            Add Candidate
-          </h2>
+          <UserPlus className="h-4 w-4 text-[#9b9a97]" />
+          <h2 className="text-sm font-semibold text-[#37352f]">Add Candidate</h2>
         </div>
-        <form
-          onSubmit={handleAdd}
-          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
-        >
-          <input
-            type="text"
-            placeholder="Name"
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            required
-            className={inputClass}
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            required
-            className={inputClass}
-          />
-          <input
-            type="tel"
-            placeholder="Phone"
-            value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-            className={inputClass}
-          />
-          <input
-            type="text"
-            placeholder="Position"
-            value={form.position}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, position: e.target.value }))
-            }
-            required
-            className={inputClass}
-          />
-          <button
-            type="submit"
-            disabled={adding}
-            className="rounded-xl bg-gradient-to-r from-sky-500 to-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-sky-500/20 transition-all hover:shadow-sky-500/30 hover:brightness-110 disabled:opacity-40"
-          >
+        <form onSubmit={handleAdd} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <input type="text" placeholder="Name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required className={inputClass} />
+          <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required className={inputClass} />
+          <input type="tel" placeholder="Phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className={inputClass} />
+          <input type="text" placeholder="Position" value={form.position} onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))} required className={inputClass} />
+          <button type="submit" disabled={adding} className="rounded-md bg-[#2383e2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1b6ec2] transition-colors disabled:opacity-40">
             {adding ? "Adding..." : "Add"}
           </button>
         </form>
@@ -185,16 +101,14 @@ export default function CandidatesPage() {
 
       {/* AI Response */}
       {aiPrompt && (
-        <div className="glass animate-in mb-5 rounded-2xl border-l-2 border-l-sky-400 px-5 py-4">
+        <div className="card animate-in mb-5 border-l-2 border-l-[#2383e2] p-4">
           <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-gradient-to-br from-sky-100 to-sky-50 p-1.5">
-              <Bot className="h-4 w-4 text-sky-600" />
+            <div className="rounded-md bg-[#f0f7ff] p-1.5">
+              <Bot className="h-4 w-4 text-[#2383e2]" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-sky-800">AI Agent</p>
-              <p className="mt-1 text-xs leading-relaxed text-sky-700">
-                {aiPrompt}
-              </p>
+              <p className="text-xs font-semibold text-[#37352f]">AI Agent</p>
+              <p className="mt-1 text-sm leading-relaxed text-[#73726e]">{aiPrompt}</p>
             </div>
           </div>
         </div>
@@ -203,7 +117,7 @@ export default function CandidatesPage() {
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+          <Loader2 className="h-5 w-5 animate-spin text-[#9b9a97]" />
         </div>
       ) : (
         <CandidateTable

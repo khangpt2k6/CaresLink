@@ -50,10 +50,9 @@ export async function createCalendarEvent(params: {
   try {
     const event = await cal.events.insert({
       calendarId,
-      sendUpdates: "all", // sends email invite to attendees
       requestBody: {
         summary: params.summary,
-        description: params.description,
+        description: `${params.description}\n\nCandidate: ${params.attendeeEmail}`,
         location: params.location || "Video Call",
         start: {
           dateTime: params.startTime.toISOString(),
@@ -63,22 +62,13 @@ export async function createCalendarEvent(params: {
           dateTime: endTime.toISOString(),
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
-        attendees: [{ email: params.attendeeEmail }],
         reminders: {
           useDefault: false,
           overrides: [
-            { method: "email", minutes: 60 },
             { method: "popup", minutes: 15 },
           ],
         },
-        conferenceData: {
-          createRequest: {
-            requestId: `careslink-${Date.now()}`,
-            conferenceSolutionKey: { type: "hangoutsMeet" },
-          },
-        },
       },
-      conferenceDataVersion: 1,
     });
 
     return {

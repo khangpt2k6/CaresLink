@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendSms } from "@/lib/twilio";
+import { sendEmail } from "@/lib/sendgrid";
+import { format } from "date-fns";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,12 +21,13 @@ export async function POST(request: NextRequest) {
     if (interview.reminderSent) {
       return NextResponse.json({ success: false, message: "Reminder already sent" });
     }
-    if (!interview.candidate.phone) {
-      return NextResponse.json({ error: "Candidate has no phone number" }, { status: 400 });
-    }
 
-    const msg = `Reminder: Your ${interview.position} interview is scheduled. Please confirm you can attend.`;
-    const result = await sendSms(interview.candidate.phone, msg);
+    const dateStr = format(new Date(interview.scheduledAt), "EEEE, MMMM d, yyyy 'at' h:mm a");
+
+    const subject = `Interview Reminder: ${interview.position} - ${dateStr}`;
+    const text = `Hi ${interview.candidate.name},\n\nThis is a friendly reminder about your upcoming interview for the ${interview.position} position.\n\nDate & Time: ${dateStr}\nDuration: ${interview.duration} minutes\nLocation: ${interview.location}\n${interview.calendarLink ? `Calendar Link: ${interview.calendarLink}\n` : ""}\nPlease confirm you can attend by replying to this email.\n\nBest regards,\nCaresLink Team`;
+
+    const result = await sendEmail(interview.candidate.email, subject, text);
     if (result.success) {
       await prisma.interview.update({
         where: { id: interviewId },
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
           type: "reminder_sent",
           candidateId: interview.candidateId,
           interviewId,
-          channel: "sms",
+          channel: "email",
         },
       });
       return NextResponse.json({ success: true });

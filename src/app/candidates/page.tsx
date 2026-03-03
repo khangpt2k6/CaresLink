@@ -18,6 +18,7 @@ export default function CandidatesPage() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -60,8 +61,43 @@ export default function CandidatesPage() {
     }
   };
 
+  const handleEdit = async (id: string, data: { name: string; email: string; phone: string; position: string }) => {
+    try {
+      const res = await fetch("/api/candidates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...data }),
+      });
+      if (res.ok) {
+        fetchCandidates();
+      } else {
+        const d = await res.json();
+        alert(d.error || "Failed to update");
+      }
+    } catch {
+      alert("Failed to update candidate");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleteLoading(id);
+    try {
+      const res = await fetch(`/api/candidates?id=${id}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchCandidates();
+      } else {
+        const d = await res.json();
+        alert(d.error || "Failed to delete");
+      }
+    } catch {
+      alert("Failed to delete candidate");
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
   const handleContactAi = async (c: Candidate) => {
-    const message = `Contact the candidate with ID "${c.id}" for the ${c.position} position. Send them an email first, and if they have a phone number, also send an SMS.`;
+    const message = `Contact the candidate with ID "${c.id}" for the ${c.position} position. Send them a professional email, find available interview slots, and automatically book the earliest one. Include the interview time in the email.`;
     setAiLoading(c.id);
     try {
       const res = await fetch("/api/agent", {
@@ -173,7 +209,10 @@ export default function CandidatesPage() {
         <CandidateTable
           candidates={candidates}
           onContactAi={handleContactAi}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
           aiLoading={aiLoading}
+          deleteLoading={deleteLoading}
         />
       )}
     </div>

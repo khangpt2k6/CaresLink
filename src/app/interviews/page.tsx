@@ -34,6 +34,7 @@ export default function InterviewsPage() {
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
   const [reminderLoading, setReminderLoading] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
 
   // Booking state
   const [showBooking, setShowBooking] = useState(false);
@@ -105,6 +106,25 @@ export default function InterviewsPage() {
       }
     } finally {
       setBookingLoading(false);
+    }
+  };
+
+  const handleDelete = async (interviewId: string) => {
+    setDeleteLoading(interviewId);
+    try {
+      const res = await fetch(`/api/interviews?id=${interviewId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        fetchInterviews();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to cancel");
+      }
+    } catch {
+      alert("Failed to cancel interview");
+    } finally {
+      setDeleteLoading(null);
     }
   };
 
@@ -259,7 +279,9 @@ export default function InterviewsPage() {
               key={i.id}
               interview={i}
               onSendReminder={handleSendReminder}
+              onDelete={handleDelete}
               reminderLoading={reminderLoading}
+              deleteLoading={deleteLoading}
             />
           ))}
           {interviews.length === 0 && (

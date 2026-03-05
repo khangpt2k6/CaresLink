@@ -79,6 +79,7 @@ export async function findPublicAvailableSlots(
       scheduledAt: { gte: rangeStart, lte: endOfMonth },
       completed: false,
       noShow: false,
+      cancelled: false,
     },
   });
 

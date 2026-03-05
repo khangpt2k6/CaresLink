@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     const upcoming = searchParams.get("upcoming") !== "false";
 
     const interviews = await prisma.interview.findMany({
-      where: upcoming ? { completed: false, noShow: false, scheduledAt: { gte: new Date() } } : undefined,
+      where: upcoming ? { completed: false, noShow: false, cancelled: false, scheduledAt: { gte: new Date() } } : undefined,
       orderBy: { scheduledAt: "asc" },
       include: { candidate: true },
     });

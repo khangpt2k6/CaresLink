@@ -19,6 +19,7 @@ interface Interview {
   duration: number;
   location: string;
   reminderSent: boolean;
+  confirmed: boolean;
   calendarLink: string | null;
   meetLink: string | null;
   candidate: { name: string; email: string; phone: string | null };
@@ -63,6 +64,15 @@ export function InterviewCard({
             {format(scheduledDate, "h:mm a")}
           </span>
           <span className="text-[#9b9a97]">{interview.duration}m</span>
+          {interview.confirmed ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#dbeddb] px-2 py-0.5 text-[10px] font-medium text-[#2b593f]">
+              <CheckCircle2 className="h-3 w-3" /> Confirmed
+            </span>
+          ) : !isPast ? (
+            <span className="inline-flex items-center rounded-full bg-[#fdecc8] px-2 py-0.5 text-[10px] font-medium text-[#89632a]">
+              Awaiting confirmation
+            </span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-1.5">

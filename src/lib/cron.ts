@@ -1,7 +1,10 @@
 import cron from "node-cron";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
-import { format, addHours } from "date-fns";
+import { generateICS } from "./ics";
+import { format, addHours, addMinutes } from "date-fns";
+
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
 let started = false;
 
@@ -59,10 +62,21 @@ async function checkAndSendReminders() {
 
     // 24h email reminder (only if not already sent)
     if (is24hWindow && !interview.reminderSent) {
+      const icsContent = generateICS({
+        title: `Interview — ${interview.position} at CaresLink`,
+        description: `Your interview for the ${interview.position} position.${interview.meetLink ? `\n\nJoin: ${interview.meetLink}` : ""}`,
+        startTime: scheduledAt,
+        endTime: addMinutes(scheduledAt, interview.duration),
+        location: interview.meetLink || undefined,
+        organizer: { name: "CaresLink Recruiting", email: FROM_EMAIL },
+        attendee: { name: candidate.name, email: candidate.email },
+      });
       const result = await sendEmail(
         candidate.email,
         `Reminder: Your Interview is Tomorrow — ${interview.position}`,
-        `Dear ${candidate.name},\n\nThis is a reminder that your interview for the ${interview.position} position is scheduled for tomorrow.\n\n📅 ${dateStr} EST${meetPart}\n\nPlease confirm your attendance:\n${confirmUrl}\n\nNeed to cancel or reschedule?\n${cancelUrl}\n\nThank you,\nCaresLink Recruiting`
+        `Dear ${candidate.name},\n\nThis is a reminder that your interview for the ${interview.position} position is scheduled for tomorrow.\n\n📅 ${dateStr} EST${meetPart}\n\nPlease confirm your attendance:\n${confirmUrl}\n\nNeed to cancel or reschedule?\n${cancelUrl}\n\nThank you,\nCaresLink Recruiting`,
+        undefined,
+        icsContent
       );
 
       if (result.success) {

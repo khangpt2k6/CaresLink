@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MetricCard } from "@/components/metrics-cards";
+import { MetricCard, MetricsSection } from "@/components/metrics-cards";
 import {
   Users,
   CalendarCheck,
@@ -47,7 +47,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Metric Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <MetricsSection>
         <MetricCard
           title="Candidates"
           value={metrics?.totalCandidates ?? "—"}
@@ -72,7 +72,7 @@ export default function DashboardPage() {
           subtitle={metrics?.hiresCount ? `$${metrics.costPerHire.toFixed(0)}/hire` : undefined}
           icon={DollarSign}
         />
-      </div>
+      </MetricsSection>
 
       {/* Bottom Grid */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">

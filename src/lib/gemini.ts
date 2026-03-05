@@ -187,6 +187,7 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         const candidateEmail = (await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) }, select: { email: true } }))?.email || "";
         const cancelUrl = `${appUrl}/book/cancel?interviewId=${interview.id}&email=${encodeURIComponent(candidateEmail)}`;
+        const confirmUrl = `${appUrl}/book/confirm?interviewId=${interview.id}&email=${encodeURIComponent(candidateEmail)}`;
         return {
           success: true,
           interview_id: interview.id,
@@ -194,8 +195,9 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
           meet_link: interview.meetLink || null,
           reschedule_url: `${appUrl}/book`,
           cancel_url: cancelUrl,
+          confirm_url: confirmUrl,
           email_sent: false,
-          important: "Calendar event created on recruiter calendar, but NO email was sent to the candidate. The candidate has NO idea about this interview. You MUST call send_email next to notify them with the interview details, meet link, reschedule_url, and cancel_url.",
+          important: "Calendar event created on recruiter calendar, but NO email was sent to the candidate. The candidate has NO idea about this interview. You MUST call send_email next to notify them with the interview details, meet link, confirm_url, reschedule_url, and cancel_url.",
         };
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to schedule" };
@@ -264,6 +266,7 @@ CRITICAL WORKFLOW — When contacting a candidate, you MUST follow ALL steps:
    - Interview date/time in EST
    - Video call link (the meet_link from schedule_interview response)
    - Position they are interviewing for
+   - A "Confirm Attendance" button linking to confirm_url
    - Reschedule link (reschedule_url from schedule_interview response)
    - Cancel link (cancel_url from schedule_interview response)
 

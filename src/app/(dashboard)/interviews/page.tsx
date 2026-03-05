@@ -76,7 +76,7 @@ export default function InterviewsPage() {
           <h1 className="text-2xl font-bold text-[#37352f]">Interviews</h1>
           <p className="mt-1 text-sm text-[#9b9a97]">Upcoming sessions & reminders</p>
         </div>
-        <button onClick={handleOpenBooking} className="inline-flex items-center gap-2 rounded-md bg-[#2383e2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1b6ec2] transition-colors">
+        <button onClick={handleOpenBooking} className="inline-flex items-center gap-2 rounded-lg bg-[#00BFFF] px-4 py-2 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors">
           <Plus className="h-4 w-4" /> Book Interview
         </button>
       </div>
@@ -97,7 +97,7 @@ export default function InterviewsPage() {
           <div className="mb-4">
             <label className="mb-1.5 block text-xs font-medium text-[#73726e]">Select Candidate</label>
             <select value={selectedCandidate} onChange={(e) => handleSelectCandidate(e.target.value)}
-              className="w-full rounded-md border border-[#e8e8e5] bg-white px-3 py-2 text-sm text-[#37352f] focus:border-[#2383e2] focus:outline-none">
+              className="w-full rounded-md border border-[#e8e8e5] bg-white px-3 py-2 text-sm text-[#37352f] focus:border-[#00BFFF] focus:outline-none">
               <option value="">Choose a candidate...</option>
               {candidates.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.position}</option>)}
             </select>
@@ -118,7 +118,7 @@ export default function InterviewsPage() {
                     return (
                       <button key={slot} onClick={() => setSelectedSlot(slot)}
                         className={`flex items-center gap-2 rounded-md border px-3 py-2.5 text-left text-xs transition-all ${
-                          isSelected ? "border-[#2383e2] bg-[#f0f7ff] text-[#37352f]" : "border-[#e8e8e5] text-[#73726e] hover:border-[#d4d4d0] hover:bg-[#f7f7f5]"
+                          isSelected ? "border-[#00BFFF] bg-[#e6faff] text-[#37352f]" : "border-[#e8e8e5] text-[#73726e] hover:border-[#d4d4d0] hover:bg-[#f7f7f5]"
                         }`}>
                         <Clock className="h-3.5 w-3.5 flex-shrink-0 text-[#9b9a97]" />
                         <div>
@@ -135,7 +135,7 @@ export default function InterviewsPage() {
 
           {selectedSlot && (
             <button onClick={handleBook} disabled={bookingLoading}
-              className="inline-flex items-center gap-2 rounded-md bg-[#2383e2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1b6ec2] transition-colors disabled:opacity-50">
+              className="inline-flex items-center gap-2 rounded-lg bg-[#00BFFF] px-4 py-2 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors disabled:opacity-50">
               {bookingLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
               {bookingLoading ? "Scheduling..." : "Confirm & Send Calendar Invite"}
             </button>

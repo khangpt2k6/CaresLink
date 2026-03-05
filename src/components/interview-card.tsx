@@ -45,7 +45,7 @@ export function InterviewCard({
     <div className="card px-4 py-3.5">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2383e2] text-xs font-medium text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#00BFFF] text-xs font-medium text-white">
             {interview.candidate.name.charAt(0)}
           </div>
           <div>
@@ -78,7 +78,7 @@ export function InterviewCard({
         <div className="flex items-center gap-1.5">
           {interview.meetLink && (
             <a href={interview.meetLink} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#2383e2] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#1b6ec2] transition-colors">
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#00BFFF] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#00A8E0] transition-colors">
               <Video className="h-3 w-3" /> Join
             </a>
           )}

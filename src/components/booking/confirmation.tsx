@@ -82,7 +82,7 @@ export function Confirmation({ interview, candidate }: ConfirmationProps) {
               href={interview.meetLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-md bg-[#2383e2] px-3 py-2 text-sm font-medium text-white hover:bg-[#1b6ec2] transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#00BFFF] px-3 py-2 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors"
             >
               <Video className="h-4 w-4" />
               Join Video Call
@@ -94,7 +94,7 @@ export function Confirmation({ interview, candidate }: ConfirmationProps) {
         {cancelUrl && (
           <div className="border-b border-[#e8e8e5] px-5 py-3 flex items-center gap-3 text-sm text-[#73726e]">
             <span>Need to change?</span>
-            <a href="/book" className="text-[#2383e2] hover:underline">Reschedule</a>
+            <a href="/book" className="text-[#00BFFF] hover:underline">Reschedule</a>
             <span className="text-[#d4d4d0]">·</span>
             <a href={cancelUrl} className="text-[#93392e] hover:underline">Cancel</a>
           </div>

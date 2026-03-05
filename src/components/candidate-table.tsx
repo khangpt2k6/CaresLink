@@ -57,7 +57,7 @@ export function CandidateTable({
   };
 
   const inputClass =
-    "w-full rounded-md border border-[#e8e8e5] bg-white px-2 py-1 text-sm text-[#37352f] focus:border-[#2383e2] focus:outline-none focus:ring-1 focus:ring-[#2383e2]/20";
+    "w-full rounded-md border border-[#e8e8e5] bg-white px-2 py-1 text-sm text-[#37352f] focus:border-[#00BFFF] focus:outline-none focus:ring-1 focus:ring-[#00BFFF]/20";
 
   return (
     <div className="card overflow-hidden">
@@ -93,7 +93,7 @@ export function CandidateTable({
                   </div>
                 ) : (
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2383e2] text-xs font-medium text-white">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#00BFFF] text-xs font-medium text-white">
                       {c.name.charAt(0)}
                     </div>
                     <div>
@@ -138,7 +138,7 @@ export function CandidateTable({
                         <button
                           onClick={() => onContactAi(c)}
                           disabled={aiLoading === c.id}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-[#2383e2] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1b6ec2] disabled:opacity-40"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#00BFFF] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#00A8E0] disabled:opacity-40"
                         >
                           {aiLoading === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
                           {aiLoading === c.id ? "Contacting..." : "Contact AI"}

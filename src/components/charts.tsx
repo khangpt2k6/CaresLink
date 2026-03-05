@@ -39,7 +39,7 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
             formatter={(value) => `${Number(value).toFixed(0)}%`}
             contentStyle={{ borderRadius: "6px", background: "#fff", border: "1px solid #e8e8e5", fontSize: "12px" }}
           />
-          <Bar dataKey="rate" fill="#2383e2" name="Response Rate" radius={[4, 4, 0, 0]} barSize={36} />
+          <Bar dataKey="rate" fill="#00BFFF" name="Response Rate" radius={[4, 4, 0, 0]} barSize={36} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -48,7 +48,7 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
 
 export function CommunicationPieChart({ metrics }: { metrics: Metrics }) {
   const data = [
-    { name: "Email", value: metrics.emailsSent, color: "#2383e2" },
+    { name: "Email", value: metrics.emailsSent, color: "#00BFFF" },
     { name: "SMS", value: metrics.smsSent, color: "#9b9a97" },
   ].filter((d) => d.value > 0);
 

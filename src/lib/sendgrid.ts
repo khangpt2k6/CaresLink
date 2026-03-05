@@ -9,7 +9,8 @@ export async function sendEmail(
   to: string,
   subject: string,
   text: string,
-  html?: string
+  html?: string,
+  icsContent?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!resend) {
@@ -22,6 +23,15 @@ export async function sendEmail(
       subject,
       html: html || text.replace(/\n/g, "<br>"),
       text,
+      attachments: icsContent
+        ? [
+            {
+              filename: "interview.ics",
+              content: Buffer.from(icsContent).toString("base64"),
+              content_type: "text/calendar; method=REQUEST",
+            },
+          ]
+        : undefined,
     });
 
     if (error) {

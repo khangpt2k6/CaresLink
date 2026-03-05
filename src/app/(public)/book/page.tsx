@@ -128,7 +128,7 @@ export default function BookPage() {
       <div className="w-full max-w-2xl rounded-xl border border-[#e8e8e5] bg-white shadow-sm overflow-hidden">
         {/* Confirmed step */}
         {step === "confirmed" && result ? (
-          <div className="p-8">
+          <div key="confirmed" className="p-8 animate-in">
             <Confirmation
               interview={result.interview}
               candidate={result.candidate}
@@ -136,7 +136,7 @@ export default function BookPage() {
           </div>
         ) : step === "form" && selectedSlot ? (
           /* Form step */
-          <div className="p-6">
+          <div key="form" className="p-6 animate-slide-in">
             <button
               type="button"
               onClick={() => {
@@ -160,7 +160,7 @@ export default function BookPage() {
           </div>
         ) : (
           /* Select step */
-          <div className="p-6">
+          <div key="select" className="p-6 animate-in">
             <div className="mb-4 flex items-center gap-2">
               <Calendar className="h-4 w-4 text-[#9b9a97]" />
               <h2 className="text-base font-semibold text-[#37352f]">

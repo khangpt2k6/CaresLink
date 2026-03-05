@@ -4,16 +4,20 @@ export function generateICS(params: {
   startTime: Date;
   endTime: Date;
   location?: string;
+  organizer?: { name: string; email: string };
+  attendee?: { name: string; email: string };
 }): string {
   const fmt = (d: Date) =>
     d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
+  const method = params.organizer && params.attendee ? "REQUEST" : "PUBLISH";
 
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//CaresLink//Interview//EN",
     "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
+    `METHOD:${method}`,
     "BEGIN:VEVENT",
     `DTSTART:${fmt(params.startTime)}`,
     `DTEND:${fmt(params.endTime)}`,
@@ -22,7 +26,14 @@ export function generateICS(params: {
     params.location ? `LOCATION:${params.location}` : "",
     `UID:${Date.now()}@careslink`,
     `DTSTAMP:${fmt(new Date())}`,
+    "SEQUENCE:0",
     "STATUS:CONFIRMED",
+    params.organizer
+      ? `ORGANIZER;CN=${params.organizer.name}:MAILTO:${params.organizer.email}`
+      : "",
+    params.attendee
+      ? `ATTENDEE;RSVP=TRUE;CN=${params.attendee.name}:MAILTO:${params.attendee.email}`
+      : "",
     "END:VEVENT",
     "END:VCALENDAR",
   ]

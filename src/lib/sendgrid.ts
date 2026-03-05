@@ -26,9 +26,9 @@ export async function sendEmail(
       attachments: icsContent
         ? [
             {
-              filename: "interview.ics",
+              filename: "invite.ics",
               content: Buffer.from(icsContent).toString("base64"),
-              content_type: "text/calendar; method=REQUEST",
+              content_type: "text/calendar; method=REQUEST; charset=UTF-8",
             },
           ]
         : undefined,

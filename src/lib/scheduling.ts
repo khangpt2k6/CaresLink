@@ -4,6 +4,9 @@ import {
   getFreeBusySlots,
   isCalendarConfigured,
 } from "./google-calendar";
+import { sendEmail } from "./sendgrid";
+import { generateICS } from "./ics";
+import { format, addMinutes } from "date-fns";
 
 export async function findNextAvailableSlots(
   candidateId: string,
@@ -185,6 +188,33 @@ export async function scheduleInterview(
       }),
     },
   });
+
+  // Send confirmation email with calendar invite to candidate
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const startTime = scheduledAt;
+  const endTime = addMinutes(startTime, duration);
+  const dateStr = format(startTime, "EEEE, MMMM d, yyyy 'at' h:mm a");
+  const cancelUrl = `${APP_URL}/book/cancel?interviewId=${interview.id}&email=${encodeURIComponent(candidate.email)}`;
+  const confirmUrl = `${APP_URL}/book/confirm?interviewId=${interview.id}&email=${encodeURIComponent(candidate.email)}`;
+
+  const icsContent = generateICS({
+    title: `Interview — ${candidate.position} at CaresLink`,
+    description: `Your interview for the ${candidate.position} position.${meetLink ? `\n\nJoin: ${meetLink}` : ""}`,
+    startTime,
+    endTime,
+    location: meetLink || undefined,
+    organizer: { name: "CaresLink Recruiting", email: FROM_EMAIL },
+    attendee: { name: candidate.name, email: candidate.email },
+  });
+
+  await sendEmail(
+    candidate.email,
+    `Interview Invitation - ${candidate.position}`,
+    `Dear ${candidate.name},\n\nYou have been invited to interview for the ${candidate.position} position. The interview is scheduled for ${dateStr} EST.${meetLink ? `\n\nHere is the video call link: ${meetLink}` : ""}\n\nPlease confirm your attendance by clicking here: ${confirmUrl}\n\nIf you need to reschedule, please visit: ${APP_URL}/book\n\nIf you need to cancel, please use this link: ${cancelUrl}\n\nWe look forward to speaking with you.\n\nSincerely,\nCaresLink Recruitment Team`,
+    undefined,
+    icsContent
+  ).catch((err) => console.error("Failed to send interview confirmation:", err));
 
   return interview;
 }

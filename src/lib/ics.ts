@@ -32,7 +32,7 @@ export function generateICS(params: {
       ? `ORGANIZER;CN=${params.organizer.name}:MAILTO:${params.organizer.email}`
       : "",
     params.attendee
-      ? `ATTENDEE;RSVP=TRUE;CN=${params.attendee.name}:MAILTO:${params.attendee.email}`
+      ? `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${params.attendee.name}:MAILTO:${params.attendee.email}`
       : "",
     "END:VEVENT",
     "END:VCALENDAR",

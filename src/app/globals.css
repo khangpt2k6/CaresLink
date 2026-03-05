@@ -1,21 +1,40 @@
 @import "tailwindcss";
 
+:root {
+  --primary: #0090d9;
+  --primary-light: #e8f4fd;
+  --primary-dark: #0077b6;
+  --text: #1a2b3c;
+  --text-secondary: #5a6b7c;
+  --text-muted: #8a95a3;
+  --border: #e2e8f0;
+  --bg: #f5f7fa;
+  --bg-card: #ffffff;
+  --sidebar-bg: #0a1628;
+  --sidebar-text: #94a3b8;
+  --sidebar-active: #ffffff;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+}
+
 body {
-  background: #ffffff;
-  color: #37352f;
+  background: var(--bg);
+  color: var(--text);
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   min-height: 100vh;
 }
 
-/* === Subtle card === */
+/* === Card === */
 .card {
-  background: #ffffff;
-  border: 1px solid #e8e8e5;
-  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .card:hover {
-  border-color: #d4d4d0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 /* === Animations === */
@@ -40,11 +59,12 @@ body {
 /* === Scrollbar === */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d4d4d0; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #b4b4b0; }
+::-webkit-scrollbar-thumb { background: #c4cdd8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ba5b0; }
 
 /* === Active sidebar indicator === */
 .nav-active {
-  background: #f0f0ee;
+  background: rgba(255, 255, 255, 0.1);
   font-weight: 600;
+  color: var(--sidebar-active);
 }

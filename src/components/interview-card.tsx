@@ -45,31 +45,31 @@ export function InterviewCard({
     <div className="card px-4 py-3.5">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#00BFFF] text-xs font-medium text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0090d9] text-xs font-medium text-white">
             {interview.candidate.name.charAt(0)}
           </div>
           <div>
-            <h3 className="text-sm font-medium text-[#37352f]">{interview.candidate.name}</h3>
-            <p className="text-xs text-[#9b9a97]">{interview.position}</p>
+            <h3 className="text-sm font-medium text-[#1a2b3c]">{interview.candidate.name}</h3>
+            <p className="text-xs text-[#5a6b7c]">{interview.position}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-[#73726e]">
+        <div className="flex items-center gap-4 text-xs text-[#5a6b7c]">
           <span className="flex items-center gap-1.5">
-            <Calendar className="h-3.5 w-3.5 text-[#9b9a97]" />
+            <Calendar className="h-3.5 w-3.5 text-[#0090d9]" />
             {format(scheduledDate, "MMM d, yyyy")}
           </span>
           <span className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-[#9b9a97]" />
+            <Clock className="h-3.5 w-3.5 text-[#0090d9]" />
             {format(scheduledDate, "h:mm a")}
           </span>
-          <span className="text-[#9b9a97]">{interview.duration}m</span>
+          <span className="text-[#8a95a3]">{interview.duration}m</span>
           {interview.confirmed ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#dbeddb] px-2 py-0.5 text-[10px] font-medium text-[#2b593f]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf5] px-2 py-0.5 text-[10px] font-medium text-[#059669]">
               <CheckCircle2 className="h-3 w-3" /> Confirmed
             </span>
           ) : !isPast ? (
-            <span className="inline-flex items-center rounded-full bg-[#fdecc8] px-2 py-0.5 text-[10px] font-medium text-[#89632a]">
+            <span className="inline-flex items-center rounded-full bg-[#fffbeb] px-2 py-0.5 text-[10px] font-medium text-[#b45309]">
               Awaiting confirmation
             </span>
           ) : null}
@@ -78,31 +78,31 @@ export function InterviewCard({
         <div className="flex items-center gap-1.5">
           {interview.meetLink && (
             <a href={interview.meetLink} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#00BFFF] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#00A8E0] transition-colors">
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#0077b6] transition-colors">
               <Video className="h-3 w-3" /> Join
             </a>
           )}
           {interview.calendarLink && (
             <a href={interview.calendarLink} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-[#73726e] hover:bg-[#f1f1ef] transition-colors">
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors">
               <ExternalLink className="h-3 w-3" /> Calendar
             </a>
           )}
           {!interview.reminderSent && !isPast ? (
             <button onClick={() => onSendReminder(interview.id)} disabled={reminderLoading === interview.id}
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-[#73726e] hover:bg-[#f1f1ef] transition-colors disabled:opacity-40">
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors disabled:opacity-40">
               {reminderLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bell className="h-3 w-3" />}
               Remind
             </button>
           ) : interview.reminderSent ? (
-            <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-[#2b593f]">
+            <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-[#059669]">
               <CheckCircle2 className="h-3 w-3" /> Sent
             </span>
           ) : null}
           <button
             onClick={() => { if (confirm("Cancel this interview?")) onDelete(interview.id); }}
             disabled={deleteLoading === interview.id}
-            className="rounded-md p-1.5 text-[#9b9a97] hover:bg-[#ffe2dd] hover:text-[#93392e] transition-colors disabled:opacity-40">
+            className="rounded-md p-1.5 text-[#8a95a3] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors disabled:opacity-40">
             {deleteLoading === interview.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
           </button>
         </div>

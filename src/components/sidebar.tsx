@@ -9,7 +9,6 @@ import {
   Users,
   Calendar,
   Lightbulb,
-  Sparkles,
 } from "lucide-react";
 
 const navItems = [
@@ -23,10 +22,10 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-56 border-r border-[#e8e8e5] bg-[#fbfbfa]">
+    <aside className="fixed left-0 top-0 z-40 h-screen w-56 bg-[#0a1628]">
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-14 items-center gap-2.5 px-4">
+        <div className="flex h-14 items-center gap-2.5 px-4 border-b border-white/10">
           <Image
             src="/careslink_logo.jpg"
             alt="CaresLink"
@@ -34,13 +33,13 @@ export function Sidebar() {
             height={28}
             className="rounded-md"
           />
-          <Link href="/" className="text-sm font-semibold text-[#37352f]">
+          <Link href="/" className="text-sm font-semibold text-white">
             CaresLink
           </Link>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-0.5 px-2 py-2">
+        <nav className="flex-1 space-y-1 px-3 py-4">
           {navItems.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -50,10 +49,10 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[13px] transition-colors duration-100",
+                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors duration-100",
                   isActive
-                    ? "nav-active text-[#37352f]"
-                    : "text-[#73726e] hover:bg-[#f0f0ee] hover:text-[#37352f]"
+                    ? "nav-active"
+                    : "text-[#94a3b8] hover:bg-white/5 hover:text-white"
                 )}
               >
                 <item.icon className="h-[16px] w-[16px] flex-shrink-0" />
@@ -64,9 +63,8 @@ export function Sidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-[#e8e8e5] px-4 py-3">
-          <div className="flex items-center gap-1.5 text-[11px] text-[#9b9a97]">
-            <Sparkles className="h-3 w-3" />
+        <div className="border-t border-white/10 px-4 py-3">
+          <div className="text-[11px] text-[#475569]">
             Powered by Gemini AI
           </div>
         </div>

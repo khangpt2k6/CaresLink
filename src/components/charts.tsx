@@ -32,14 +32,14 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
     <div className="h-56 w-full min-h-[224px]">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e8e8e5" vertical={false} />
-          <XAxis dataKey="channel" tick={{ fontSize: 12, fill: "#73726e" }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 12, fill: "#73726e" }} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+          <XAxis dataKey="channel" tick={{ fontSize: 12, fill: "#5a6b7c" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 12, fill: "#5a6b7c" }} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} />
           <Tooltip
             formatter={(value) => `${Number(value).toFixed(0)}%`}
-            contentStyle={{ borderRadius: "6px", background: "#fff", border: "1px solid #e8e8e5", fontSize: "12px" }}
+            contentStyle={{ borderRadius: "8px", background: "#fff", border: "1px solid #e2e8f0", fontSize: "12px" }}
           />
-          <Bar dataKey="rate" fill="#00BFFF" name="Response Rate" radius={[4, 4, 0, 0]} barSize={36} />
+          <Bar dataKey="rate" fill="#0090d9" name="Response Rate" radius={[4, 4, 0, 0]} barSize={36} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -48,13 +48,13 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
 
 export function CommunicationPieChart({ metrics }: { metrics: Metrics }) {
   const data = [
-    { name: "Email", value: metrics.emailsSent, color: "#00BFFF" },
-    { name: "SMS", value: metrics.smsSent, color: "#9b9a97" },
+    { name: "Email", value: metrics.emailsSent, color: "#0090d9" },
+    { name: "SMS", value: metrics.smsSent, color: "#10b981" },
   ].filter((d) => d.value > 0);
 
   if (data.length === 0) {
     return (
-      <div className="flex h-44 items-center justify-center text-sm text-[#9b9a97]">
+      <div className="flex h-44 items-center justify-center text-sm text-[#8a95a3]">
         No data yet
       </div>
     );
@@ -69,8 +69,8 @@ export function CommunicationPieChart({ metrics }: { metrics: Metrics }) {
               <Cell key={i} fill={entry.color} />
             ))}
           </Pie>
-          <Tooltip contentStyle={{ borderRadius: "6px", background: "#fff", border: "1px solid #e8e8e5", fontSize: "12px" }} />
-          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px", color: "#73726e" }} />
+          <Tooltip contentStyle={{ borderRadius: "8px", background: "#fff", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px", color: "#5a6b7c" }} />
         </PieChart>
       </ResponsiveContainer>
     </div>

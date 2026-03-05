@@ -13,9 +13,9 @@ interface Insight {
 }
 
 const priorityStyles = {
-  high: { border: "border-l-2 border-l-[#e03e3e]", badge: "bg-[#ffe2dd] text-[#93392e]" },
-  medium: { border: "border-l-2 border-l-[#d9730d]", badge: "bg-[#fdecc8] text-[#89632a]" },
-  low: { border: "border-l-2 border-l-[#0f7b6c]", badge: "bg-[#dbeddb] text-[#2b593f]" },
+  high: { border: "border-l-3 border-l-[#ef4444]", badge: "bg-[#fef2f2] text-[#dc2626]" },
+  medium: { border: "border-l-3 border-l-[#f59e0b]", badge: "bg-[#fffbeb] text-[#b45309]" },
+  low: { border: "border-l-3 border-l-[#10b981]", badge: "bg-[#ecfdf5] text-[#059669]" },
 };
 
 const priorityIcon = { high: AlertTriangle, medium: Info, low: CheckCircle2 };
@@ -33,19 +33,19 @@ export function InsightsList({ insights }: { insights: Insight[] }) {
                 <Icon className="h-2.5 w-2.5" />
                 {insight.priority}
               </span>
-              <span className="text-xs text-[#9b9a97]">{insight.currentValue}</span>
+              <span className="text-xs text-[#8a95a3]">{insight.currentValue}</span>
             </div>
-            <h3 className="mt-2 text-sm font-medium text-[#37352f]">{insight.title}</h3>
-            <p className="mt-0.5 text-xs leading-relaxed text-[#73726e]">{insight.description}</p>
-            <p className="mt-2 rounded-md bg-[#f7f7f5] px-2.5 py-1.5 text-xs text-[#73726e]">
-              <span className="font-semibold text-[#37352f]">Action:</span> {insight.recommendedAction}
+            <h3 className="mt-2 text-sm font-medium text-[#1a2b3c]">{insight.title}</h3>
+            <p className="mt-0.5 text-xs leading-relaxed text-[#5a6b7c]">{insight.description}</p>
+            <p className="mt-2 rounded-lg bg-[#f0f4f8] px-2.5 py-1.5 text-xs text-[#5a6b7c]">
+              <span className="font-semibold text-[#1a2b3c]">Action:</span> {insight.recommendedAction}
             </p>
           </div>
         );
       })}
       {insights.length === 0 && (
         <div className="card py-16 text-center">
-          <p className="text-sm text-[#9b9a97]">No insights yet. Add candidates and send communications to see recommendations.</p>
+          <p className="text-sm text-[#8a95a3]">No insights yet. Add candidates and send communications to see recommendations.</p>
         </div>
       )}
     </div>

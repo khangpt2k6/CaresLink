@@ -14,14 +14,14 @@ interface Candidate {
 }
 
 const statusStyles: Record<string, string> = {
-  applied: "bg-[#f1f1ef] text-[#73726e]",
-  contacted: "bg-[#d3e5ef] text-[#2e6b8a]",
-  scheduled: "bg-[#fdecc8] text-[#89632a]",
-  interviewed: "bg-[#e8deee] text-[#6940a5]",
-  offered: "bg-[#dbeddb] text-[#2b593f]",
-  hired: "bg-[#dbeddb] text-[#2b593f]",
-  rejected: "bg-[#ffe2dd] text-[#93392e]",
-  no_show: "bg-[#fdecc8] text-[#89632a]",
+  applied: "bg-[#f0f4f8] text-[#5a6b7c]",
+  contacted: "bg-[#e8f4fd] text-[#0077b6]",
+  scheduled: "bg-[#fffbeb] text-[#b45309]",
+  interviewed: "bg-[#f3e8ff] text-[#7c3aed]",
+  offered: "bg-[#ecfdf5] text-[#059669]",
+  hired: "bg-[#ecfdf5] text-[#059669]",
+  rejected: "bg-[#fef2f2] text-[#dc2626]",
+  no_show: "bg-[#fffbeb] text-[#b45309]",
 };
 
 export function CandidateTable({
@@ -57,23 +57,23 @@ export function CandidateTable({
   };
 
   const inputClass =
-    "w-full rounded-md border border-[#e8e8e5] bg-white px-2 py-1 text-sm text-[#37352f] focus:border-[#00BFFF] focus:outline-none focus:ring-1 focus:ring-[#00BFFF]/20";
+    "w-full rounded-lg border border-[#e2e8f0] bg-white px-2 py-1 text-sm text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20";
 
   return (
     <div className="card overflow-hidden">
       <table className="min-w-full">
         <thead>
-          <tr className="border-b border-[#e8e8e5]">
-            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#9b9a97]">
+          <tr className="border-b border-[#e2e8f0] bg-[#f8fafc]">
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#5a6b7c]">
               Candidate
             </th>
-            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#9b9a97]">
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#5a6b7c]">
               Position
             </th>
-            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#9b9a97]">
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#5a6b7c]">
               Status
             </th>
-            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#9b9a97]">
+            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#5a6b7c]">
               Actions
             </th>
           </tr>
@@ -82,7 +82,7 @@ export function CandidateTable({
           {candidates.map((c) => (
             <tr
               key={c.id}
-              className="border-b border-[#f0f0ee] transition-colors hover:bg-[#f7f7f5]"
+              className="border-b border-[#f0f4f8] transition-colors hover:bg-[#f8fafc]"
             >
               <td className="px-4 py-3">
                 {editingId === c.id ? (
@@ -93,13 +93,13 @@ export function CandidateTable({
                   </div>
                 ) : (
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#00BFFF] text-xs font-medium text-white">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0090d9] text-xs font-medium text-white">
                       {c.name.charAt(0)}
                     </div>
                     <div>
-                      <div className="text-sm font-medium text-[#37352f]">{c.name}</div>
-                      <div className="text-xs text-[#9b9a97]">{c.email}</div>
-                      {c.phone && <div className="text-xs text-[#b4b4b0]">{c.phone}</div>}
+                      <div className="text-sm font-medium text-[#1a2b3c]">{c.name}</div>
+                      <div className="text-xs text-[#5a6b7c]">{c.email}</div>
+                      {c.phone && <div className="text-xs text-[#8a95a3]">{c.phone}</div>}
                     </div>
                   </div>
                 )}
@@ -108,7 +108,7 @@ export function CandidateTable({
                 {editingId === c.id ? (
                   <input value={editForm.position} onChange={(e) => setEditForm((f) => ({ ...f, position: e.target.value }))} placeholder="Position" className={inputClass} style={{ minWidth: 120 }} />
                 ) : (
-                  <span className="text-sm text-[#37352f]">{c.position}</span>
+                  <span className="text-sm text-[#1a2b3c]">{c.position}</span>
                 )}
               </td>
               <td className="whitespace-nowrap px-4 py-3">
@@ -125,10 +125,10 @@ export function CandidateTable({
                 <div className="inline-flex items-center gap-1.5">
                   {editingId === c.id ? (
                     <>
-                      <button onClick={saveEdit} className="rounded-md p-1.5 text-[#2b593f] hover:bg-[#dbeddb] transition-colors" title="Save">
+                      <button onClick={saveEdit} className="rounded-md p-1.5 text-[#059669] hover:bg-[#ecfdf5] transition-colors" title="Save">
                         <Check className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={cancelEdit} className="rounded-md p-1.5 text-[#73726e] hover:bg-[#f1f1ef] transition-colors" title="Cancel">
+                      <button onClick={cancelEdit} className="rounded-md p-1.5 text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors" title="Cancel">
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </>
@@ -138,14 +138,14 @@ export function CandidateTable({
                         <button
                           onClick={() => onContactAi(c)}
                           disabled={aiLoading === c.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#00BFFF] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#00A8E0] disabled:opacity-40"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#0077b6] disabled:opacity-40"
                         >
                           {aiLoading === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
                           {aiLoading === c.id ? "Contacting..." : "Contact AI"}
                         </button>
                       )}
                       {onEdit && (
-                        <button onClick={() => startEdit(c)} className="rounded-md p-1.5 text-[#9b9a97] hover:bg-[#f1f1ef] hover:text-[#37352f] transition-colors" title="Edit">
+                        <button onClick={() => startEdit(c)} className="rounded-md p-1.5 text-[#8a95a3] hover:bg-[#f0f4f8] hover:text-[#1a2b3c] transition-colors" title="Edit">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                       )}
@@ -153,7 +153,7 @@ export function CandidateTable({
                         <button
                           onClick={() => { if (confirm(`Delete ${c.name}? This will also remove their interviews.`)) onDelete(c.id); }}
                           disabled={deleteLoading === c.id}
-                          className="rounded-md p-1.5 text-[#9b9a97] hover:bg-[#ffe2dd] hover:text-[#93392e] transition-colors disabled:opacity-40"
+                          className="rounded-md p-1.5 text-[#8a95a3] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors disabled:opacity-40"
                           title="Delete"
                         >
                           {deleteLoading === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -169,8 +169,8 @@ export function CandidateTable({
       </table>
       {candidates.length === 0 && (
         <div className="py-16 text-center">
-          <p className="text-sm text-[#9b9a97]">No candidates yet</p>
-          <p className="mt-1 text-xs text-[#b4b4b0]">Add your first candidate above</p>
+          <p className="text-sm text-[#5a6b7c]">No candidates yet</p>
+          <p className="mt-1 text-xs text-[#8a95a3]">Add your first candidate above</p>
         </div>
       )}
     </div>

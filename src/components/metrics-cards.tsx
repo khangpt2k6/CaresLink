@@ -20,17 +20,17 @@ export function MetricCard({
     <div className={cn("card px-5 py-4", className)}>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-[#9b9a97]">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#8a95a3]">
             {title}
           </p>
-          <p className="mt-1 text-2xl font-bold text-[#37352f]">{value}</p>
+          <p className="mt-1 text-2xl font-bold text-[#1a2b3c]">{value}</p>
           {subtitle && (
-            <p className="mt-0.5 text-xs text-[#9b9a97]">{subtitle}</p>
+            <p className="mt-0.5 text-xs text-[#8a95a3]">{subtitle}</p>
           )}
         </div>
         {Icon && (
-          <div className="rounded-lg bg-[#f7f7f5] p-2.5">
-            <Icon className="h-5 w-5 text-[#9b9a97]" />
+          <div className="rounded-lg bg-[#e8f4fd] p-2.5">
+            <Icon className="h-5 w-5 text-[#0090d9]" />
           </div>
         )}
       </div>

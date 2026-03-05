@@ -125,9 +125,9 @@ export function DatePicker({
                   isAvailable &&
                     !isPast &&
                     !isSelected &&
-                    "font-medium text-[#2383e2] hover:bg-[#f0f7ff] cursor-pointer",
+                    "font-medium text-[#00BFFF] hover:bg-[#e6faff] cursor-pointer",
                   isSelected &&
-                    "bg-[#2383e2] text-white font-medium cursor-pointer hover:bg-[#1b6ec2]"
+                    "bg-[#00BFFF] text-white font-medium cursor-pointer hover:bg-[#00A8E0]"
                 )}
               >
                 {day.getDate()}
@@ -136,7 +136,7 @@ export function DatePicker({
                 <div
                   className={cn(
                     "h-1 w-1 rounded-full mt-0.5",
-                    isSelected ? "bg-white" : "bg-[#2383e2]"
+                    isSelected ? "bg-white" : "bg-[#00BFFF]"
                   )}
                 />
               )}

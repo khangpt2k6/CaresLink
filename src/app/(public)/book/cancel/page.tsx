@@ -92,7 +92,7 @@ function CancelContent() {
           </div>
         ) : step === "cancelled" ? (
           <div className="flex flex-col items-center gap-4 p-8 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#ffe2dd]">
+            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-[#ffe2dd]">
               <X className="h-7 w-7 text-[#93392e]" strokeWidth={2.5} />
             </div>
             <h2 className="text-lg font-semibold text-[#37352f]">Interview Cancelled</h2>
@@ -102,7 +102,7 @@ function CancelContent() {
             </p>
             <a
               href="/book"
-              className="mt-2 inline-flex items-center gap-2 rounded-md bg-[#2383e2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1b6ec2] transition-colors"
+              className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#00BFFF] px-4 py-2 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors"
             >
               <Calendar className="h-4 w-4" />
               Reschedule a new time
@@ -144,7 +144,7 @@ function CancelContent() {
               <div className="flex gap-3">
                 <a
                   href="/book"
-                  className="flex-1 rounded-md border border-[#e8e8e5] px-4 py-2.5 text-sm font-medium text-[#73726e] hover:bg-[#f7f7f5] transition-colors text-center"
+                  className="flex-1 rounded-lg border border-[#e8e8e5] px-4 py-2.5 text-sm font-medium text-[#73726e] hover:bg-[#f7f7f5] transition-colors text-center"
                 >
                   Keep interview
                 </a>
@@ -152,7 +152,7 @@ function CancelContent() {
                   type="button"
                   onClick={handleCancel}
                   disabled={cancelling}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-md bg-[#ffe2dd] px-4 py-2.5 text-sm font-medium text-[#93392e] hover:bg-[#ffd0c8] transition-colors disabled:opacity-50"
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[#ffe2dd] px-4 py-2.5 text-sm font-medium text-[#93392e] hover:bg-[#ffd0c8] transition-colors disabled:opacity-50"
                 >
                   {cancelling ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> Cancelling...</>

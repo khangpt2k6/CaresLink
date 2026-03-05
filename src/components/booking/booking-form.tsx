@@ -17,7 +17,7 @@ interface BookingFormProps {
 }
 
 const inputClass =
-  "w-full rounded-md border border-[#e8e8e5] bg-white px-3 py-2.5 text-sm text-[#37352f] placeholder:text-[#b4b4b0] focus:border-[#2383e2] focus:outline-none focus:ring-1 focus:ring-[#2383e2]/20";
+  "w-full rounded-md border border-[#e8e8e5] bg-white px-3 py-2.5 text-sm text-[#37352f] placeholder:text-[#b4b4b0] focus:border-[#00BFFF] focus:outline-none focus:ring-1 focus:ring-[#00BFFF]/20";
 
 export function BookingForm({
   selectedSlot,
@@ -126,7 +126,7 @@ export function BookingForm({
       <button
         type="submit"
         disabled={!isValid || submitting}
-        className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2383e2] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1b6ec2] transition-colors disabled:opacity-50"
+        className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#00BFFF] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors disabled:opacity-50"
       >
         {submitting ? (
           <>

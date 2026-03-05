@@ -140,7 +140,7 @@ function ConfirmContent() {
             <div className="flex gap-3">
               <a
                 href={`/book/cancel?interviewId=${interviewId}&email=${encodeURIComponent(email || "")}`}
-                className="flex-1 rounded-md border border-[#e8e8e5] px-4 py-2.5 text-sm font-medium text-[#73726e] hover:bg-[#f7f7f5] transition-colors text-center"
+                className="flex-1 rounded-lg border border-[#e8e8e5] px-4 py-2.5 text-sm font-medium text-[#73726e] hover:bg-[#f7f7f5] transition-colors text-center"
               >
                 Can&apos;t make it
               </a>
@@ -148,7 +148,7 @@ function ConfirmContent() {
                 type="button"
                 onClick={handleConfirm}
                 disabled={confirming}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-md bg-[#2383e2] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1b6ec2] transition-colors disabled:opacity-50"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[#00BFFF] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors disabled:opacity-50"
               >
                 {confirming ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Confirming...</>

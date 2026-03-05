@@ -32,7 +32,7 @@ export function TimeSlots({ slots, selectedSlot, onSelectSlot }: TimeSlotsProps)
             className={cn(
               "flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-sm transition-all text-left",
               isSelected
-                ? "border-[#2383e2] bg-[#f0f7ff] text-[#37352f] font-medium"
+                ? "border-[#00BFFF] bg-[#e6faff] text-[#37352f] font-medium"
                 : "border-[#e8e8e5] text-[#73726e] hover:border-[#d4d4d0] hover:bg-[#f7f7f5]"
             )}
           >

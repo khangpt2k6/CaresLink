@@ -184,13 +184,18 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
           scheduledAt,
           duration
         );
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const candidateEmail = (await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) }, select: { email: true } }))?.email || "";
+        const cancelUrl = `${appUrl}/book/cancel?interviewId=${interview.id}&email=${encodeURIComponent(candidateEmail)}`;
         return {
           success: true,
           interview_id: interview.id,
           scheduled_at: scheduledAt.toISOString(),
           meet_link: interview.meetLink || null,
+          reschedule_url: `${appUrl}/book`,
+          cancel_url: cancelUrl,
           email_sent: false,
-          important: "Calendar event created on recruiter calendar, but NO email was sent to the candidate. The candidate has NO idea about this interview. You MUST call send_email next to notify them with the interview details and meet link.",
+          important: "Calendar event created on recruiter calendar, but NO email was sent to the candidate. The candidate has NO idea about this interview. You MUST call send_email next to notify them with the interview details, meet link, reschedule_url, and cancel_url.",
         };
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to schedule" };
@@ -259,7 +264,8 @@ CRITICAL WORKFLOW — When contacting a candidate, you MUST follow ALL steps:
    - Interview date/time in EST
    - Video call link (the meet_link from schedule_interview response)
    - Position they are interviewing for
-   - A note: "If this time doesn't work, you can reschedule at: http://localhost:3000/book"
+   - Reschedule link (reschedule_url from schedule_interview response)
+   - Cancel link (cancel_url from schedule_interview response)
 
 WARNING: schedule_interview does NOT send any email or notification to the candidate. It only creates a calendar event on the recruiter's Google Calendar. You MUST ALWAYS call send_email after schedule_interview. Never skip this step. Never claim you sent an email unless you actually called send_email.
 

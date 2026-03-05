@@ -34,6 +34,7 @@ model Interview {
   calendarEventId String?
   calendarLink    String?
   meetLink        String?
+  cancelled       Boolean  @default(false)
   createdAt       DateTime @default(now())
 
   events Event[]

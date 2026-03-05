@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { scheduleInterview } from "@/lib/scheduling";
+import { deleteCalendarEvent } from "@/lib/google-calendar";
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,10 +29,41 @@ export async function POST(request: NextRequest) {
     let candidate = await prisma.candidate.findFirst({ where: { email } });
 
     if (candidate) {
-      if (candidate.position !== position) {
-        candidate = await prisma.candidate.update({
-          where: { id: candidate.id },
-          data: { position, phone: phone || candidate.phone },
+      candidate = await prisma.candidate.update({
+        where: { id: candidate.id },
+        data: {
+          position,
+          phone: phone || candidate.phone,
+          name: name || candidate.name,
+        },
+      });
+
+      // Auto-cancel any existing upcoming interviews for this candidate
+      const existingInterviews = await prisma.interview.findMany({
+        where: {
+          candidateId: candidate.id,
+          completed: false,
+          noShow: false,
+          cancelled: false,
+          scheduledAt: { gt: new Date() },
+        },
+      });
+
+      for (const old of existingInterviews) {
+        if (old.calendarEventId) {
+          await deleteCalendarEvent(old.calendarEventId).catch(() => {});
+        }
+        await prisma.interview.update({
+          where: { id: old.id },
+          data: { cancelled: true },
+        });
+        await prisma.event.create({
+          data: {
+            type: "interview_cancelled",
+            candidateId: candidate.id,
+            interviewId: old.id,
+            metadata: JSON.stringify({ cancelledBy: "reschedule", newSlot: scheduledAt }),
+          },
         });
       }
     } else {
@@ -57,6 +91,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const cancelUrl = `${APP_URL}/book/cancel?interviewId=${interview.id}&email=${encodeURIComponent(email)}`;
+
     return NextResponse.json({
       success: true,
       interview: {
@@ -65,6 +101,7 @@ export async function POST(request: NextRequest) {
         duration: interview.duration,
         meetLink: interview.meetLink,
         calendarLink: interview.calendarLink,
+        cancelUrl,
       },
       candidate: {
         id: candidate.id,

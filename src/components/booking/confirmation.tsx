@@ -11,6 +11,7 @@ interface ConfirmationProps {
     duration: number;
     meetLink: string | null;
     calendarLink: string | null;
+    cancelUrl?: string;
   };
   candidate: {
     name: string;
@@ -19,6 +20,7 @@ interface ConfirmationProps {
 }
 
 export function Confirmation({ interview, candidate }: ConfirmationProps) {
+  const { cancelUrl } = interview;
   const start = new Date(interview.scheduledAt);
   const end = new Date(start.getTime() + interview.duration * 60 * 1000);
   const title = `Interview - ${candidate.name}`;
@@ -85,6 +87,16 @@ export function Confirmation({ interview, candidate }: ConfirmationProps) {
               <Video className="h-4 w-4" />
               Join Video Call
             </a>
+          </div>
+        )}
+
+        {/* Cancel / reschedule */}
+        {cancelUrl && (
+          <div className="border-b border-[#e8e8e5] px-5 py-3 flex items-center gap-3 text-sm text-[#73726e]">
+            <span>Need to change?</span>
+            <a href="/book" className="text-[#2383e2] hover:underline">Reschedule</a>
+            <span className="text-[#d4d4d0]">·</span>
+            <a href={cancelUrl} className="text-[#93392e] hover:underline">Cancel</a>
           </div>
         )}
 

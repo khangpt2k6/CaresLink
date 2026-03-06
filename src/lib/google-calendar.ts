@@ -144,6 +144,39 @@ export async function isCalendarConfigured(): Promise<boolean> {
   return status.connected;
 }
 
+async function getVideoSettings(): Promise<{ platform: string; link: string | null }> {
+  try {
+    const settings = await prisma.settings.findUnique({ where: { id: "default" } });
+    return {
+      platform: (settings as any)?.videoPlatform || "jitsi",
+      link: (settings as any)?.videoLink || null,
+    };
+  } catch {
+    return { platform: "jitsi", link: null };
+  }
+}
+
+async function generateMeetLink(): Promise<string | null> {
+  const { platform, link } = await getVideoSettings();
+  const uniqueId = `careslink-${Date.now().toString(36)}`;
+
+  switch (platform) {
+    case "jitsi":
+      return `https://meet.jit.si/${uniqueId}`;
+    case "zoom":
+      // Use recruiter's custom Zoom link, or null if not set
+      return link || null;
+    case "google_meet":
+      // Use recruiter's custom Google Meet link, or null if not set
+      return link || null;
+    case "ms_teams":
+      // Use recruiter's custom Teams link, or null if not set
+      return link || null;
+    default:
+      return `https://meet.jit.si/${uniqueId}`;
+  }
+}
+
 /**
  * Create a Google Calendar event for an interview
  */
@@ -162,8 +195,7 @@ export async function createCalendarEvent(params: {
     params.startTime.getTime() + params.durationMinutes * 60 * 1000
   );
 
-  const meetId = `careslink-${Date.now().toString(36)}`;
-  const meetLink = `https://meet.jit.si/${meetId}`;
+  const meetLink = await generateMeetLink();
 
   try {
     const tz = await getTimezone();
@@ -171,8 +203,8 @@ export async function createCalendarEvent(params: {
       calendarId,
       requestBody: {
         summary: params.summary,
-        description: `${params.description}\n\nCandidate: ${params.attendeeEmail}\n\nJoin video call: ${meetLink}`,
-        location: meetLink,
+        description: `${params.description}\n\nCandidate: ${params.attendeeEmail}${meetLink ? `\n\nJoin video call: ${meetLink}` : ""}`,
+        location: meetLink || undefined,
         start: {
           dateTime: params.startTime.toISOString(),
           timeZone: tz,

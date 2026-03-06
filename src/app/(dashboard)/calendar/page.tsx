@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay } from "date-fns";
-import { ChevronLeft, ChevronRight, Clock, Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink, Video } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +75,9 @@ export default function CalendarPage() {
   const [tzSaving, setTzSaving] = useState(false);
   const [duration, setDuration] = useState(60);
   const [durSaving, setDurSaving] = useState(false);
+  const [videoPlatform, setVideoPlatform] = useState("jitsi");
+  const [videoLink, setVideoLink] = useState("");
+  const [videoSaving, setVideoSaving] = useState(false);
   const [gcalConnected, setGcalConnected] = useState(false);
   const [gcalEmail, setGcalEmail] = useState<string | null>(null);
   const [gcalLoading, setGcalLoading] = useState(false);
@@ -91,6 +94,8 @@ export default function CalendarPage() {
         setSchedule(scheduleData);
         if (settings?.timezone) setTimezone(settings.timezone);
         if (settings?.defaultDuration) setDuration(settings.defaultDuration);
+        if (settings?.videoPlatform) setVideoPlatform(settings.videoPlatform);
+        if (settings?.videoLink) setVideoLink(settings.videoLink);
         setGcalConnected(gcal?.connected || false);
         setGcalEmail(gcal?.email || null);
         setGcalOauthAvailable(gcal?.oauthAvailable || false);

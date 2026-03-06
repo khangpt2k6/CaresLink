@@ -159,7 +159,9 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
 
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         const bookingUrl = `${appUrl}/book`;
-        const customMessage = args.message ? String(args.message) : "";
+        const rawMessage = args.message ? String(args.message) : "";
+        // Strip any leading greeting (e.g. "Hello Kevin,") from custom message to avoid duplication
+        const customMessage = rawMessage.replace(/^(hi|hello|dear|hey)\s+[^,.\n]+[,.]?\s*/i, "").trim();
         const greeting = customMessage || `Your job application for the ${c.position} position at CaresLink has been shortlisted by our recruiting team.`;
 
         const result = await sendEmail(

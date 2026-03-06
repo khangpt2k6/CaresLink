@@ -23,6 +23,9 @@ export async function sendEmail(
       subject,
       html: html || text.replace(/\n/g, "<br>"),
       text,
+      headers: {
+        "X-Entity-Ref-ID": `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      },
       attachments: icsContent
         ? [
             {

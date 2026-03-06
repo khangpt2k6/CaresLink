@@ -213,6 +213,29 @@ export default function CalendarPage() {
     setDurSaving(false);
   };
 
+  // Save video platform
+  const handleVideoPlatformChange = async (platform: string) => {
+    setVideoPlatform(platform);
+    setVideoSaving(true);
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoPlatform: platform }),
+    }).catch(() => {});
+    setVideoSaving(false);
+  };
+
+  // Save custom video link
+  const handleVideoLinkSave = async () => {
+    setVideoSaving(true);
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoLink }),
+    }).catch(() => {});
+    setVideoSaving(false);
+  };
+
   // Connect Google Calendar via OAuth
   const handleConnectGoogleCalendar = async () => {
     setGcalLoading(true);
@@ -305,8 +328,59 @@ export default function CalendarPage() {
             </select>
             {tzSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
           </div>
+          <div className="flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5">
+            <Video className="h-3.5 w-3.5 text-[#0090d9]" />
+            <select
+              value={videoPlatform}
+              onChange={(e) => handleVideoPlatformChange(e.target.value)}
+              className="bg-transparent text-xs font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
+            >
+              <option value="jitsi">Jitsi Meet (Free)</option>
+              <option value="zoom">Zoom</option>
+              <option value="google_meet">Google Meet</option>
+              <option value="ms_teams">Microsoft Teams</option>
+            </select>
+            {videoSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
+          </div>
         </div>
       </div>
+
+      {/* Custom Video Link (for Zoom/Google Meet/Teams) */}
+      {videoPlatform !== "jitsi" && (
+        <div className="mb-4 rounded-xl border border-[#e2e8f0] bg-white p-4">
+          <div className="flex items-center gap-3">
+            <Video className="h-4 w-4 text-[#0090d9]" />
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-[#1a2b3c] mb-1.5">
+                {videoPlatform === "zoom" ? "Zoom" : videoPlatform === "google_meet" ? "Google Meet" : "Microsoft Teams"} Meeting Link
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="url"
+                  value={videoLink}
+                  onChange={(e) => setVideoLink(e.target.value)}
+                  placeholder={
+                    videoPlatform === "zoom" ? "https://zoom.us/j/..." :
+                    videoPlatform === "google_meet" ? "https://meet.google.com/..." :
+                    "https://teams.microsoft.com/l/meetup-join/..."
+                  }
+                  className="flex-1 rounded-md border border-[#e2e8f0] px-2.5 py-1.5 text-xs text-[#1a2b3c] placeholder:text-[#b0b7c0] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]"
+                />
+                <button
+                  onClick={handleVideoLinkSave}
+                  disabled={videoSaving}
+                  className="rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bc0] transition-colors"
+                >
+                  {videoSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] text-[#8a95a3]">
+                Paste your personal meeting room link. This will be used for all interviews.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Google Calendar Connection */}
       <div className="mb-6 rounded-xl border border-[#e2e8f0] bg-white p-4">

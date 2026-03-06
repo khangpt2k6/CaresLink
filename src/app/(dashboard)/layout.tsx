@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/sidebar";
+import { AiChatBubble } from "@/components/ai-chat-bubble";
 
 export default function DashboardLayout({
   children,
@@ -9,6 +10,7 @@ export default function DashboardLayout({
     <>
       <Sidebar />
       <main className="min-h-screen bg-[#f5f7fa] pl-56">{children}</main>
+      <AiChatBubble />
     </>
   );
 }

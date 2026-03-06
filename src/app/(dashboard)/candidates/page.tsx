@@ -62,7 +62,7 @@ export default function CandidatesPage() {
   };
 
   const handleContactAi = async (c: Candidate) => {
-    const message = `Contact the candidate with ID "${c.id}" for the ${c.position} position. Send them a professional email, find available interview slots, and automatically book the earliest one. Include the interview time in the email.`;
+    const message = `Contact the candidate with ID "${c.id}" for the ${c.position} position. Send them the booking link so they can choose their own interview time.`;
     setAiLoading(c.id);
     try {
       const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });

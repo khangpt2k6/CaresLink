@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay } from "date-fns";
-import { ChevronLeft, ChevronRight, Clock, Save, Loader2, X, Ban, Check, Globe } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, Save, Loader2, X, Ban, Check, Globe, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -72,6 +72,8 @@ export default function CalendarPage() {
   const [overrideReason, setOverrideReason] = useState("");
   const [timezone, setTimezone] = useState("America/New_York");
   const [tzSaving, setTzSaving] = useState(false);
+  const [duration, setDuration] = useState(60);
+  const [durSaving, setDurSaving] = useState(false);
 
   // Fetch weekly schedule + timezone
   useEffect(() => {
@@ -82,6 +84,7 @@ export default function CalendarPage() {
       .then(([scheduleData, settings]) => {
         setSchedule(scheduleData);
         if (settings?.timezone) setTimezone(settings.timezone);
+        if (settings?.defaultDuration) setDuration(settings.defaultDuration);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -169,6 +172,18 @@ export default function CalendarPage() {
     setTzSaving(false);
   };
 
+  // Save duration
+  const handleDurationChange = async (dur: number) => {
+    setDuration(dur);
+    setDurSaving(true);
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultDuration: dur }),
+    }).catch(() => {});
+    setDurSaving(false);
+  };
+
   // Calendar rendering
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -201,20 +216,36 @@ export default function CalendarPage() {
           <h1 className="text-lg font-bold text-[#1a2b3c]">Calendar & Availability</h1>
           <p className="text-xs text-[#8a95a3]">Set your weekly schedule and block specific dates</p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5">
-          <Globe className="h-3.5 w-3.5 text-[#0090d9]" />
-          <select
-            value={timezone}
-            onChange={(e) => handleTimezoneChange(e.target.value)}
-            className="bg-transparent text-xs font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
-          >
-            {TIMEZONES.map((tz) => (
-              <option key={tz.value} value={tz.value}>
-                {tz.label}
-              </option>
-            ))}
-          </select>
-          {tzSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5">
+            <Timer className="h-3.5 w-3.5 text-[#0090d9]" />
+            <select
+              value={duration}
+              onChange={(e) => handleDurationChange(Number(e.target.value))}
+              className="bg-transparent text-xs font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
+            >
+              <option value={30}>30 min</option>
+              <option value={45}>45 min</option>
+              <option value={60}>60 min</option>
+              <option value={90}>90 min</option>
+            </select>
+            {durSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5">
+            <Globe className="h-3.5 w-3.5 text-[#0090d9]" />
+            <select
+              value={timezone}
+              onChange={(e) => handleTimezoneChange(e.target.value)}
+              className="bg-transparent text-xs font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
+            >
+              {TIMEZONES.map((tz) => (
+                <option key={tz.value} value={tz.value}>
+                  {tz.label}
+                </option>
+              ))}
+            </select>
+            {tzSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
+          </div>
         </div>
       </div>
 

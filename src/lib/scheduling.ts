@@ -208,11 +208,41 @@ export async function scheduleInterview(
     attendee: { name: candidate.name, email: candidate.email },
   });
 
+  const meetSection = meetLink
+    ? `<div style="background: #f5f7fa; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px; border-left: 3px solid #0090d9;">
+            <strong>Video Call Link:</strong><br/>
+            <a href="${meetLink}" style="color: #0090d9; text-decoration: none;">${meetLink}</a>
+          </div>`
+    : "";
+
   await sendEmail(
     candidate.email,
-    `Interview Invitation - ${candidate.position}`,
-    `Dear ${candidate.name},\n\nYou have been invited to interview for the ${candidate.position} position. The interview is scheduled for ${dateStr} EST.${meetLink ? `\n\nHere is the video call link: ${meetLink}` : ""}\n\nPlease confirm your attendance by clicking here: ${confirmUrl}\n\nIf you need to reschedule, please visit: ${APP_URL}/book\n\nIf you need to cancel, please use this link: ${cancelUrl}\n\nWe look forward to speaking with you.\n\nSincerely,\nCaresLink Recruitment Team`,
-    undefined,
+    `Interview Invitation — ${candidate.position} at CaresLink`,
+    `Dear ${candidate.name},\n\nYou have been invited to interview for the ${candidate.position} position.\n\nScheduled: ${dateStr} EST${meetLink ? `\nVideo Call: ${meetLink}` : ""}\n\nConfirm attendance: ${confirmUrl}\nReschedule: ${APP_URL}/book\nCancel: ${cancelUrl}\n\nWe look forward to speaking with you.\n\nBest regards,\nCaresLink Team`,
+    `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2b3c;">
+        <div style="background: #0090d9; padding: 24px; border-radius: 8px 8px 0 0;">
+          <h2 style="margin: 0; color: #fff; font-size: 18px;">Interview Invitation</h2>
+        </div>
+        <div style="padding: 24px; background: #fff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+          <p style="margin: 0 0 16px;">Dear ${candidate.name},</p>
+          <p style="margin: 0 0 16px;">You have been invited to interview for the <strong>${candidate.position}</strong> position at CaresLink.</p>
+          <div style="background: #f5f7fa; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px; border-left: 3px solid #0090d9;">
+            <strong>${dateStr} EST</strong>
+          </div>
+          ${meetSection}
+          <p style="margin: 0 0 16px;">Please confirm your attendance or let us know if you need to make changes:</p>
+          <div style="text-align: center; margin: 0 0 12px;">
+            <a href="${confirmUrl}" style="display: inline-block; background: #0090d9; color: #fff; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">Confirm Attendance</a>
+          </div>
+          <div style="text-align: center; margin: 0 0 24px;">
+            <a href="${APP_URL}/book" style="color: #0090d9; text-decoration: none; font-size: 13px; margin-right: 16px;">Reschedule</a>
+            <span style="color: #ccc;">|</span>
+            <a href="${cancelUrl}" style="color: #e53e3e; text-decoration: none; font-size: 13px; margin-left: 16px;">Cancel Interview</a>
+          </div>
+          <p style="margin: 0 0 4px;">We look forward to speaking with you.</p>
+          <p style="margin: 24px 0 0; color: #5a6b7c;">Best regards,<br/>CaresLink Team</p>
+        </div>
+      </div>`,
     icsContent
   ).catch((err) => console.error("Failed to send interview confirmation:", err));
 

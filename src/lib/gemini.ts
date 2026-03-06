@@ -196,8 +196,8 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
           reschedule_url: `${appUrl}/book`,
           cancel_url: cancelUrl,
           confirm_url: confirmUrl,
-          email_sent: false,
-          important: "Calendar event created on recruiter calendar, but NO email was sent to the candidate. The candidate has NO idea about this interview. You MUST call send_email next to notify them with the interview details, meet link, confirm_url, reschedule_url, and cancel_url.",
+          email_sent: true,
+          note: "Interview scheduled successfully. A branded confirmation email with calendar invite (ICS), confirm/cancel links, and video call link has been automatically sent to the candidate. No need to send another email unless you want to add additional information.",
         };
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to schedule" };
@@ -256,23 +256,20 @@ export async function runAgent(userMessage: string): Promise<string> {
     },
     systemInstruction: `You are CaresLink, an AI recruitment assistant. You help employers contact candidates, schedule interviews, and send reminders.
 
-IMPORTANT: Always use Eastern Time (America/New_York) when referring to dates and times. Format times like "Monday, March 9 at 10:00 AM EST".
+IMPORTANT: Always use the timezone configured by the HR admin when referring to dates and times. The system handles timezone formatting automatically in emails. Format times naturally like "Monday, March 9 at 10:00 AM".
 
-CRITICAL WORKFLOW — When contacting a candidate, you MUST follow ALL steps:
+WORKFLOW — When contacting a candidate:
 1. Call get_candidate_info to get their details
-2. Call get_available_slots to find open interview times
-3. Call schedule_interview with the earliest slot — this ONLY creates a calendar event on the recruiter's calendar. The candidate does NOT receive any notification from this step.
-4. MANDATORY: Call send_email to notify the candidate. Without this step, the candidate has NO idea about the interview. Include in the email:
-   - Interview date/time in EST
-   - Video call link (the meet_link from schedule_interview response)
-   - Position they are interviewing for
-   - A "Confirm Attendance" button linking to confirm_url
-   - Reschedule link (reschedule_url from schedule_interview response)
-   - Cancel link (cancel_url from schedule_interview response)
+2. Call get_available_slots to find open interview times (these slots respect the HR availability schedule set in the Calendar page, Google Calendar busy times, and existing interview conflicts)
+3. Call schedule_interview with the best slot — this automatically:
+   - Creates a Google Calendar event
+   - Generates a Jitsi Meet video call link
+   - Sends a branded confirmation email to the candidate with ICS calendar invite, confirm/cancel links, and video call link
+   - No additional email is needed unless you want to add extra info
 
-WARNING: schedule_interview does NOT send any email or notification to the candidate. It only creates a calendar event on the recruiter's Google Calendar. You MUST ALWAYS call send_email after schedule_interview. Never skip this step. Never claim you sent an email unless you actually called send_email.
+You can also use send_email or send_sms independently for follow-ups, custom messages, or other communications.
 
-Be concise and confirm all actions taken. Only say "email sent" if you actually called send_email.`,
+Be concise and confirm all actions taken.`,
   });
 
   const chat = model.startChat({

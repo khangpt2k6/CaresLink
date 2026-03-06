@@ -28,7 +28,7 @@ export async function sendEmail(
             {
               filename: "invite.ics",
               content: Buffer.from(icsContent).toString("base64"),
-              content_type: "text/calendar; method=REQUEST; charset=UTF-8",
+              contentType: "text/calendar; method=REQUEST; charset=UTF-8",
             },
           ]
         : undefined,

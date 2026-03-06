@@ -41,6 +41,36 @@ model Interview {
   events Event[]
 }
 
+// HR weekly availability (recurring schedule)
+model Availability {
+  id        String  @id @default(cuid())
+  dayOfWeek Int     // 0=Sunday, 1=Monday, ... 6=Saturday
+  startHour Int     // 0-23 (e.g. 9 = 9:00 AM)
+  endHour   Int     // 0-23 (e.g. 17 = 5:00 PM)
+  enabled   Boolean @default(true)
+
+  @@unique([dayOfWeek])
+}
+
+// One-off date overrides (block specific dates or add extra availability)
+model DateOverride {
+  id        String   @id @default(cuid())
+  date      DateTime // the specific date
+  available Boolean  @default(false) // false = blocked, true = available override
+  startHour Int?     // optional custom hours for that day
+  endHour   Int?
+  reason    String?  // e.g. "Holiday", "Out of office"
+  createdAt DateTime @default(now())
+
+  @@unique([date])
+}
+
+// Platform settings (single row, key-value)
+model Settings {
+  id    String @id @default("default")
+  timezone String @default("America/New_York") // IANA timezone
+}
+
 model Event {
   id          String     @id @default(cuid())
   type        String

@@ -1,4 +1,5 @@
 import { google, calendar_v3 } from "googleapis";
+import { getTimezone } from "./timezone";
 
 const SCOPES = ["https://www.googleapis.com/auth/calendar"];
 
@@ -52,6 +53,7 @@ export async function createCalendarEvent(params: {
   const meetLink = `https://meet.jit.si/${meetId}`;
 
   try {
+    const tz = await getTimezone();
     const event = await cal.events.insert({
       calendarId,
       requestBody: {
@@ -60,11 +62,11 @@ export async function createCalendarEvent(params: {
         location: meetLink,
         start: {
           dateTime: params.startTime.toISOString(),
-          timeZone: "America/New_York",
+          timeZone: tz,
         },
         end: {
           dateTime: endTime.toISOString(),
-          timeZone: "America/New_York",
+          timeZone: tz,
         },
         reminders: {
           useDefault: false,

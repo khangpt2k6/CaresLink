@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { deleteCalendarEvent } from "@/lib/google-calendar";
 import { sendEmail } from "@/lib/sendgrid";
-import { format } from "date-fns";
+import { getTimezone, getTimezoneAbbr, formatInTimezone } from "@/lib/timezone";
 
 export async function POST(request: NextRequest) {
   try {
@@ -86,12 +86,14 @@ export async function POST(request: NextRequest) {
 
     // Notify recruiter
     const recruiterEmail = process.env.RESEND_FROM_EMAIL;
-    const dateStr = format(new Date(interview.scheduledAt), "EEEE, MMMM d, yyyy 'at' h:mm a");
+    const tz = await getTimezone();
+    const tzAbbr = getTimezoneAbbr(tz);
+    const dateStr = formatInTimezone(new Date(interview.scheduledAt), tz, "") + " " + tzAbbr;
     if (recruiterEmail) {
       await sendEmail(
         recruiterEmail,
         `Interview Cancelled — ${interview.candidate.name}`,
-        `${interview.candidate.name} (${interview.candidate.email}) has cancelled their interview for the ${interview.position} position.\n\nOriginal time: ${dateStr} EST\n\nYou may want to follow up or reschedule.`
+        `${interview.candidate.name} (${interview.candidate.email}) has cancelled their interview for the ${interview.position} position.\n\nOriginal time: ${dateStr}\n\nYou may want to follow up or reschedule.`
       ).catch(() => {});
     }
 
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
     await sendEmail(
       interview.candidate.email,
       `Interview Cancelled — Reschedule Available`,
-      `Hi ${interview.candidate.name},\n\nThis email confirms that your interview for the ${interview.position} position originally scheduled for ${dateStr} EST has been successfully cancelled.\n\nIf you'd like to reschedule, you can book a new time at your convenience:\n${rescheduleUrl}\n\nIf you have any questions, feel free to reach out.\n\nBest regards,\n${companyName}`,
+      `Hi ${interview.candidate.name},\n\nThis email confirms that your interview for the ${interview.position} position originally scheduled for ${dateStr} has been successfully cancelled.\n\nIf you'd like to reschedule, you can book a new time at your convenience:\n${rescheduleUrl}\n\nIf you have any questions, feel free to reach out.\n\nBest regards,\n${companyName}`,
       `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2b3c;">
         <div style="background: #0090d9; padding: 24px; border-radius: 8px 8px 0 0;">
           <h2 style="margin: 0; color: #fff; font-size: 18px;">Interview Cancellation Confirmed</h2>
@@ -112,7 +114,7 @@ export async function POST(request: NextRequest) {
           <p style="margin: 0 0 16px;">Hi ${interview.candidate.name},</p>
           <p style="margin: 0 0 16px;">This email confirms that your interview for the <strong>${interview.position}</strong> position originally scheduled for:</p>
           <div style="background: #f5f7fa; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px; border-left: 3px solid #0090d9;">
-            <strong>${dateStr} EST</strong>
+            <strong>${dateStr}</strong>
           </div>
           <p style="margin: 0 0 16px;">has been successfully cancelled.</p>
           <p style="margin: 0 0 16px;">If you'd like to reschedule, you can book a new interview time at your convenience:</p>

@@ -6,7 +6,32 @@ import {
 } from "./google-calendar";
 import { sendEmail } from "./sendgrid";
 import { generateICS } from "./ics";
-import { format, addMinutes } from "date-fns";
+import { getTimezone, getTimezoneAbbr, formatInTimezone } from "./timezone";
+import { addMinutes } from "date-fns";
+
+// Get available hours for a specific date from DB schedule + overrides
+async function getAvailableHours(date: Date): Promise<number[]> {
+  const dayOfWeek = date.getDay();
+
+  // Check for date override first
+  const dateOnly = new Date(date);
+  dateOnly.setHours(0, 0, 0, 0);
+  const override = await prisma.dateOverride.findUnique({ where: { date: dateOnly } });
+
+  if (override) {
+    if (!override.available) return []; // Blocked date
+    // Custom hours for this date
+    const start = override.startHour ?? 9;
+    const end = override.endHour ?? 17;
+    return Array.from({ length: end - start }, (_, i) => start + i);
+  }
+
+  // Fall back to weekly schedule
+  const schedule = await prisma.availability.findUnique({ where: { dayOfWeek } });
+  if (!schedule || !schedule.enabled) return [];
+
+  return Array.from({ length: schedule.endHour - schedule.startHour }, (_, i) => schedule.startHour + i);
+}
 
 export async function findNextAvailableSlots(
   candidateId: string,
@@ -28,9 +53,13 @@ export async function findNextAvailableSlots(
 
   const slots: Date[] = [];
   for (let d = 1; d <= 7; d++) {
-    for (const hour of [9, 10, 11, 14, 15, 16]) {
-      const start = new Date(now);
-      start.setDate(start.getDate() + d);
+    const dayDate = new Date(now);
+    dayDate.setDate(dayDate.getDate() + d);
+
+    const hours = await getAvailableHours(dayDate);
+
+    for (const hour of hours) {
+      const start = new Date(dayDate);
       start.setHours(hour, 0, 0, 0);
 
       if (start <= now) continue;
@@ -92,13 +121,14 @@ export async function findPublicAvailableSlots(
   if (current < now) current.setDate(current.getDate() + 1);
 
   while (current <= endOfMonth) {
-    const dayOfWeek = current.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
+    const hours = await getAvailableHours(current);
+
+    if (hours.length === 0) {
       current.setDate(current.getDate() + 1);
       continue;
     }
 
-    for (const hour of [9, 10, 11, 14, 15, 16]) {
+    for (const hour of hours) {
       const start = new Date(current);
       start.setHours(hour, 0, 0, 0);
       if (start <= now) continue;
@@ -192,9 +222,11 @@ export async function scheduleInterview(
   // Send confirmation email with calendar invite to candidate
   const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const tz = await getTimezone();
+  const tzAbbr = getTimezoneAbbr(tz);
   const startTime = scheduledAt;
   const endTime = addMinutes(startTime, duration);
-  const dateStr = format(startTime, "EEEE, MMMM d, yyyy 'at' h:mm a");
+  const dateStr = formatInTimezone(startTime, tz, "") + " " + tzAbbr;
   const cancelUrl = `${APP_URL}/book/cancel?interviewId=${interview.id}&email=${encodeURIComponent(candidate.email)}`;
   const confirmUrl = `${APP_URL}/book/confirm?interviewId=${interview.id}&email=${encodeURIComponent(candidate.email)}`;
 
@@ -218,7 +250,7 @@ export async function scheduleInterview(
   await sendEmail(
     candidate.email,
     `Interview Invitation — ${candidate.position} at CaresLink`,
-    `Dear ${candidate.name},\n\nYou have been invited to interview for the ${candidate.position} position.\n\nScheduled: ${dateStr} EST${meetLink ? `\nVideo Call: ${meetLink}` : ""}\n\nConfirm attendance: ${confirmUrl}\nReschedule: ${APP_URL}/book\nCancel: ${cancelUrl}\n\nWe look forward to speaking with you.\n\nBest regards,\nCaresLink Team`,
+    `Dear ${candidate.name},\n\nYou have been invited to interview for the ${candidate.position} position.\n\nScheduled: ${dateStr}${meetLink ? `\nVideo Call: ${meetLink}` : ""}\n\nConfirm attendance: ${confirmUrl}\nReschedule: ${APP_URL}/book\nCancel: ${cancelUrl}\n\nWe look forward to speaking with you.\n\nBest regards,\nCaresLink Team`,
     `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2b3c;">
         <div style="background: #0090d9; padding: 24px; border-radius: 8px 8px 0 0;">
           <h2 style="margin: 0; color: #fff; font-size: 18px;">Interview Invitation</h2>
@@ -227,7 +259,7 @@ export async function scheduleInterview(
           <p style="margin: 0 0 16px;">Dear ${candidate.name},</p>
           <p style="margin: 0 0 16px;">You have been invited to interview for the <strong>${candidate.position}</strong> position at CaresLink.</p>
           <div style="background: #f5f7fa; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px; border-left: 3px solid #0090d9;">
-            <strong>${dateStr} EST</strong>
+            <strong>${dateStr}</strong>
           </div>
           ${meetSection}
           <p style="margin: 0 0 16px;">Please confirm your attendance or let us know if you need to make changes:</p>

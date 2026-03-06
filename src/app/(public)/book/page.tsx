@@ -33,6 +33,21 @@ export default function BookPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BookingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tzLabel, setTzLabel] = useState("Eastern Time (ET)");
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => {
+        if (s?.timezone) {
+          const abbr = new Intl.DateTimeFormat("en-US", { timeZone: s.timezone, timeZoneName: "short" })
+            .formatToParts(new Date())
+            .find((p: Intl.DateTimeFormatPart) => p.type === "timeZoneName")?.value || s.timezone;
+          setTzLabel(abbr);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchAvailability = useCallback(async (month: Date) => {
     setLoading(true);
@@ -168,7 +183,7 @@ export default function BookPage() {
               </h2>
             </div>
             <p className="mb-5 text-xs text-[#9b9a97]">
-              All times shown in Eastern Time (EST)
+              All times shown in {tzLabel}
             </p>
 
             {loading ? (

@@ -8,7 +8,7 @@ import {
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
 import { sendSms } from "./twilio";
-import { scheduleInterview, sendReminder, findNextAvailableSlots } from "./scheduling";
+import { sendReminder } from "./scheduling";
 
 const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
 if (!apiKey) {
@@ -67,27 +67,15 @@ const functionDeclarations: FunctionDeclaration[] = [
     },
   },
   {
-    name: "get_available_slots",
-    description: "Get available interview time slots for a candidate in the next 7 days. Returns up to 8 slots that don't conflict with existing interviews or calendar events.",
+    name: "send_booking_link",
+    description: "Send the self-service booking link to a candidate so they can choose their own interview time. This is the preferred way to schedule interviews — let candidates pick a time that works for them.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
+        message: { type: SchemaType.STRING, description: "Optional custom message to include in the email (e.g. greeting, context about the role)", nullable: true },
       },
       required: ["candidate_id"],
-    },
-  },
-  {
-    name: "schedule_interview",
-    description: "Schedule an interview for a candidate. Creates a Google Calendar event automatically.",
-    parameters: {
-      type: SchemaType.OBJECT,
-      properties: {
-        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
-        scheduled_at: { type: SchemaType.STRING, description: "ISO datetime string for interview" },
-        duration: { type: SchemaType.INTEGER, description: "Duration in minutes", nullable: true },
-      },
-      required: ["candidate_id", "scheduled_at"],
     },
   },
   {
@@ -164,43 +152,54 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
       }
       return { success: false, error: result.error };
     }
-    case "get_available_slots": {
+    case "send_booking_link": {
       try {
-        const slots = await findNextAvailableSlots(String(args.candidate_id));
-        return {
-          slots: slots.map((s) => s.toISOString()),
-          count: slots.length,
-        };
-      } catch (e) {
-        return { error: e instanceof Error ? e.message : "Failed to get slots" };
-      }
-    }
-    case "schedule_interview": {
-      try {
-        const scheduledAt = new Date(String(args.scheduled_at));
-        const duration = (args.duration as number) || 60;
-        const interview = await scheduleInterview(
-          String(args.candidate_id),
-          scheduledAt,
-          duration
-        );
+        const c = await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) } });
+        if (!c) return { error: "Candidate not found" };
+
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-        const candidateEmail = (await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) }, select: { email: true } }))?.email || "";
-        const cancelUrl = `${appUrl}/book/cancel?interviewId=${interview.id}&email=${encodeURIComponent(candidateEmail)}`;
-        const confirmUrl = `${appUrl}/book/confirm?interviewId=${interview.id}&email=${encodeURIComponent(candidateEmail)}`;
-        return {
-          success: true,
-          interview_id: interview.id,
-          scheduled_at: scheduledAt.toISOString(),
-          meet_link: interview.meetLink || null,
-          reschedule_url: `${appUrl}/book`,
-          cancel_url: cancelUrl,
-          confirm_url: confirmUrl,
-          email_sent: true,
-          note: "Interview scheduled successfully. A branded confirmation email with calendar invite (ICS), confirm/cancel links, and video call link has been automatically sent to the candidate. No need to send another email unless you want to add additional information.",
-        };
+        const bookingUrl = `${appUrl}/book`;
+        const customMessage = args.message ? String(args.message) : "";
+        const greeting = customMessage || `We'd like to invite you to interview for the ${c.position} position at CaresLink.`;
+
+        const result = await sendEmail(
+          c.email,
+          `Interview Invitation — ${c.position} at CaresLink`,
+          `Dear ${c.name},\n\n${greeting}\n\nPlease choose a time that works best for you:\n${bookingUrl}\n\nWe look forward to speaking with you.\n\nBest regards,\nCaresLink Team`,
+          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2b3c;">
+            <div style="background: #0090d9; padding: 24px; border-radius: 8px 8px 0 0;">
+              <h2 style="margin: 0; color: #fff; font-size: 18px;">Interview Invitation</h2>
+            </div>
+            <div style="padding: 24px; background: #fff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+              <p style="margin: 0 0 16px;">Dear ${c.name},</p>
+              <p style="margin: 0 0 16px;">${greeting}</p>
+              <p style="margin: 0 0 16px;">Please choose a time that works best for you:</p>
+              <div style="text-align: center; margin: 0 0 24px;">
+                <a href="${bookingUrl}" style="display: inline-block; background: #0090d9; color: #fff; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">Book Your Interview</a>
+              </div>
+              <p style="margin: 0 0 4px;">We look forward to speaking with you.</p>
+              <p style="margin: 24px 0 0; color: #5a6b7c;">Best regards,<br/>CaresLink Team</p>
+            </div>
+          </div>`
+        );
+
+        if (result.success) {
+          await prisma.event.create({
+            data: { type: "booking_link_sent", candidateId: c.id, channel: "email", cost: 0.02 },
+          });
+          await prisma.candidate.update({
+            where: { id: c.id },
+            data: { status: c.status === "applied" ? "contacted" : c.status },
+          });
+          return {
+            success: true,
+            booking_url: bookingUrl,
+            note: "Booking link email sent to candidate. They will choose their own interview time on the booking page.",
+          };
+        }
+        return { success: false, error: result.error };
       } catch (e) {
-        return { error: e instanceof Error ? e.message : "Failed to schedule" };
+        return { error: e instanceof Error ? e.message : "Failed to send booking link" };
       }
     }
     case "send_reminder": {
@@ -254,22 +253,20 @@ export async function runAgent(userMessage: string): Promise<string> {
         mode: FunctionCallingMode.AUTO,
       },
     },
-    systemInstruction: `You are CaresLink, an AI recruitment assistant. You help employers contact candidates, schedule interviews, and send reminders.
+    systemInstruction: `You are CaresLink, an AI recruitment assistant. You help employers contact candidates and manage the interview process.
 
-IMPORTANT: Always use the timezone configured by the HR admin when referring to dates and times. The system handles timezone formatting automatically in emails. Format times naturally like "Monday, March 9 at 10:00 AM".
+IMPORTANT: You do NOT schedule interviews directly. Candidates choose their own interview time.
 
-WORKFLOW — When contacting a candidate:
+CRITICAL: When asked to contact a candidate, DO NOT ask for confirmation. Just do it immediately:
 1. Call get_candidate_info to get their details
-2. Call get_available_slots to find open interview times (these slots respect the HR availability schedule set in the Calendar page, Google Calendar busy times, and existing interview conflicts)
-3. Call schedule_interview with the best slot — this automatically:
-   - Creates a Google Calendar event
-   - Generates a Jitsi Meet video call link
-   - Sends a branded confirmation email to the candidate with ICS calendar invite, confirm/cancel links, and video call link
-   - No additional email is needed unless you want to add extra info
+2. Call send_booking_link to send them the booking page link right away
+3. Confirm what you did
+
+The booking page lets candidates see available times (based on HR availability, Google Calendar, and conflicts) and pick their own slot. Once they book, the system automatically creates a calendar event, generates a video call link, and sends a confirmation email.
 
 You can also use send_email or send_sms independently for follow-ups, custom messages, or other communications.
 
-Be concise and confirm all actions taken.`,
+Be concise. Act first, then confirm. Never ask "would you like me to..." — just do it.`,
   });
 
   const chat = model.startChat({

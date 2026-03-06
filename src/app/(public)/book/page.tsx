@@ -34,6 +34,7 @@ export default function BookPage() {
   const [result, setResult] = useState<BookingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tzLabel, setTzLabel] = useState("Eastern Time (ET)");
+  const [duration, setDuration] = useState(60);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -45,6 +46,7 @@ export default function BookPage() {
             .find((p: Intl.DateTimeFormatPart) => p.type === "timeZoneName")?.value || s.timezone;
           setTzLabel(abbr);
         }
+        if (s?.defaultDuration) setDuration(s.defaultDuration);
       })
       .catch(() => {});
   }, []);
@@ -183,7 +185,7 @@ export default function BookPage() {
               </h2>
             </div>
             <p className="mb-5 text-xs text-[#9b9a97]">
-              All times shown in {tzLabel}
+              {duration} min interview &middot; All times shown in {tzLabel}
             </p>
 
             {loading ? (

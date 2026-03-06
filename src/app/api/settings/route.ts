@@ -1,28 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+const DEFAULTS = { id: "default", timezone: "America/New_York", defaultDuration: 60 };
+const VALID_DURATIONS = [30, 45, 60, 90];
+
 export async function GET() {
   try {
     const settings = await prisma.settings.findUnique({ where: { id: "default" } });
-    return NextResponse.json(settings || { id: "default", timezone: "America/New_York" });
+    return NextResponse.json(settings || DEFAULTS);
   } catch {
-    return NextResponse.json({ id: "default", timezone: "America/New_York" });
+    return NextResponse.json(DEFAULTS);
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { timezone } = body;
+    const { timezone, defaultDuration } = body;
 
-    if (!timezone) {
-      return NextResponse.json({ error: "timezone is required" }, { status: 400 });
+    const update: Record<string, unknown> = {};
+    if (timezone) update.timezone = timezone;
+    if (defaultDuration !== undefined) {
+      if (!VALID_DURATIONS.includes(defaultDuration)) {
+        return NextResponse.json({ error: "Duration must be 30, 45, 60, or 90 minutes" }, { status: 400 });
+      }
+      update.defaultDuration = defaultDuration;
     }
 
-    const settings = await prisma.settings.upsert({
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
+    const settings = await (prisma.settings as any).upsert({
       where: { id: "default" },
-      update: { timezone },
-      create: { id: "default", timezone },
+      update,
+      create: { id: "default", timezone: timezone || "America/New_York", defaultDuration: defaultDuration || 60 },
     });
 
     return NextResponse.json(settings);

@@ -6,7 +6,7 @@ import {
 } from "./google-calendar";
 import { sendEmail } from "./sendgrid";
 import { generateICS } from "./ics";
-import { getTimezone, getTimezoneAbbr, formatInTimezone } from "./timezone";
+import { getTimezone, getTimezoneAbbr, formatInTimezone, getDefaultDuration } from "./timezone";
 import { addMinutes } from "date-fns";
 
 // Get available hours for a specific date from DB schedule + overrides
@@ -35,8 +35,9 @@ async function getAvailableHours(date: Date): Promise<number[]> {
 
 export async function findNextAvailableSlots(
   candidateId: string,
-  durationMinutes = 60
+  durationMinutes?: number
 ): Promise<Date[]> {
+  const duration = durationMinutes ?? await getDefaultDuration();
   const candidate = await prisma.candidate.findUnique({
     where: { id: candidateId },
     include: { interviews: true },
@@ -64,7 +65,7 @@ export async function findNextAvailableSlots(
 
       if (start <= now) continue;
 
-      const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+      const end = new Date(start.getTime() + duration * 60 * 1000);
 
       // Check against existing DB interviews
       const dbConflict = candidate.interviews.some(
@@ -93,8 +94,9 @@ export async function findNextAvailableSlots(
 export async function findPublicAvailableSlots(
   month: number, // 0-indexed (0 = January)
   year: number,
-  durationMinutes = 60
+  durationMinutes?: number
 ): Promise<Date[]> {
+  const duration = durationMinutes ?? await getDefaultDuration();
   const startOfMonth = new Date(year, month, 1);
   const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
   const now = new Date();
@@ -133,7 +135,7 @@ export async function findPublicAvailableSlots(
       start.setHours(hour, 0, 0, 0);
       if (start <= now) continue;
 
-      const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+      const end = new Date(start.getTime() + duration * 60 * 1000);
 
       const dbConflict = existingInterviews.some(
         (i) =>
@@ -161,9 +163,10 @@ export async function findPublicAvailableSlots(
 export async function scheduleInterview(
   candidateId: string,
   scheduledAt: Date,
-  duration = 60,
+  durationOverride?: number,
   location = "Video Call"
 ) {
+  const duration = durationOverride ?? await getDefaultDuration();
   const candidate = await prisma.candidate.findUnique({ where: { id: candidateId } });
   if (!candidate) throw new Error("Candidate not found");
 
@@ -259,7 +262,8 @@ export async function scheduleInterview(
           <p style="margin: 0 0 16px;">Dear ${candidate.name},</p>
           <p style="margin: 0 0 16px;">You have been invited to interview for the <strong>${candidate.position}</strong> position at CaresLink.</p>
           <div style="background: #f5f7fa; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px; border-left: 3px solid #0090d9;">
-            <strong>${dateStr}</strong>
+            <strong>${dateStr}</strong><br/>
+            <span style="font-size: 13px; color: #5a6b7c;">${duration} minutes</span>
           </div>
           ${meetSection}
           <p style="margin: 0 0 16px;">Please confirm your attendance or let us know if you need to make changes:</p>

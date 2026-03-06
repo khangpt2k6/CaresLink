@@ -32,6 +32,15 @@ export async function getTimezone(): Promise<string> {
   }
 }
 
+export async function getDefaultDuration(): Promise<number> {
+  try {
+    const settings = await prisma.settings.findUnique({ where: { id: "default" } });
+    return settings?.defaultDuration || 60;
+  } catch {
+    return 60;
+  }
+}
+
 export function getTimezoneLabel(tz: string): string {
   return TIMEZONE_LABELS[tz] || tz;
 }

@@ -67,8 +67,9 @@ model DateOverride {
 
 // Platform settings (single row, key-value)
 model Settings {
-  id    String @id @default("default")
-  timezone String @default("America/New_York") // IANA timezone
+  id              String @id @default("default")
+  timezone        String @default("America/New_York") // IANA timezone
+  defaultDuration Int    @default(60) // interview duration in minutes (30, 45, 60, 90)
 }
 
 model Event {

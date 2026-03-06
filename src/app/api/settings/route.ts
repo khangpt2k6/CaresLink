@@ -41,7 +41,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
-    const settings = await (prisma.settings as any).upsert({
+    const settings = await prisma.settings.upsert({
       where: { id: "default" },
       update,
       create: { id: "default", timezone: timezone || "America/New_York", defaultDuration: defaultDuration || 60, videoPlatform: videoPlatform || "jitsi", videoLink: videoLink || null },

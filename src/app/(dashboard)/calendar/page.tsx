@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay } from "date-fns";
 import { ChevronLeft, ChevronRight, Clock, Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink } from "lucide-react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -310,16 +311,7 @@ export default function CalendarPage() {
               "flex h-9 w-9 items-center justify-center rounded-lg",
               gcalConnected ? "bg-emerald-50" : "bg-[#f5f7fa]"
             )}>
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-                <path d="M18.316 5.684H24v12.632h-5.684V5.684z" fill="#1a73e8"/>
-                <path d="M5.684 18.316H0V5.684h5.684v12.632z" fill="#ea4335"/>
-                <path d="M18.316 24V18.316H5.684V24h12.632z" fill="#34a853"/>
-                <path d="M5.684 5.684V0h12.632v5.684H5.684z" fill="#4285f4"/>
-                <path d="M18.316 5.684V0H24v5.684h-5.684z" fill="#188038"/>
-                <path d="M0 18.316h5.684V24H0v-5.684z" fill="#fbbc04"/>
-                <path d="M5.684 5.684h12.632v12.632H5.684V5.684z" fill="#fff"/>
-                <path d="M9.2 15.2l-1.1-.85c-.35-.27-.6-.55-.6-.95 0-.5.35-.85.85-.85.4 0 .65.2.85.45l.65-.55c-.35-.45-.8-.7-1.5-.7-.9 0-1.6.6-1.6 1.55 0 .6.25 1.05.7 1.45l.45.35c.35.25.55.5.55.85 0 .4-.3.7-.75.7-.45 0-.75-.3-.95-.6l-.7.45c.35.6.9.95 1.65.95.95 0 1.6-.6 1.6-1.5 0-.7-.3-1.1-.75-1.45l-.35-.3zm4.5-2.5h-.8l-1.5 2.5.7.45.55-.95h1.2v2.5h.85v-2.5h.5v-.75h-.5V12.7h-.95z" fill="#4285f4"/>
-              </svg>
+              <Image src="/google-calendar.svg" alt="Google Calendar" width={20} height={20} />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-[#1a2b3c]">Google Calendar</h3>

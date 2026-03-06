@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay } from "date-fns";
-import { ChevronLeft, ChevronRight, Clock, Save, Loader2, X, Ban, Check, Globe, Timer } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -74,20 +74,43 @@ export default function CalendarPage() {
   const [tzSaving, setTzSaving] = useState(false);
   const [duration, setDuration] = useState(60);
   const [durSaving, setDurSaving] = useState(false);
+  const [gcalConnected, setGcalConnected] = useState(false);
+  const [gcalEmail, setGcalEmail] = useState<string | null>(null);
+  const [gcalLoading, setGcalLoading] = useState(false);
+  const [gcalOauthAvailable, setGcalOauthAvailable] = useState(false);
 
-  // Fetch weekly schedule + timezone
+  // Fetch weekly schedule + timezone + Google Calendar status
   useEffect(() => {
     Promise.all([
       fetch("/api/availability").then((r) => r.json()),
       fetch("/api/settings").then((r) => r.json()),
+      fetch("/api/google-calendar").then((r) => r.json()),
     ])
-      .then(([scheduleData, settings]) => {
+      .then(([scheduleData, settings, gcal]) => {
         setSchedule(scheduleData);
         if (settings?.timezone) setTimezone(settings.timezone);
         if (settings?.defaultDuration) setDuration(settings.defaultDuration);
+        setGcalConnected(gcal?.connected || false);
+        setGcalEmail(gcal?.email || null);
+        setGcalOauthAvailable(gcal?.oauthAvailable || false);
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  }, []);
+
+  // Handle Google Calendar OAuth redirect result
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gcalResult = params.get("gcal");
+    if (gcalResult === "connected") {
+      setGcalConnected(true);
+      fetch("/api/google-calendar").then((r) => r.json()).then((gcal) => {
+        setGcalEmail(gcal?.email || null);
+      });
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (gcalResult === "error") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   // Fetch overrides for current month
@@ -184,6 +207,36 @@ export default function CalendarPage() {
     setDurSaving(false);
   };
 
+  // Connect Google Calendar via OAuth
+  const handleConnectGoogleCalendar = async () => {
+    setGcalLoading(true);
+    try {
+      const res = await fetch("/api/google-calendar", { method: "POST" });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch {
+      // ignore
+    } finally {
+      setGcalLoading(false);
+    }
+  };
+
+  // Disconnect Google Calendar
+  const handleDisconnectGoogleCalendar = async () => {
+    setGcalLoading(true);
+    try {
+      await fetch("/api/google-calendar", { method: "DELETE" });
+      setGcalConnected(false);
+      setGcalEmail(null);
+    } catch {
+      // ignore
+    } finally {
+      setGcalLoading(false);
+    }
+  };
+
   // Calendar rendering
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -245,6 +298,64 @@ export default function CalendarPage() {
               ))}
             </select>
             {tzSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
+          </div>
+        </div>
+      </div>
+
+      {/* Google Calendar Connection */}
+      <div className="mb-6 rounded-xl border border-[#e2e8f0] bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-lg",
+              gcalConnected ? "bg-emerald-50" : "bg-[#f5f7fa]"
+            )}>
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+                <path d="M18.316 5.684H24v12.632h-5.684V5.684z" fill="#1a73e8"/>
+                <path d="M5.684 18.316H0V5.684h5.684v12.632z" fill="#ea4335"/>
+                <path d="M18.316 24V18.316H5.684V24h12.632z" fill="#34a853"/>
+                <path d="M5.684 5.684V0h12.632v5.684H5.684z" fill="#4285f4"/>
+                <path d="M18.316 5.684V0H24v5.684h-5.684z" fill="#188038"/>
+                <path d="M0 18.316h5.684V24H0v-5.684z" fill="#fbbc04"/>
+                <path d="M5.684 5.684h12.632v12.632H5.684V5.684z" fill="#fff"/>
+                <path d="M9.2 15.2l-1.1-.85c-.35-.27-.6-.55-.6-.95 0-.5.35-.85.85-.85.4 0 .65.2.85.45l.65-.55c-.35-.45-.8-.7-1.5-.7-.9 0-1.6.6-1.6 1.55 0 .6.25 1.05.7 1.45l.45.35c.35.25.55.5.55.85 0 .4-.3.7-.75.7-.45 0-.75-.3-.95-.6l-.7.45c.35.6.9.95 1.65.95.95 0 1.6-.6 1.6-1.5 0-.7-.3-1.1-.75-1.45l-.35-.3zm4.5-2.5h-.8l-1.5 2.5.7.45.55-.95h1.2v2.5h.85v-2.5h.5v-.75h-.5V12.7h-.95z" fill="#4285f4"/>
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-[#1a2b3c]">Google Calendar</h3>
+              {gcalConnected ? (
+                <p className="text-xs text-emerald-600">
+                  Connected{gcalEmail ? ` — ${gcalEmail}` : ""}
+                </p>
+              ) : (
+                <p className="text-xs text-[#8a95a3]">
+                  Sync your calendar to auto-detect busy times
+                </p>
+              )}
+            </div>
+          </div>
+          <div>
+            {gcalConnected ? (
+              <button
+                onClick={handleDisconnectGoogleCalendar}
+                disabled={gcalLoading}
+                className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+              >
+                {gcalLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlink className="h-3 w-3" />}
+                Disconnect
+              </button>
+            ) : gcalOauthAvailable ? (
+              <button
+                onClick={handleConnectGoogleCalendar}
+                disabled={gcalLoading}
+                className="flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bc0] transition-colors"
+              >
+                {gcalLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />}
+                Connect
+              </button>
+            ) : (
+              <span className="text-[10px] text-[#b0b7c0]">OAuth not configured</span>
+            )}
           </div>
         </div>
       </div>

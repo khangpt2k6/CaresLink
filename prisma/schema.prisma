@@ -72,6 +72,17 @@ model Settings {
   defaultDuration Int    @default(60) // interview duration in minutes (30, 45, 60, 90)
 }
 
+// Google Calendar OAuth tokens (single row for the recruiter)
+model GoogleCalendarToken {
+  id           String   @id @default("default")
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  email        String?  // connected Google account email
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Event {
   id          String     @id @default(cuid())
   type        String

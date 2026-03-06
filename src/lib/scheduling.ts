@@ -48,7 +48,7 @@ export async function findNextAvailableSlots(
   const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   // Get busy slots from Google Calendar if configured
-  const busySlots = isCalendarConfigured()
+  const busySlots = (await isCalendarConfigured())
     ? await getFreeBusySlots(now, weekFromNow)
     : [];
 
@@ -104,7 +104,7 @@ export async function findPublicAvailableSlots(
   const rangeStart = startOfMonth > now ? startOfMonth : now;
   if (endOfMonth < now) return [];
 
-  const busySlots = isCalendarConfigured()
+  const busySlots = (await isCalendarConfigured())
     ? await getFreeBusySlots(rangeStart, endOfMonth)
     : [];
 
@@ -175,7 +175,7 @@ export async function scheduleInterview(
   let calendarLink: string | null = null;
   let meetLink: string | null = null;
 
-  if (isCalendarConfigured()) {
+  if (await isCalendarConfigured()) {
     const calResult = await createCalendarEvent({
       summary: `Interview: ${candidate.name} - ${candidate.position}`,
       description: `Interview with ${candidate.name} for the ${candidate.position} position.\n\nCandidate email: ${candidate.email}${candidate.phone ? `\nPhone: ${candidate.phone}` : ""}`,

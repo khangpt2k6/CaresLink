@@ -249,7 +249,7 @@ export async function scheduleInterview(
 
   await sendEmail(
     candidate.email,
-    `Interview Invitation — ${candidate.position} at CaresLink`,
+    `Interview Invitation — ${candidate.position} at CaresLink | ${dateStr}`,
     `Dear ${candidate.name},\n\nYou have been invited to interview for the ${candidate.position} position.\n\nScheduled: ${dateStr}${meetLink ? `\nVideo Call: ${meetLink}` : ""}\n\nConfirm attendance: ${confirmUrl}\nReschedule: ${APP_URL}/book\nCancel: ${cancelUrl}\n\nWe look forward to speaking with you.\n\nBest regards,\nCaresLink Team`,
     `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2b3c;">
         <div style="background: #0090d9; padding: 24px; border-radius: 8px 8px 0 0;">

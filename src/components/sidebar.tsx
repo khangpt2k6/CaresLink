@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Users,
   Calendar,
+  CalendarClock,
   Lightbulb,
 } from "lucide-react";
 
@@ -15,6 +16,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/candidates", label: "Candidates", icon: Users },
   { href: "/interviews", label: "Interviews", icon: Calendar },
+  { href: "/calendar", label: "Calendar", icon: CalendarClock },
   { href: "/insights", label: "Insights", icon: Lightbulb },
 ];
 

@@ -2,7 +2,8 @@ import cron from "node-cron";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
 import { generateICS } from "./ics";
-import { format, addHours, addMinutes } from "date-fns";
+import { addHours, addMinutes } from "date-fns";
+import { getTimezone, getTimezoneAbbr, formatInTimezone } from "./timezone";
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
@@ -55,7 +56,9 @@ async function checkAndSendReminders() {
     const is24hWindow = scheduledAt >= window24Start && scheduledAt <= window24End;
     const is1hWindow = scheduledAt >= window1Start && scheduledAt <= window1End;
 
-    const dateStr = format(scheduledAt, "EEEE, MMMM d, yyyy 'at' h:mm a");
+    const tz = await getTimezone();
+    const tzAbbr = getTimezoneAbbr(tz);
+    const dateStr = formatInTimezone(scheduledAt, tz, "") + " " + tzAbbr;
     const confirmUrl = `${appUrl}/book/confirm?interviewId=${interview.id}&email=${encodeURIComponent(candidate.email)}`;
     const cancelUrl = `${appUrl}/book/cancel?interviewId=${interview.id}&email=${encodeURIComponent(candidate.email)}`;
     const meetPart = interview.meetLink ? `\nJoin video call: ${interview.meetLink}` : "";
@@ -74,7 +77,7 @@ async function checkAndSendReminders() {
       const result = await sendEmail(
         candidate.email,
         `Reminder: Your Interview is Tomorrow — ${interview.position}`,
-        `Dear ${candidate.name},\n\nThis is a reminder that your interview for the ${interview.position} position is scheduled for tomorrow.\n\n📅 ${dateStr} EST${meetPart}\n\nPlease confirm your attendance:\n${confirmUrl}\n\nNeed to cancel or reschedule?\n${cancelUrl}\n\nThank you,\nCaresLink Recruiting`,
+        `Dear ${candidate.name},\n\nThis is a reminder that your interview for the ${interview.position} position is scheduled for tomorrow.\n\n📅 ${dateStr}${meetPart}\n\nPlease confirm your attendance:\n${confirmUrl}\n\nNeed to cancel or reschedule?\n${cancelUrl}\n\nThank you,\nCaresLink Recruiting`,
         undefined,
         icsContent
       );
@@ -102,7 +105,7 @@ async function checkAndSendReminders() {
       const result = await sendEmail(
         candidate.email,
         `Your Interview Starts in 1 Hour — ${interview.position}`,
-        `Dear ${candidate.name},\n\nYour interview for the ${interview.position} position starts in 1 hour.\n\n📅 ${dateStr} EST${meetPart}\n\n${interview.meetLink ? "Join the video call when ready:\n" + interview.meetLink : ""}\n\nGood luck!\n\nCaresLink Recruiting`
+        `Dear ${candidate.name},\n\nYour interview for the ${interview.position} position starts in 1 hour.\n\n📅 ${dateStr}${meetPart}\n\n${interview.meetLink ? "Join the video call when ready:\n" + interview.meetLink : ""}\n\nGood luck!\n\nCaresLink Recruiting`
       );
 
       if (result.success) {
@@ -139,14 +142,16 @@ async function checkAndSendReminders() {
 
   for (const interview of unconfirmedFollowups) {
     const { candidate } = interview;
-    const dateStr = format(new Date(interview.scheduledAt), "EEEE, MMMM d 'at' h:mm a");
+    const tz2 = await getTimezone();
+    const tzAbbr2 = getTimezoneAbbr(tz2);
+    const dateStr = formatInTimezone(new Date(interview.scheduledAt), tz2, "") + " " + tzAbbr2;
     const confirmUrl = `${appUrl}/book/confirm?interviewId=${interview.id}&email=${encodeURIComponent(candidate.email)}`;
     const cancelUrl = `${appUrl}/book/cancel?interviewId=${interview.id}&email=${encodeURIComponent(candidate.email)}`;
 
     await sendEmail(
       candidate.email,
       `Please Confirm Your Interview — ${interview.position}`,
-      `Dear ${candidate.name},\n\nWe noticed you haven't confirmed your upcoming interview yet.\n\n📅 ${dateStr} EST for the ${interview.position} position.\n\nPlease let us know:\n✅ Confirm attendance: ${confirmUrl}\n❌ Cancel or reschedule: ${cancelUrl}\n\nThank you,\nCaresLink Recruiting`
+      `Dear ${candidate.name},\n\nWe noticed you haven't confirmed your upcoming interview yet.\n\n📅 ${dateStr} for the ${interview.position} position.\n\nPlease let us know:\n✅ Confirm attendance: ${confirmUrl}\n❌ Cancel or reschedule: ${cancelUrl}\n\nThank you,\nCaresLink Recruiting`
     ).catch(() => {});
   }
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { deleteCalendarEvent } from "@/lib/google-calendar";
 import { sendEmail } from "@/lib/sendgrid";
-import { format } from "date-fns";
+import { getTimezone, getTimezoneAbbr, formatInTimezone } from "@/lib/timezone";
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -26,16 +26,15 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Notify candidate about cancellation
-    const dateStr = format(
-      new Date(interview.scheduledAt),
-      "EEEE, MMMM d, yyyy 'at' h:mm a"
-    );
+    const tz = await getTimezone();
+    const tzAbbr = getTimezoneAbbr(tz);
+    const dateStr = formatInTimezone(new Date(interview.scheduledAt), tz, "") + " " + tzAbbr;
     const companyName = process.env.COMPANY_NAME || "CaresLink Team";
 
     await sendEmail(
       interview.candidate.email,
       `Interview Update — Your ${interview.position} Interview Has Been Rescheduled`,
-      `Hi ${interview.candidate.name},\n\nWe're writing to let you know that your interview for the ${interview.position} position originally scheduled for ${dateStr} EST has been cancelled.\n\nPlease don't worry — this is not a reflection of your candidacy. A member of ${companyName} will reach out to you shortly to arrange a new time that works for both of us.\n\nWe apologize for any inconvenience and appreciate your understanding.\n\nBest regards,\n${companyName}`,
+      `Hi ${interview.candidate.name},\n\nWe're writing to let you know that your interview for the ${interview.position} position originally scheduled for ${dateStr} has been cancelled.\n\nPlease don't worry — this is not a reflection of your candidacy. A member of ${companyName} will reach out to you shortly to arrange a new time that works for both of us.\n\nWe apologize for any inconvenience and appreciate your understanding.\n\nBest regards,\n${companyName}`,
       `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2b3c;">
         <div style="background: #0090d9; padding: 24px; border-radius: 8px 8px 0 0;">
           <h2 style="margin: 0; color: #fff; font-size: 18px;">Interview Update</h2>
@@ -44,7 +43,7 @@ export async function DELETE(request: NextRequest) {
           <p style="margin: 0 0 16px;">Hi ${interview.candidate.name},</p>
           <p style="margin: 0 0 16px;">We're writing to let you know that your interview for the <strong>${interview.position}</strong> position originally scheduled for:</p>
           <div style="background: #f5f7fa; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px; border-left: 3px solid #0090d9;">
-            <strong>${dateStr} EST</strong>
+            <strong>${dateStr}</strong>
           </div>
           <p style="margin: 0 0 16px;">has been cancelled.</p>
           <p style="margin: 0 0 16px;">Please don't worry — <strong>this is not a reflection of your candidacy</strong>. A member of ${companyName} will reach out to you shortly to arrange a new time that works for both of us.</p>

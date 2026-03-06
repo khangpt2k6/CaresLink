@@ -30,7 +30,7 @@ export async function DELETE(request: NextRequest) {
       new Date(interview.scheduledAt),
       "EEEE, MMMM d, yyyy 'at' h:mm a"
     );
-    const companyName = process.env.COMPANY_NAME || "our team";
+    const companyName = process.env.COMPANY_NAME || "CaresLink Team";
 
     await sendEmail(
       interview.candidate.email,
@@ -58,13 +58,26 @@ export async function DELETE(request: NextRequest) {
     await prisma.event.deleteMany({ where: { interviewId: id } });
     await prisma.interview.delete({ where: { id } });
 
-    // Reset candidate status if no other ACTIVE interviews remain
+    // Auto-complete any past interviews for this candidate
+    await prisma.interview.updateMany({
+      where: {
+        candidateId: interview.candidateId,
+        completed: false,
+        cancelled: false,
+        noShow: false,
+        scheduledAt: { lt: new Date() },
+      },
+      data: { completed: true },
+    });
+
+    // Reset candidate status if no future active interviews remain
     const activeRemaining = await prisma.interview.count({
       where: {
         candidateId: interview.candidateId,
         completed: false,
         noShow: false,
         cancelled: false,
+        scheduledAt: { gte: new Date() },
       },
     });
     if (activeRemaining === 0) {

@@ -45,14 +45,26 @@ export async function POST(request: NextRequest) {
       data: { cancelled: true },
     });
 
-    // Reset candidate status
+    // Auto-complete any past interviews for this candidate
+    await prisma.interview.updateMany({
+      where: {
+        candidateId: interview.candidateId,
+        completed: false,
+        cancelled: false,
+        noShow: false,
+        scheduledAt: { lt: new Date() },
+      },
+      data: { completed: true },
+    });
+
+    // Reset candidate status if no future active interviews remain
     const otherActive = await prisma.interview.count({
       where: {
         candidateId: interview.candidateId,
-        id: { not: interviewId },
         completed: false,
         noShow: false,
         cancelled: false,
+        scheduledAt: { gte: new Date() },
       },
     });
     if (otherActive === 0) {
@@ -74,14 +86,44 @@ export async function POST(request: NextRequest) {
 
     // Notify recruiter
     const recruiterEmail = process.env.RESEND_FROM_EMAIL;
+    const dateStr = format(new Date(interview.scheduledAt), "EEEE, MMMM d, yyyy 'at' h:mm a");
     if (recruiterEmail) {
-      const dateStr = format(new Date(interview.scheduledAt), "EEEE, MMMM d, yyyy 'at' h:mm a");
       await sendEmail(
         recruiterEmail,
         `Interview Cancelled — ${interview.candidate.name}`,
         `${interview.candidate.name} (${interview.candidate.email}) has cancelled their interview for the ${interview.position} position.\n\nOriginal time: ${dateStr} EST\n\nYou may want to follow up or reschedule.`
       ).catch(() => {});
     }
+
+    // Send cancellation confirmation to candidate with reschedule link
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const rescheduleUrl = `${appUrl}/book`;
+    const companyName = process.env.COMPANY_NAME || "CaresLink Team";
+
+    await sendEmail(
+      interview.candidate.email,
+      `Interview Cancelled — Reschedule Available`,
+      `Hi ${interview.candidate.name},\n\nThis email confirms that your interview for the ${interview.position} position originally scheduled for ${dateStr} EST has been successfully cancelled.\n\nIf you'd like to reschedule, you can book a new time at your convenience:\n${rescheduleUrl}\n\nIf you have any questions, feel free to reach out.\n\nBest regards,\n${companyName}`,
+      `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2b3c;">
+        <div style="background: #0090d9; padding: 24px; border-radius: 8px 8px 0 0;">
+          <h2 style="margin: 0; color: #fff; font-size: 18px;">Interview Cancellation Confirmed</h2>
+        </div>
+        <div style="padding: 24px; background: #fff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+          <p style="margin: 0 0 16px;">Hi ${interview.candidate.name},</p>
+          <p style="margin: 0 0 16px;">This email confirms that your interview for the <strong>${interview.position}</strong> position originally scheduled for:</p>
+          <div style="background: #f5f7fa; padding: 12px 16px; border-radius: 6px; margin: 0 0 16px; border-left: 3px solid #0090d9;">
+            <strong>${dateStr} EST</strong>
+          </div>
+          <p style="margin: 0 0 16px;">has been successfully cancelled.</p>
+          <p style="margin: 0 0 16px;">If you'd like to reschedule, you can book a new interview time at your convenience:</p>
+          <div style="text-align: center; margin: 0 0 24px;">
+            <a href="${rescheduleUrl}" style="display: inline-block; background: #0090d9; color: #fff; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">Reschedule Interview</a>
+          </div>
+          <p style="margin: 0 0 4px;">If you have any questions, feel free to reach out.</p>
+          <p style="margin: 24px 0 0; color: #5a6b7c;">Best regards,<br/>${companyName}</p>
+        </div>
+      </div>`
+    ).catch((err) => console.error("Failed to send cancellation confirmation email:", err));
 
     return NextResponse.json({ success: true });
   } catch (e) {

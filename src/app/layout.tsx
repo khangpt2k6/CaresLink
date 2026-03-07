@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "CaresLink - AI Recruitment",
   description: "AI-powered recruitment agent",
+  icons: {
+    icon: "/careslink_logo.jpg",
+  },
 };
 
 export default function RootLayout({

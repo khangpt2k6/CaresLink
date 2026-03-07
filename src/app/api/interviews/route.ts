@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { deleteCalendarEvent } from "@/lib/google-calendar";
+import { deleteCalendarEvent as deleteGoogleEvent } from "@/lib/google-calendar";
+import { deleteCalendarEvent as deleteMicrosoftEvent } from "@/lib/microsoft-calendar";
 import { sendEmail } from "@/lib/sendgrid";
 import { getTimezone, getTimezoneAbbr, formatInTimezone } from "@/lib/timezone";
 
@@ -20,9 +21,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Interview not found" }, { status: 404 });
     }
 
-    // Delete from Google Calendar if linked
+    // Delete from connected calendars if linked
     if (interview.calendarEventId) {
-      await deleteCalendarEvent(interview.calendarEventId).catch(() => {});
+      await Promise.all([
+        deleteGoogleEvent(interview.calendarEventId).catch(() => {}),
+        deleteMicrosoftEvent(interview.calendarEventId).catch(() => {}),
+      ]);
     }
 
     // Notify candidate about cancellation

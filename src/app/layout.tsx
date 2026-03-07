@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "CaresLink - AI Recruitment",
   description: "AI-powered recruitment agent",
   icons: {
-    icon: "/careslink_logo.jpg",
+    icon: "/careslink.png",
   },
 };
 

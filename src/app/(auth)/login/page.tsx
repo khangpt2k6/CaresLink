@@ -69,7 +69,7 @@ export default function LoginPage() {
           {/* Logo */}
           <div className="flex items-center gap-3">
             <Image
-              src="/careslink_logo.jpg"
+              src="/careslink.png"
               alt="CaresLink"
               width={44}
               height={44}

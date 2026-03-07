@@ -29,7 +29,7 @@ export function Sidebar() {
         {/* Logo */}
         <div className="flex h-14 items-center gap-2.5 px-4 border-b border-white/10">
           <Image
-            src="/careslink_logo.jpg"
+            src="/careslink.png"
             alt="CaresLink"
             width={28}
             height={28}

@@ -70,6 +70,13 @@ export async function PUT(request: NextRequest) {
       });
     }
 
+    // Bump schedule version so booking page knows to refetch
+    await prisma.settings.upsert({
+      where: { id: "default" },
+      update: { scheduleVersion: { increment: 1 } },
+      create: { id: "default", scheduleVersion: 1 },
+    });
+
     const updated = await prisma.availability.findMany({ orderBy: { dayOfWeek: "asc" } });
     return NextResponse.json(updated);
   } catch (e) {

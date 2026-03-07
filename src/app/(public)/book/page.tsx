@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import { format, startOfMonth } from "date-fns";
 import { Loader2, ArrowLeft, Calendar } from "lucide-react";
@@ -67,8 +67,24 @@ export default function BookPage() {
     }
   }, []);
 
+  // Track schedule version — only refetch when recruiter saves changes
+  const scheduleVersion = useRef(0);
+
   useEffect(() => {
     fetchAvailability(currentMonth);
+
+    // Poll lightweight version endpoint every 5s — only refetches availability when recruiter saves
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/booking/version");
+        const { version } = await res.json();
+        if (version !== scheduleVersion.current) {
+          scheduleVersion.current = version;
+          fetchAvailability(currentMonth);
+        }
+      } catch { /* ignore */ }
+    }, 5000);
+    return () => clearInterval(interval);
   }, [currentMonth, fetchAvailability]);
 
   const handleMonthChange = (month: Date) => {

@@ -520,33 +520,39 @@ export default function CalendarPage() {
             )}
           </div>
 
-          {/* Google Calendar compact */}
-          <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2 shadow-sm ml-auto">
-            <Image src="/google-calendar.svg" alt="Google Calendar" width={18} height={18} />
-            {gcalConnected ? (
-              <>
-                <span className="text-xs font-medium text-emerald-600">Connected</span>
-                <button
-                  onClick={handleDisconnectGoogleCalendar}
-                  disabled={gcalLoading}
-                  className="ml-1 rounded-md p-1 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                >
-                  {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
-                </button>
-              </>
-            ) : gcalOauthAvailable ? (
-              <button
-                onClick={handleConnectGoogleCalendar}
-                disabled={gcalLoading}
-                className="flex items-center gap-1 text-xs font-medium text-[#0090d9] hover:text-[#007bc0]"
-              >
-                {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-                Connect
-              </button>
-            ) : (
+          {/* Google Calendar connect/disconnect */}
+          {gcalConnected ? (
+            <button
+              onClick={handleDisconnectGoogleCalendar}
+              disabled={gcalLoading}
+              className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 shadow-sm ml-auto hover:bg-red-50 hover:border-red-200 transition-colors group"
+            >
+              <Image src="/google-calendar.svg" alt="Google Calendar" width={18} height={18} />
+              <span className="text-xs font-medium text-emerald-600 group-hover:hidden">Connected</span>
+              <span className="text-xs font-medium text-red-500 hidden group-hover:inline">Disconnect</span>
+              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#8a95a3]" /> : (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-500 group-hover:hidden" />
+                  <Unlink className="h-3.5 w-3.5 text-red-400 hidden group-hover:block" />
+                </>
+              )}
+            </button>
+          ) : gcalOauthAvailable ? (
+            <button
+              onClick={handleConnectGoogleCalendar}
+              disabled={gcalLoading}
+              className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2 shadow-sm ml-auto hover:bg-[#f0f8ff] hover:border-[#0090d9]/30 transition-colors"
+            >
+              <Image src="/google-calendar.svg" alt="Google Calendar" width={18} height={18} />
+              <span className="text-xs font-medium text-[#0090d9]">Connect Calendar</span>
+              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" /> : <Link2 className="h-3.5 w-3.5 text-[#0090d9]" />}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2 shadow-sm ml-auto">
+              <Image src="/google-calendar.svg" alt="Google Calendar" width={18} height={18} />
               <span className="text-xs text-[#b0b7c0]">Not configured</span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

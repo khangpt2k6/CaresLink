@@ -156,24 +156,22 @@ async function getVideoSettings(): Promise<{ platform: string; link: string | nu
   }
 }
 
-async function generateMeetLink(): Promise<string | null> {
+async function generateMeetLink(): Promise<{ link: string | null; autoGenGoogleMeet: boolean }> {
   const { platform, link } = await getVideoSettings();
   const uniqueId = `careslink-${Date.now().toString(36)}`;
 
   switch (platform) {
     case "jitsi":
-      return `https://meet.jit.si/${uniqueId}`;
+      return { link: `https://meet.jit.si/${uniqueId}`, autoGenGoogleMeet: false };
     case "zoom":
-      // Use recruiter's custom Zoom link, or null if not set
-      return link || null;
+      return { link: link || null, autoGenGoogleMeet: false };
     case "google_meet":
-      // Use recruiter's custom Google Meet link, or null if not set
-      return link || null;
+      // Auto-generate via Google Calendar API if connected, fallback to static link
+      return { link: link || null, autoGenGoogleMeet: true };
     case "ms_teams":
-      // Use recruiter's custom Teams link, or null if not set
-      return link || null;
+      return { link: link || null, autoGenGoogleMeet: false };
     default:
-      return `https://meet.jit.si/${uniqueId}`;
+      return { link: `https://meet.jit.si/${uniqueId}`, autoGenGoogleMeet: false };
   }
 }
 
@@ -195,12 +193,24 @@ export async function createCalendarEvent(params: {
     params.startTime.getTime() + params.durationMinutes * 60 * 1000
   );
 
-  const meetLink = await generateMeetLink();
+  const { link: meetLink, autoGenGoogleMeet } = await generateMeetLink();
 
   try {
     const tz = await getTimezone();
+
+    // Build conference data for auto-generating Google Meet links
+    const conferenceData = autoGenGoogleMeet
+      ? {
+          createRequest: {
+            requestId: `careslink-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+            conferenceSolutionKey: { type: "hangoutsMeet" },
+          },
+        }
+      : undefined;
+
     const event = await cal.events.insert({
       calendarId,
+      conferenceDataVersion: autoGenGoogleMeet ? 1 : undefined,
       requestBody: {
         summary: params.summary,
         description: `${params.description}\n\nCandidate: ${params.attendeeEmail}${meetLink ? `\n\nJoin video call: ${meetLink}` : ""}`,
@@ -213,6 +223,8 @@ export async function createCalendarEvent(params: {
           dateTime: endTime.toISOString(),
           timeZone: tz,
         },
+        attendees: [{ email: params.attendeeEmail }],
+        conferenceData,
         reminders: {
           useDefault: false,
           overrides: [
@@ -222,10 +234,17 @@ export async function createCalendarEvent(params: {
       },
     });
 
+    // Extract the auto-generated Google Meet link from the event
+    const generatedMeetLink = autoGenGoogleMeet
+      ? event.data.conferenceData?.entryPoints?.find(
+          (ep) => ep.entryPointType === "video"
+        )?.uri || meetLink
+      : meetLink;
+
     return {
       eventId: event.data.id || "",
       calendarLink: event.data.htmlLink || "",
-      meetLink,
+      meetLink: generatedMeetLink,
     };
   } catch (err) {
     console.error("Google Calendar error:", err);

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay,
 } from "date-fns";
 import {
-  ChevronLeft, ChevronRight, Clock, Save, Loader2, X,
-  Ban, Check, Globe, Timer, Link2, Unlink, Video,
+  ChevronLeft, ChevronRight, ChevronDown, Clock, Save, Loader2, X,
+  Ban, Check, Globe, Timer, Link2, Unlink,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -66,6 +66,20 @@ function formatSlotTime(slotIndex: number): string {
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return m === 0 ? `${h12} ${ampm}` : `${h12}:${m.toString().padStart(2, "0")}`;
 }
+
+const VIDEO_PLATFORMS = [
+  { value: "jitsi", label: "Jitsi Meet (Free)", src: "/jitsi.png" },
+  { value: "zoom", label: "Zoom", src: "/zoom.webp" },
+  { value: "google_meet", label: "Google Meet", src: "/google-meet.webp" },
+  { value: "ms_teams", label: "Microsoft Teams", src: "/teams.webp" },
+];
+
+const VIDEO_PLATFORM_ICONS: Record<string, { src: string; alt: string }> = {
+  jitsi: { src: "/jitsi.png", alt: "Jitsi Meet" },
+  zoom: { src: "/zoom.webp", alt: "Zoom" },
+  google_meet: { src: "/google-meet.webp", alt: "Google Meet" },
+  ms_teams: { src: "/teams.webp", alt: "Microsoft Teams" },
+};
 
 function formatHourLabel(slotIndex: number): string {
   const totalMins = GRID_START * 60 + slotIndex * SLOT_MINS;
@@ -139,6 +153,9 @@ export default function CalendarPage() {
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalOauthAvailable, setGcalOauthAvailable] = useState(false);
 
+  const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
+  const videoDropdownRef = useRef<HTMLDivElement>(null);
+
   // Load data
   useEffect(() => {
     Promise.all([
@@ -186,6 +203,17 @@ export default function CalendarPage() {
   useEffect(() => {
     fetchOverrides(currentMonth);
   }, [currentMonth, fetchOverrides]);
+
+  // Close video dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (videoDropdownRef.current && !videoDropdownRef.current.contains(e.target as Node)) {
+        setVideoDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Global mouseup to end drag
   useEffect(() => {
@@ -427,19 +455,69 @@ export default function CalendarPage() {
             </select>
             {tzSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />}
           </div>
-          <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm">
-            <Video className="h-4 w-4 text-[#0090d9]" />
-            <select
-              value={videoPlatform}
-              onChange={(e) => handleVideoPlatformChange(e.target.value)}
-              className="bg-transparent text-sm font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
+          <div className="relative" ref={videoDropdownRef}>
+            <button
+              onClick={() => setVideoDropdownOpen((prev) => !prev)}
+              className="flex items-center gap-2.5 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm hover:border-[#c8d0da] transition-colors"
             >
-              <option value="jitsi">Jitsi Meet (Free)</option>
-              <option value="zoom">Zoom</option>
-              <option value="google_meet">Google Meet</option>
-              <option value="ms_teams">Microsoft Teams</option>
-            </select>
-            {videoSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />}
+              <Image
+                src={VIDEO_PLATFORM_ICONS[videoPlatform]?.src || "/jitsi.png"}
+                alt={VIDEO_PLATFORM_ICONS[videoPlatform]?.alt || "Video"}
+                width={20}
+                height={20}
+                className="rounded-sm"
+              />
+              <span className="text-sm font-medium text-[#1a2b3c]">
+                {VIDEO_PLATFORMS.find((p) => p.value === videoPlatform)?.label || "Select"}
+              </span>
+              {videoSaving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />
+              ) : (
+                <ChevronDown className={cn("h-3.5 w-3.5 text-[#8a95a3] transition-transform", videoDropdownOpen && "rotate-180")} />
+              )}
+            </button>
+
+            {videoDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1.5 w-64 rounded-xl border border-[#e2e8f0] bg-white shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="py-1.5">
+                  {VIDEO_PLATFORMS.map((platform) => {
+                    const isActive = videoPlatform === platform.value;
+                    return (
+                      <button
+                        key={platform.value}
+                        onClick={() => {
+                          handleVideoPlatformChange(platform.value);
+                          setVideoDropdownOpen(false);
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors",
+                          isActive
+                            ? "bg-[#f0f7ff]"
+                            : "hover:bg-[#f8fafc]"
+                        )}
+                      >
+                        <Image
+                          src={platform.src}
+                          alt={platform.label}
+                          width={24}
+                          height={24}
+                          className="rounded-md"
+                        />
+                        <span className={cn(
+                          "text-sm font-medium",
+                          isActive ? "text-[#0090d9]" : "text-[#1a2b3c]"
+                        )}>
+                          {platform.label}
+                        </span>
+                        {isActive && (
+                          <Check className="h-4 w-4 text-[#0090d9] ml-auto" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Google Calendar compact */}
@@ -472,12 +550,35 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {/* Auto-generated Google Meet info */}
+      {videoPlatform === "google_meet" && gcalConnected && (
+        <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
+              <Image src="/google-meet.webp" alt="Google Meet" width={24} height={24} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-emerald-800">Google Meet - Auto-Generated</p>
+              <p className="text-xs text-emerald-600">
+                A unique Google Meet link will be automatically created for each booking via your connected Google Calendar. No manual link needed.
+              </p>
+            </div>
+            <Check className="h-5 w-5 text-emerald-500 ml-auto flex-shrink-0" />
+          </div>
+        </div>
+      )}
+
       {/* Custom Video Link */}
-      {videoPlatform !== "jitsi" && (
+      {videoPlatform !== "jitsi" && !(videoPlatform === "google_meet" && gcalConnected) && (
         <div className="mb-6 rounded-xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
-              <Video className="h-5 w-5 text-[#0090d9]" />
+              <Image
+                src={VIDEO_PLATFORM_ICONS[videoPlatform]?.src || "/jitsi.png"}
+                alt={VIDEO_PLATFORM_ICONS[videoPlatform]?.alt || "Video"}
+                width={24}
+                height={24}
+              />
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-[#1a2b3c] mb-2">

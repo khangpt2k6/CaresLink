@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay,
+  startOfWeek, endOfWeek, addWeeks, subWeeks, addDays,
 } from "date-fns";
 import {
   ChevronLeft, ChevronRight, ChevronDown, Clock, Save, Loader2, X,
@@ -12,33 +13,31 @@ import {
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-// Grid config: 7 AM -> 9 PM, 30-min slots
-const GRID_START = 7;
-const GRID_END = 21;
+// Grid config: 0 AM -> 12 AM (24h), 30-min slots
+const GRID_START = 0;
+const GRID_END = 24;
 const SLOT_MINS = 30;
 const SLOTS_PER_HOUR = 60 / SLOT_MINS;
-const TOTAL_SLOTS = (GRID_END - GRID_START) * SLOTS_PER_HOUR; // 28
+const TOTAL_SLOTS = (GRID_END - GRID_START) * SLOTS_PER_HOUR; // 48
 
-// Mon first
-const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon first for schedule
 const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const TIMEZONES = [
-  { value: "America/New_York", label: "Eastern Time (ET)" },
-  { value: "America/Chicago", label: "Central Time (CT)" },
-  { value: "America/Denver", label: "Mountain Time (MT)" },
-  { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
-  { value: "America/Anchorage", label: "Alaska Time (AKT)" },
-  { value: "Pacific/Honolulu", label: "Hawaii Time (HT)" },
-  { value: "Europe/London", label: "Greenwich Mean Time (GMT)" },
-  { value: "Europe/Paris", label: "Central European Time (CET)" },
-  { value: "Asia/Tokyo", label: "Japan Standard Time (JST)" },
-  { value: "Asia/Shanghai", label: "China Standard Time (CST)" },
-  { value: "Asia/Kolkata", label: "India Standard Time (IST)" },
-  { value: "Asia/Ho_Chi_Minh", label: "Indochina Time (ICT)" },
-  { value: "Australia/Sydney", label: "Australian Eastern Time (AET)" },
-  { value: "UTC", label: "Coordinated Universal Time (UTC)" },
+  { value: "America/New_York", label: "Eastern Time (ET)", short: "EST" },
+  { value: "America/Chicago", label: "Central Time (CT)", short: "CST" },
+  { value: "America/Denver", label: "Mountain Time (MT)", short: "MST" },
+  { value: "America/Los_Angeles", label: "Pacific Time (PT)", short: "PST" },
+  { value: "America/Anchorage", label: "Alaska Time (AKT)", short: "AKST" },
+  { value: "Pacific/Honolulu", label: "Hawaii Time (HT)", short: "HST" },
+  { value: "Europe/London", label: "Greenwich Mean Time (GMT)", short: "GMT" },
+  { value: "Europe/Paris", label: "Central European Time (CET)", short: "CET" },
+  { value: "Asia/Tokyo", label: "Japan Standard Time (JST)", short: "JST" },
+  { value: "Asia/Shanghai", label: "China Standard Time (CST)", short: "CST" },
+  { value: "Asia/Kolkata", label: "India Standard Time (IST)", short: "IST" },
+  { value: "Asia/Ho_Chi_Minh", label: "Indochina Time (ICT)", short: "ICT" },
+  { value: "Australia/Sydney", label: "Australian Eastern Time (AET)", short: "AEST" },
+  { value: "UTC", label: "Coordinated Universal Time (UTC)", short: "UTC" },
 ];
 
 interface AvailabilityDay {
@@ -58,13 +57,20 @@ interface DateOverride {
   reason: string | null;
 }
 
+function formatHour(hour: number): string {
+  if (hour === 0 || hour === 24) return "12 AM";
+  if (hour === 12) return "12 PM";
+  if (hour < 12) return `${hour} AM`;
+  return `${hour - 12} PM`;
+}
+
 function formatSlotTime(slotIndex: number): string {
   const totalMins = GRID_START * 60 + slotIndex * SLOT_MINS;
-  const h = Math.floor(totalMins / 60);
+  const h = Math.floor(totalMins / 60) % 24;
   const m = totalMins % 60;
-  const ampm = h < 12 ? "AM" : "PM";
+  const ampm = h < 12 || h === 24 ? "AM" : "PM";
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return m === 0 ? `${h12} ${ampm}` : `${h12}:${m.toString().padStart(2, "0")}`;
+  return m === 0 ? `${h12} ${ampm}` : `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
 const VIDEO_PLATFORMS = [
@@ -81,15 +87,7 @@ const VIDEO_PLATFORM_ICONS: Record<string, { src: string; alt: string }> = {
   ms_teams: { src: "/teams.webp", alt: "Microsoft Teams" },
 };
 
-function formatHourLabel(slotIndex: number): string {
-  const totalMins = GRID_START * 60 + slotIndex * SLOT_MINS;
-  const h = Math.floor(totalMins / 60);
-  const ampm = h < 12 ? "AM" : "PM";
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12} ${ampm}`;
-}
-
-// slotGrid[dayIndex 0-6][slotIndex 0-27]  (dayIndex: 0=Mon...6=Sun)
+// slotGrid[dayIndex 0-6][slotIndex 0-47]  (dayIndex: 0=Mon...6=Sun)
 function scheduleToGrid(schedule: AvailabilityDay[]): boolean[][] {
   const grid = Array.from({ length: 7 }, () => Array(TOTAL_SLOTS).fill(false));
   schedule.forEach((day) => {
@@ -124,6 +122,16 @@ function gridToSchedule(schedule: AvailabilityDay[], slotGrid: boolean[][]): Ava
   });
 }
 
+// Get current time position as percentage of 24h
+function getCurrentTimePosition(): { percent: number; hours: number; minutes: number } {
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const totalMinutes = hours * 60 + minutes;
+  const percent = (totalMinutes / (24 * 60)) * 100;
+  return { percent, hours, minutes };
+}
+
 export default function CalendarPage() {
   const [schedule, setSchedule] = useState<AvailabilityDay[]>([]);
   const [slotGrid, setSlotGrid] = useState<boolean[][]>(
@@ -134,6 +142,9 @@ export default function CalendarPage() {
 
   const [overrides, setOverrides] = useState<DateOverride[]>([]);
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
+  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
+    startOfWeek(new Date(), { weekStartsOn: 0 })
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -155,6 +166,33 @@ export default function CalendarPage() {
 
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
   const videoDropdownRef = useRef<HTMLDivElement>(null);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+
+  const [currentTime, setCurrentTime] = useState(getCurrentTimePosition());
+
+  // Week days for the calendar view
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
+  }, [currentWeekStart]);
+
+  // Current time ticker
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(getCurrentTimePosition());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Scroll to ~8 AM on mount
+  useEffect(() => {
+    if (gridScrollRef.current && !loading) {
+      const hourHeight = 60; // each hour row is 60px
+      gridScrollRef.current.scrollTop = 8 * hourHeight;
+    }
+  }, [loading]);
+
+  // Timezone short label
+  const tzShort = TIMEZONES.find((tz) => tz.value === timezone)?.short || "EST";
 
   // Load data
   useEffect(() => {
@@ -204,6 +242,14 @@ export default function CalendarPage() {
     fetchOverrides(currentMonth);
   }, [currentMonth, fetchOverrides]);
 
+  // Sync mini calendar month when week changes
+  useEffect(() => {
+    const midWeek = addDays(currentWeekStart, 3);
+    if (!isSameMonth(midWeek, currentMonth)) {
+      setCurrentMonth(startOfMonth(midWeek));
+    }
+  }, [currentWeekStart, currentMonth]);
+
   // Close video dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -221,6 +267,12 @@ export default function CalendarPage() {
     window.addEventListener("mouseup", up);
     return () => window.removeEventListener("mouseup", up);
   }, []);
+
+  // Map a calendar date to its slotGrid day index (0=Mon...6=Sun)
+  const dateToDayIndex = (date: Date): number => {
+    const jsDay = getDay(date); // 0=Sun
+    return DAYS_ORDER.indexOf(jsDay);
+  };
 
   // Slot interaction
   const handleSlotMouseDown = (dIdx: number, sIdx: number) => {
@@ -353,7 +405,7 @@ export default function CalendarPage() {
     setOverrideReason("");
   };
 
-  // Calendar helpers
+  // Mini calendar helpers
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
@@ -369,21 +421,25 @@ export default function CalendarPage() {
   const getOverride = (date: Date) =>
     overrides.find((o) => isSameDay(new Date(o.date), date));
 
-  // Check if a slot is the start of a contiguous block
+  // Check if date is in current viewed week
+  const isInCurrentWeek = (date: Date) => {
+    const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
+    return date >= currentWeekStart && date <= weekEnd;
+  };
+
+  // Block start/end helpers for availability display
   const isBlockStart = (dIdx: number, sIdx: number) => {
     if (!slotGrid[dIdx]?.[sIdx]) return false;
     if (sIdx === 0) return true;
     return !slotGrid[dIdx]?.[sIdx - 1];
   };
 
-  // Check if a slot is the end of a contiguous block
   const isBlockEnd = (dIdx: number, sIdx: number) => {
     if (!slotGrid[dIdx]?.[sIdx]) return false;
     if (sIdx === TOTAL_SLOTS - 1) return true;
     return !slotGrid[dIdx]?.[sIdx + 1];
   };
 
-  // Get block info for labeling
   const getBlockLabel = (dIdx: number, sIdx: number) => {
     if (!isBlockStart(dIdx, sIdx)) return null;
     let end = sIdx;
@@ -392,6 +448,27 @@ export default function CalendarPage() {
     const endTime = formatSlotTime(end + 1);
     const slotCount = end - sIdx + 1;
     return { startTime, endTime, slotCount };
+  };
+
+  // Navigation
+  const goToPrevWeek = () => setCurrentWeekStart(subWeeks(currentWeekStart, 1));
+  const goToNextWeek = () => setCurrentWeekStart(addWeeks(currentWeekStart, 1));
+  const goToToday = () => {
+    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
+    // Scroll to current time
+    if (gridScrollRef.current) {
+      const now = new Date();
+      const targetScroll = Math.max(0, (now.getHours() - 1) * 60);
+      gridScrollRef.current.scrollTo({ top: targetScroll, behavior: "smooth" });
+    }
+  };
+
+  // Format current time for display
+  const formatCurrentTime = () => {
+    const { hours, minutes } = currentTime;
+    const ampm = hours < 12 ? "AM" : "PM";
+    const h12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+    return `${h12}:${minutes.toString().padStart(2, "0")} ${ampm}`;
   };
 
   if (loading) {
@@ -403,134 +480,99 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-xl font-bold text-[#1a2b3c]">Calendar & Availability</h1>
-            <p className="text-sm text-[#8a95a3] mt-0.5">Manage your weekly schedule, block dates, and configure meeting settings</p>
-          </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className={cn(
-              "flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all shadow-sm",
-              saved
-                ? "bg-emerald-500 text-white shadow-emerald-200"
-                : "bg-[#0090d9] text-white hover:bg-[#007bc0] shadow-blue-200 hover:shadow-md"
-            )}
+    <div className="p-4 max-w-[1600px] mx-auto h-[calc(100vh-64px)] flex flex-col">
+      {/* Top bar: Settings */}
+      <div className="mb-3 flex flex-wrap items-center gap-3 relative z-30">
+        <div className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2">
+          <Timer className="h-4 w-4 text-[#6b7280]" />
+          <select
+            value={duration}
+            onChange={(e) => handleDurationChange(Number(e.target.value))}
+            className="bg-transparent text-sm text-[#374151] focus:outline-none cursor-pointer"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-            {saved ? "Saved!" : "Save Changes"}
-          </button>
+            <option value={30}>30 min</option>
+            <option value={45}>45 min</option>
+            <option value={60}>60 min</option>
+            <option value={90}>90 min</option>
+          </select>
+          {durSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#6b7280]" />}
         </div>
 
-        {/* Settings bar */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm">
-            <Timer className="h-4 w-4 text-[#0090d9]" />
-            <select
-              value={duration}
-              onChange={(e) => handleDurationChange(Number(e.target.value))}
-              className="bg-transparent text-sm font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
-            >
-              <option value={30}>30 min</option>
-              <option value={45}>45 min</option>
-              <option value={60}>60 min</option>
-              <option value={90}>90 min</option>
-            </select>
-            {durSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />}
-          </div>
-          <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm">
-            <Globe className="h-4 w-4 text-[#0090d9]" />
-            <select
-              value={timezone}
-              onChange={(e) => handleTimezoneChange(e.target.value)}
-              className="bg-transparent text-sm font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
-            >
-              {TIMEZONES.map((tz) => (
-                <option key={tz.value} value={tz.value}>{tz.label}</option>
-              ))}
-            </select>
-            {tzSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />}
-          </div>
-          <div className="relative" ref={videoDropdownRef}>
-            <button
-              onClick={() => setVideoDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-2.5 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm hover:border-[#c8d0da] transition-colors"
-            >
-              <Image
-                src={VIDEO_PLATFORM_ICONS[videoPlatform]?.src || "/jitsi.png"}
-                alt={VIDEO_PLATFORM_ICONS[videoPlatform]?.alt || "Video"}
-                width={20}
-                height={20}
-                className="rounded-sm"
-              />
-              <span className="text-sm font-medium text-[#1a2b3c]">
-                {VIDEO_PLATFORMS.find((p) => p.value === videoPlatform)?.label || "Select"}
-              </span>
-              {videoSaving ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />
-              ) : (
-                <ChevronDown className={cn("h-3.5 w-3.5 text-[#8a95a3] transition-transform", videoDropdownOpen && "rotate-180")} />
-              )}
-            </button>
+        <div className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2">
+          <Globe className="h-4 w-4 text-[#6b7280]" />
+          <select
+            value={timezone}
+            onChange={(e) => handleTimezoneChange(e.target.value)}
+            className="bg-transparent text-sm text-[#374151] focus:outline-none cursor-pointer"
+          >
+            {TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>{tz.label}</option>
+            ))}
+          </select>
+          {tzSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#6b7280]" />}
+        </div>
 
-            {videoDropdownOpen && (
-              <div className="absolute top-full left-0 mt-1.5 w-64 rounded-xl border border-[#e2e8f0] bg-white shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
-                <div className="py-1.5">
-                  {VIDEO_PLATFORMS.map((platform) => {
-                    const isActive = videoPlatform === platform.value;
-                    return (
-                      <button
-                        key={platform.value}
-                        onClick={() => {
-                          handleVideoPlatformChange(platform.value);
-                          setVideoDropdownOpen(false);
-                        }}
-                        className={cn(
-                          "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors",
-                          isActive
-                            ? "bg-[#f0f7ff]"
-                            : "hover:bg-[#f8fafc]"
-                        )}
-                      >
-                        <Image
-                          src={platform.src}
-                          alt={platform.label}
-                          width={24}
-                          height={24}
-                          className="rounded-md"
-                        />
-                        <span className={cn(
-                          "text-sm font-medium",
-                          isActive ? "text-[#0090d9]" : "text-[#1a2b3c]"
-                        )}>
-                          {platform.label}
-                        </span>
-                        {isActive && (
-                          <Check className="h-4 w-4 text-[#0090d9] ml-auto" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+        <div className="relative" ref={videoDropdownRef}>
+          <button
+            onClick={() => setVideoDropdownOpen((prev) => !prev)}
+            className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:border-[#d1d5db] transition-colors"
+          >
+            <Image
+              src={VIDEO_PLATFORM_ICONS[videoPlatform]?.src || "/jitsi.png"}
+              alt={VIDEO_PLATFORM_ICONS[videoPlatform]?.alt || "Video"}
+              width={18}
+              height={18}
+              className="rounded-sm"
+            />
+            <span className="text-sm text-[#374151]">
+              {VIDEO_PLATFORMS.find((p) => p.value === videoPlatform)?.label || "Select"}
+            </span>
+            {videoSaving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-[#6b7280]" />
+            ) : (
+              <ChevronDown className={cn("h-3.5 w-3.5 text-[#9ca3af] transition-transform", videoDropdownOpen && "rotate-180")} />
             )}
-          </div>
+          </button>
+          {videoDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 w-60 rounded-lg border border-[#e5e7eb] bg-white shadow-lg z-50 overflow-hidden">
+              <div className="py-1">
+                {VIDEO_PLATFORMS.map((platform) => {
+                  const isActive = videoPlatform === platform.value;
+                  return (
+                    <button
+                      key={platform.value}
+                      onClick={() => {
+                        handleVideoPlatformChange(platform.value);
+                        setVideoDropdownOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                        isActive ? "bg-blue-50" : "hover:bg-gray-50"
+                      )}
+                    >
+                      <Image src={platform.src} alt={platform.label} width={22} height={22} className="rounded" />
+                      <span className={cn("text-sm", isActive ? "text-blue-600 font-medium" : "text-[#374151]")}>{platform.label}</span>
+                      {isActive && <Check className="h-4 w-4 text-blue-600 ml-auto" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
 
+        <div className="ml-auto flex items-center gap-3">
           {/* Google Calendar connect/disconnect */}
           {gcalConnected ? (
             <button
               onClick={handleDisconnectGoogleCalendar}
               disabled={gcalLoading}
-              className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 shadow-sm ml-auto hover:bg-red-50 hover:border-red-200 transition-colors group"
+              className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 hover:bg-red-50 hover:border-red-200 transition-colors group"
             >
-              <Image src="/google-calendar.svg" alt="Google Calendar" width={18} height={18} />
+              <Image src="/google-calendar.svg" alt="Google Calendar" width={16} height={16} />
               <span className="text-xs font-medium text-emerald-600 group-hover:hidden">Connected</span>
               <span className="text-xs font-medium text-red-500 hidden group-hover:inline">Disconnect</span>
-              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#8a95a3]" /> : (
+              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#9ca3af]" /> : (
                 <>
                   <Check className="h-3.5 w-3.5 text-emerald-500 group-hover:hidden" />
                   <Unlink className="h-3.5 w-3.5 text-red-400 hidden group-hover:block" />
@@ -541,370 +583,433 @@ export default function CalendarPage() {
             <button
               onClick={handleConnectGoogleCalendar}
               disabled={gcalLoading}
-              className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2 shadow-sm ml-auto hover:bg-[#f0f8ff] hover:border-[#0090d9]/30 transition-colors"
+              className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:bg-blue-50 hover:border-blue-200 transition-colors"
             >
-              <Image src="/google-calendar.svg" alt="Google Calendar" width={18} height={18} />
-              <span className="text-xs font-medium text-[#0090d9]">Connect Calendar</span>
-              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" /> : <Link2 className="h-3.5 w-3.5 text-[#0090d9]" />}
+              <Image src="/google-calendar.svg" alt="Google Calendar" width={16} height={16} />
+              <span className="text-xs font-medium text-blue-600">Connect Calendar</span>
+              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" /> : <Link2 className="h-3.5 w-3.5 text-blue-600" />}
             </button>
           ) : (
-            <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2 shadow-sm ml-auto">
-              <Image src="/google-calendar.svg" alt="Google Calendar" width={18} height={18} />
-              <span className="text-xs text-[#b0b7c0]">Not configured</span>
+            <div className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2">
+              <Image src="/google-calendar.svg" alt="Google Calendar" width={16} height={16} />
+              <span className="text-xs text-[#9ca3af]">Not configured</span>
             </div>
           )}
+
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all",
+              saved
+                ? "bg-emerald-500 text-white"
+                : "bg-[#0090d9] text-white hover:bg-[#007bc0]"
+            )}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            {saved ? "Saved!" : "Save"}
+          </button>
         </div>
       </div>
 
       {/* Auto-generated Google Meet info */}
       {videoPlatform === "google_meet" && gcalConnected && (
-        <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
-              <Image src="/google-meet.webp" alt="Google Meet" width={24} height={24} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-emerald-800">Google Meet - Auto-Generated</p>
-              <p className="text-xs text-emerald-600">
-                A unique Google Meet link will be automatically created for each booking via your connected Google Calendar. No manual link needed.
-              </p>
-            </div>
-            <Check className="h-5 w-5 text-emerald-500 ml-auto flex-shrink-0" />
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3">
+          <Image src="/google-meet.webp" alt="Google Meet" width={20} height={20} />
+          <div className="flex-1">
+            <p className="text-xs font-medium text-emerald-800">Google Meet links will be auto-generated for each booking</p>
           </div>
+          <Check className="h-4 w-4 text-emerald-500 flex-shrink-0" />
         </div>
       )}
 
       {/* Custom Video Link */}
       {videoPlatform !== "jitsi" && !(videoPlatform === "google_meet" && gcalConnected) && (
-        <div className="mb-6 rounded-xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
-              <Image
-                src={VIDEO_PLATFORM_ICONS[videoPlatform]?.src || "/jitsi.png"}
-                alt={VIDEO_PLATFORM_ICONS[videoPlatform]?.alt || "Video"}
-                width={24}
-                height={24}
-              />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-[#1a2b3c] mb-2">
-                {videoPlatform === "zoom" ? "Zoom" : videoPlatform === "google_meet" ? "Google Meet" : "Microsoft Teams"} Meeting Link
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="url"
-                  value={videoLink}
-                  onChange={(e) => setVideoLink(e.target.value)}
-                  placeholder={
-                    videoPlatform === "zoom" ? "https://zoom.us/j/..." :
-                    videoPlatform === "google_meet" ? "https://meet.google.com/..." :
-                    "https://teams.microsoft.com/l/meetup-join/..."
-                  }
-                  className="flex-1 rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm text-[#1a2b3c] placeholder:text-[#b0b7c0] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20"
-                />
-                <button
-                  onClick={handleVideoLinkSave}
-                  disabled={videoSaving}
-                  className="rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-medium text-white hover:bg-[#007bc0] transition-colors"
-                >
-                  {videoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-                </button>
-              </div>
-            </div>
-          </div>
+        <div className="mb-3 rounded-lg border border-[#e5e7eb] bg-white px-4 py-3 flex items-center gap-3">
+          <Image
+            src={VIDEO_PLATFORM_ICONS[videoPlatform]?.src || "/jitsi.png"}
+            alt={VIDEO_PLATFORM_ICONS[videoPlatform]?.alt || "Video"}
+            width={20}
+            height={20}
+          />
+          <input
+            type="url"
+            value={videoLink}
+            onChange={(e) => setVideoLink(e.target.value)}
+            placeholder={
+              videoPlatform === "zoom" ? "https://zoom.us/j/..." :
+              videoPlatform === "google_meet" ? "https://meet.google.com/..." :
+              "https://teams.microsoft.com/l/meetup-join/..."
+            }
+            className="flex-1 text-sm text-[#374151] placeholder:text-[#9ca3af] focus:outline-none bg-transparent"
+          />
+          <button
+            onClick={handleVideoLinkSave}
+            disabled={videoSaving}
+            className="rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bc0] transition-colors"
+          >
+            {videoSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+          </button>
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* Left: Visual week grid */}
-        <div className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm overflow-hidden">
-          {/* Grid header */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#e2e8f0] bg-gradient-to-r from-[#f8fafc] to-white">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0090d9]/10">
-                <Clock className="h-4 w-4 text-[#0090d9]" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-[#1a2b3c]">Weekly Schedule</h2>
-                <p className="text-[11px] text-[#8a95a3]">Click or drag to set your availability</p>
+      {/* Main calendar area */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Week calendar */}
+        <div className="flex-1 flex flex-col border border-[#e5e7eb] rounded-lg bg-white overflow-hidden min-h-0">
+          {/* Calendar header with navigation */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e7eb] relative z-10">
+            <div className="flex items-center gap-4">
+              <h2 className="text-lg font-semibold text-[#374151]">
+                {format(currentWeekStart, "MMMM yyyy")}
+              </h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={goToPrevWeek}
+                  className="rounded-md p-1 text-[#6b7280] hover:bg-gray-100 transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={goToNextWeek}
+                  className="rounded-md p-1 text-[#6b7280] hover:bg-gray-100 transition-colors"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-[11px] text-[#8a95a3]">
-              <div className="flex items-center gap-1.5">
-                <div className="h-3 w-3 rounded-[3px] bg-gradient-to-b from-[#0090d9] to-[#0078c0]" />
-                <span>Available</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="h-3 w-3 rounded-[3px] border border-[#e2e8f0] bg-[#fafbfc]" />
-                <span>Unavailable</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-[#374151] cursor-default"
+              >
+                Week
+              </button>
+              <button
+                onClick={goToToday}
+                className="rounded-md border border-[#e5e7eb] px-3 py-1.5 text-sm font-medium text-[#374151] hover:bg-gray-100 active:bg-gray-200 transition-colors cursor-pointer"
+              >
+                Today
+              </button>
             </div>
           </div>
 
-          {/* Grid */}
-          <div className="select-none">
-            {/* Day headers */}
-            <div
-              className="grid border-b border-[#e2e8f0] bg-[#f8fafc]"
-              style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}
-            >
-              <div className="border-r border-[#edf0f4]" />
-              {DAY_LABELS.map((d, dIdx) => {
-                const hasAvail = slotGrid[dIdx]?.some(Boolean);
-                return (
-                  <div
-                    key={d}
-                    className={cn(
-                      "py-3 text-center border-r border-[#edf0f4] last:border-r-0",
-                    )}
-                  >
-                    <div className={cn(
-                      "text-[11px] font-bold tracking-wider",
-                      hasAvail ? "text-[#0090d9]" : "text-[#8a95a3]"
-                    )}>
-                      {d}
-                    </div>
-                  </div>
-                );
-              })}
+          {/* Day column headers */}
+          <div
+            className="grid border-b border-[#e5e7eb]"
+            style={{ gridTemplateColumns: "60px repeat(7, 1fr)" }}
+          >
+            <div className="py-3 text-center text-[10px] font-medium text-[#9ca3af] uppercase border-r border-[#f3f4f6]">
+              {tzShort}
             </div>
+            {weekDays.map((date) => {
+              const dayName = format(date, "EEE");
+              const dayNum = format(date, "d");
+              const today = isToday(date);
+              return (
+                <div
+                  key={date.toISOString()}
+                  className="py-3 text-center border-r border-[#f3f4f6] last:border-r-0"
+                >
+                  <span className={cn(
+                    "text-xs",
+                    today ? "text-blue-600 font-semibold" : "text-[#6b7280]"
+                  )}>
+                    {dayName}
+                  </span>
+                  <span className={cn(
+                    "ml-1.5 text-xs",
+                    today
+                      ? "inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white font-semibold"
+                      : "text-[#6b7280]"
+                  )}>
+                    {dayNum}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
 
-            {/* Time rows */}
-            <div className="relative overflow-y-auto max-h-[560px]">
-              {Array.from({ length: TOTAL_SLOTS }, (_, sIdx) => {
-                const isHourStart = sIdx % SLOTS_PER_HOUR === 0;
-                return (
-                  <div
-                    key={sIdx}
-                    className="grid"
-                    style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}
-                  >
-                    {/* Time label */}
-                    <div className={cn(
-                      "flex h-[24px] items-center justify-end pr-3 border-r border-[#edf0f4]",
-                      isHourStart && "border-t border-[#e2e8f0]"
-                    )}>
-                      {isHourStart && (
-                        <span className="text-[10px] font-medium text-[#8a95a3] leading-none -translate-y-[1px]">
-                          {formatHourLabel(sIdx)}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Day cells */}
-                    {Array.from({ length: 7 }, (_, dIdx) => {
-                      const active = slotGrid[dIdx]?.[sIdx] ?? false;
-                      const blockStart = isBlockStart(dIdx, sIdx);
-                      const blockEnd = isBlockEnd(dIdx, sIdx);
-                      const label = blockStart ? getBlockLabel(dIdx, sIdx) : null;
-
-                      return (
-                        <div
-                          key={dIdx}
-                          className={cn(
-                            "h-[24px] cursor-pointer border-r border-[#f0f2f5] last:border-r-0 relative group",
-                            isHourStart && !active && "border-t border-[#edf0f4]",
-                            isHourStart && active && "border-t border-[#0078c0]/30",
-                            active
-                              ? cn(
-                                  "bg-gradient-to-r from-[#0090d9] to-[#00a1f0]",
-                                  blockStart && "rounded-t-[4px]",
-                                  blockEnd && "rounded-b-[4px]",
-                                )
-                              : "bg-white hover:bg-[#f0f7ff]",
-                            !active && !isHourStart && "border-t border-[#f5f7fa]",
-                          )}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            handleSlotMouseDown(dIdx, sIdx);
-                          }}
-                          onMouseEnter={() => handleSlotMouseEnter(dIdx, sIdx)}
-                        >
-                          {/* Block label on the first slot */}
-                          {label && label.slotCount >= 2 && (
-                            <div className="absolute inset-x-0 top-[2px] flex justify-center pointer-events-none z-10">
-                              <span className="text-[9px] font-semibold text-white/90 drop-shadow-sm truncate px-1">
-                                {label.startTime} - {label.endTime}
-                              </span>
-                            </div>
-                          )}
-                          {/* Hover tooltip for empty slots */}
-                          {!active && (
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                              <div className="w-1.5 h-1.5 rounded-full bg-[#0090d9]/30" />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+          {/* Scrollable time grid */}
+          <div ref={gridScrollRef} className="flex-1 overflow-y-auto select-none relative">
+            {/* Current time indicator */}
+            {weekDays.some(isToday) && (
+              <div
+                className="absolute left-0 right-0 z-20 pointer-events-none"
+                style={{ top: `${currentTime.hours * 60 + currentTime.minutes}px` }}
+              >
+                <div className="relative" style={{ marginLeft: "60px" }}>
+                  {/* Time badge */}
+                  <div className="absolute -left-[60px] -translate-y-1/2 w-[60px] flex justify-end pr-1">
+                    <span className="bg-red-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                      {formatCurrentTime()}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  {/* Red line */}
+                  <div className="h-[2px] bg-red-500 relative">
+                    <div className="absolute -left-1.5 -top-[4px] w-[10px] h-[10px] rounded-full bg-red-500" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Hour rows */}
+            {Array.from({ length: 24 }, (_, hour) => (
+              <div
+                key={hour}
+                className="grid relative"
+                style={{
+                  gridTemplateColumns: "60px repeat(7, 1fr)",
+                  height: "60px",
+                }}
+              >
+                {/* Hour label */}
+                <div className="relative border-r border-[#f3f4f6]">
+                  {hour > 0 && (
+                    <span className="absolute -top-[9px] right-2 text-[11px] text-[#9ca3af]">
+                      {formatHour(hour)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Day cells - 2 slots per hour */}
+                {weekDays.map((date, colIdx) => {
+                  const dIdx = dateToDayIndex(date);
+                  const sIdx1 = hour * SLOTS_PER_HOUR; // :00
+                  const sIdx2 = hour * SLOTS_PER_HOUR + 1; // :30
+                  const active1 = slotGrid[dIdx]?.[sIdx1] ?? false;
+                  const active2 = slotGrid[dIdx]?.[sIdx2] ?? false;
+
+                  const blockStart1 = isBlockStart(dIdx, sIdx1);
+                  const blockEnd1 = isBlockEnd(dIdx, sIdx1);
+                  const blockStart2 = isBlockStart(dIdx, sIdx2);
+                  const blockEnd2 = isBlockEnd(dIdx, sIdx2);
+                  const label = blockStart1 ? getBlockLabel(dIdx, sIdx1) : null;
+
+                  return (
+                    <div
+                      key={colIdx}
+                      className="border-r border-[#f3f4f6] last:border-r-0 relative"
+                    >
+                      {/* Top half (:00) */}
+                      <div
+                        className={cn(
+                          "absolute inset-x-0 top-0 h-[30px] cursor-pointer border-t border-[#f3f4f6] transition-colors",
+                          active1
+                            ? cn(
+                                "bg-[#e0f2fe] border-l-2 border-l-[#0090d9]",
+                                blockStart1 && "rounded-t",
+                                blockEnd1 && "rounded-b",
+                              )
+                            : "hover:bg-[#f9fafb]",
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSlotMouseDown(dIdx, sIdx1);
+                        }}
+                        onMouseEnter={() => handleSlotMouseEnter(dIdx, sIdx1)}
+                      >
+                        {label && label.slotCount >= 2 && (
+                          <div className="absolute inset-x-1 top-1 pointer-events-none z-10">
+                            <span className="text-[10px] font-medium text-[#0090d9] leading-none">
+                              Available
+                            </span>
+                            <br />
+                            <span className="text-[9px] text-[#0090d9]/70">
+                              {label.startTime} - {label.endTime}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {/* Bottom half (:30) */}
+                      <div
+                        className={cn(
+                          "absolute inset-x-0 top-[30px] h-[30px] cursor-pointer border-t border-dashed border-[#f3f4f6] transition-colors",
+                          active2
+                            ? cn(
+                                "bg-[#e0f2fe] border-l-2 border-l-[#0090d9]",
+                                blockStart2 && "rounded-t",
+                                blockEnd2 && "rounded-b",
+                              )
+                            : "hover:bg-[#f9fafb]",
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSlotMouseDown(dIdx, sIdx2);
+                        }}
+                        onMouseEnter={() => handleSlotMouseEnter(dIdx, sIdx2)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Right sidebar */}
-        <div className="space-y-6">
-          {/* Monthly Calendar */}
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <button
-                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                className="rounded-lg p-1.5 text-[#8a95a3] hover:bg-[#f5f7fa] hover:text-[#1a2b3c] transition-colors"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <h3 className="text-sm font-bold text-[#1a2b3c]">
-                {format(currentMonth, "MMMM yyyy")}
+        {/* Right sidebar - Mini calendar + Summary */}
+        <div className="w-[280px] flex-shrink-0 space-y-4 overflow-y-auto">
+          {/* Mini Calendar */}
+          <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-[#374151]">
+                {format(currentMonth, "yyyy")}
               </h3>
-              <button
-                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                className="rounded-lg p-1.5 text-[#8a95a3] hover:bg-[#f5f7fa] hover:text-[#1a2b3c] transition-colors"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                  className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                  className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
 
-            <div className="mb-2 grid grid-cols-7 text-center">
-              {DAY_SHORT.map((d) => (
-                <span key={d} className="py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#8a95a3]">{d}</span>
+            {/* Month name */}
+            <div className="text-center mb-2">
+              <span className="text-xs font-medium text-[#6b7280]">
+                {format(currentMonth, "MMMM")}
+              </span>
+            </div>
+
+            {/* Day of week headers */}
+            <div className="grid grid-cols-7 mb-1">
+              {["SU", "MO", "TU", "WE", "TH", "FR", "SA"].map((d) => (
+                <span key={d} className="py-1 text-center text-[10px] font-medium text-[#9ca3af]">{d}</span>
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-1">
+            {/* Date cells */}
+            <div className="grid grid-cols-7 gap-y-0.5">
               {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
               {days.map((date) => {
-                const available = isDateAvailable(date);
-                const override = getOverride(date);
                 const today = isToday(date);
+                const inWeek = isInCurrentWeek(date);
+                const override = getOverride(date);
                 const isSelected = selectedDate && isSameDay(date, selectedDate);
                 return (
                   <button
                     key={date.toISOString()}
                     onClick={() => setSelectedDate(isSelected ? null : date)}
                     className={cn(
-                      "relative flex h-10 w-full items-center justify-center rounded-xl text-xs font-semibold transition-all",
-                      today && "ring-2 ring-[#0090d9] ring-offset-1",
-                      isSelected && "ring-2 ring-[#0090d9] scale-110 shadow-md",
-                      available && !override
-                        ? "bg-gradient-to-b from-[#e8f4fd] to-[#d4ecfa] text-[#0078c0] hover:from-[#d4ecfa] hover:to-[#c0e2f7]"
-                        : override && !override.available
-                          ? "bg-gradient-to-b from-red-50 to-red-100 text-red-500 hover:from-red-100 hover:to-red-150"
-                          : !available
-                            ? "bg-[#f5f7fa] text-[#b0b7c0] hover:bg-[#edf0f4] hover:text-[#8a95a3]"
-                            : "bg-gradient-to-b from-emerald-50 to-emerald-100 text-emerald-600 hover:from-emerald-100 hover:to-emerald-150"
+                      "flex h-7 w-full items-center justify-center text-[11px] transition-all relative",
+                      inWeek && "bg-blue-50",
+                      today
+                        ? "font-bold"
+                        : "font-normal",
+                      today && !isSelected
+                        ? "text-white"
+                        : inWeek
+                          ? "text-[#374151]"
+                          : "text-[#6b7280] hover:bg-gray-50",
+                      isSelected && "ring-1 ring-blue-500 rounded",
+                      override && !override.available && "text-red-400",
                     )}
                   >
-                    {format(date, "d")}
+                    {today && !isSelected && (
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="w-6 h-6 rounded-full bg-blue-600" />
+                      </span>
+                    )}
+                    <span className="relative z-10">{format(date, "d")}</span>
                     {override && (
-                      <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-400 ring-2 ring-white" />
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400" />
                     )}
                   </button>
                 );
               })}
             </div>
-
-            <div className="mt-4 flex flex-wrap gap-3 text-[10px] text-[#8a95a3]">
-              <div className="flex items-center gap-1.5">
-                <div className="h-3 w-3 rounded-[3px] bg-gradient-to-b from-[#e8f4fd] to-[#d4ecfa]" />
-                Available
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="h-3 w-3 rounded-[3px] bg-[#f5f7fa]" />
-                Unavailable
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="h-3 w-3 rounded-[3px] bg-gradient-to-b from-red-50 to-red-100 ring-1 ring-red-200" />
-                Blocked
-              </div>
-            </div>
-
-            {selectedDate && isSameMonth(selectedDate, currentMonth) && (
-              <div className="mt-4 rounded-xl border border-[#e2e8f0] bg-gradient-to-b from-[#f8fafc] to-white p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-sm font-bold text-[#1a2b3c]">
-                    {format(selectedDate, "EEEE, MMM d")}
-                  </span>
-                  <button onClick={() => setSelectedDate(null)} className="rounded-lg p-1 hover:bg-[#f5f7fa]">
-                    <X className="h-4 w-4 text-[#8a95a3]" />
-                  </button>
-                </div>
-                {getOverride(selectedDate) ? (
-                  <div>
-                    <p className="mb-3 text-xs text-[#8a95a3]">
-                      This date is blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
-                    </p>
-                    <button
-                      onClick={() => toggleDateOverride(selectedDate)}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 transition-colors"
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                      Unblock Date
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      type="text"
-                      value={overrideReason}
-                      onChange={(e) => setOverrideReason(e.target.value)}
-                      placeholder="Reason (optional)"
-                      className="mb-3 w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-xs focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20"
-                    />
-                    <button
-                      onClick={() => toggleDateOverride(selectedDate)}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition-colors"
-                    >
-                      <Ban className="h-3.5 w-3.5" />
-                      Block This Date
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* Quick stats */}
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-bold text-[#1a2b3c] mb-3">Schedule Summary</h3>
+          {/* Date override panel */}
+          {selectedDate && isSameMonth(selectedDate, currentMonth) && (
+            <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-[#374151]">
+                  {format(selectedDate, "EEEE, MMM d")}
+                </span>
+                <button onClick={() => setSelectedDate(null)} className="rounded p-0.5 hover:bg-gray-100">
+                  <X className="h-3.5 w-3.5 text-[#9ca3af]" />
+                </button>
+              </div>
+              {getOverride(selectedDate) ? (
+                <div>
+                  <p className="mb-3 text-xs text-[#6b7280]">
+                    This date is blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
+                  </p>
+                  <button
+                    onClick={() => toggleDateOverride(selectedDate)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600 transition-colors"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    Unblock Date
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    type="text"
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    placeholder="Reason (optional)"
+                    className="mb-3 w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                  <button
+                    onClick={() => toggleDateOverride(selectedDate)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white hover:bg-red-600 transition-colors"
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                    Block This Date
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Schedule Summary */}
+          <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
+            <h3 className="text-sm font-semibold text-[#374151] mb-3">Schedule Summary</h3>
             <div className="space-y-2">
               {DAY_LABELS.map((d, dIdx) => {
                 const slots = slotGrid[dIdx];
                 const activeCount = slots?.filter(Boolean).length ?? 0;
-                const hours = (activeCount * SLOT_MINS) / 60;
                 const first = slots?.findIndex(Boolean) ?? -1;
                 const reversedFirst = slots ? [...slots].reverse().findIndex(Boolean) : -1;
                 const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
                 return (
-                  <div key={d} className="flex items-center gap-3">
+                  <div key={d} className="flex items-center gap-2">
                     <span className={cn(
-                      "text-[11px] font-bold w-8",
-                      activeCount > 0 ? "text-[#0090d9]" : "text-[#c8cdd4]"
+                      "text-[10px] font-semibold w-7",
+                      activeCount > 0 ? "text-[#374151]" : "text-[#d1d5db]"
                     )}>
-                      {d.slice(0, 3)}
+                      {d}
                     </span>
-                    <div className="flex-1 h-2 rounded-full bg-[#f0f2f5] overflow-hidden">
+                    <div className="flex-1 h-1.5 rounded-full bg-[#f3f4f6] overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#0090d9] to-[#00a1f0] transition-all duration-300"
+                        className="h-full rounded-full bg-[#0090d9] transition-all duration-300"
                         style={{ width: `${(activeCount / TOTAL_SLOTS) * 100}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-[#8a95a3] w-24 text-right">
+                    <span className="text-[10px] text-[#9ca3af] w-20 text-right">
                       {activeCount > 0 ? (
                         <>{formatSlotTime(first)} - {formatSlotTime(last + 1)}</>
                       ) : (
-                        <span className="text-[#c8cdd4]">Unavailable</span>
+                        <span className="text-[#d1d5db]">Unavailable</span>
                       )}
                     </span>
                   </div>
                 );
               })}
             </div>
-            <div className="mt-3 pt-3 border-t border-[#f0f2f5]">
+            <div className="mt-3 pt-3 border-t border-[#f3f4f6]">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-[#8a95a3]">Total weekly hours</span>
-                <span className="text-sm font-bold text-[#0090d9]">
+                <span className="text-[10px] text-[#9ca3af]">Total weekly hours</span>
+                <span className="text-sm font-semibold text-[#0090d9]">
                   {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
                 </span>
               </div>

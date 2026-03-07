@@ -87,6 +87,17 @@ model GoogleCalendarToken {
   updatedAt    DateTime @updatedAt
 }
 
+// Microsoft (Outlook/365) Calendar OAuth tokens (single row for the recruiter)
+model MicrosoftCalendarToken {
+  id           String   @id @default("default")
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  email        String?  // connected Microsoft account email
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Event {
   id          String     @id @default(cuid())
   type        String

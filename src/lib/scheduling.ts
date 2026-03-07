@@ -1,13 +1,37 @@
 import { prisma } from "./db";
 import {
-  createCalendarEvent,
-  getFreeBusySlots,
-  isCalendarConfigured,
+  createCalendarEvent as createGoogleEvent,
+  getFreeBusySlots as getGoogleBusy,
+  isCalendarConfigured as isGoogleConfigured,
 } from "./google-calendar";
+import {
+  createCalendarEvent as createMicrosoftEvent,
+  getFreeBusySlots as getMicrosoftBusy,
+  isCalendarConfigured as isMicrosoftConfigured,
+} from "./microsoft-calendar";
 import { sendEmail } from "./sendgrid";
 import { generateICS } from "./ics";
 import { getTimezone, getTimezoneAbbr, formatInTimezone, getDefaultDuration } from "./timezone";
 import { addMinutes } from "date-fns";
+
+// Merge busy slots from all connected calendar providers
+async function getAllBusySlots(
+  timeMin: Date,
+  timeMax: Date
+): Promise<{ start: string; end: string }[]> {
+  const [googleConfigured, microsoftConfigured] = await Promise.all([
+    isGoogleConfigured(),
+    isMicrosoftConfigured(),
+  ]);
+
+  const busyPromises: Promise<{ start: string; end: string }[]>[] = [];
+  if (googleConfigured) busyPromises.push(getGoogleBusy(timeMin, timeMax));
+  if (microsoftConfigured) busyPromises.push(getMicrosoftBusy(timeMin, timeMax));
+
+  if (busyPromises.length === 0) return [];
+  const results = await Promise.all(busyPromises);
+  return results.flat();
+}
 
 // Sanitize hour values — detect corrupted denormalized floats
 function sanitizeHour(value: number, fallback: number): number {
@@ -67,10 +91,8 @@ export async function findNextAvailableSlots(
   const now = new Date();
   const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  // Get busy slots from Google Calendar if configured
-  const busySlots = (await isCalendarConfigured())
-    ? await getFreeBusySlots(now, weekFromNow)
-    : [];
+  // Get busy slots from all connected calendars
+  const busySlots = await getAllBusySlots(now, weekFromNow);
 
   const slots: Date[] = [];
   for (let d = 1; d <= 7; d++) {
@@ -140,9 +162,7 @@ export async function findPublicAvailableSlots(
         cancelled: false,
       },
     }),
-    isCalendarConfigured().then((configured) =>
-      configured ? getFreeBusySlots(rangeStart, endOfMonth) : []
-    ),
+    getAllBusySlots(rangeStart, endOfMonth),
   ]);
 
   // Index weekly schedule by dayOfWeek
@@ -244,24 +264,43 @@ export async function scheduleInterview(
   const candidate = await prisma.candidate.findUnique({ where: { id: candidateId } });
   if (!candidate) throw new Error("Candidate not found");
 
-  // Create Google Calendar event if configured
+  // Create calendar events on all connected providers
   let calendarEventId: string | null = null;
   let calendarLink: string | null = null;
   let meetLink: string | null = null;
+  let msCalendarEventId: string | null = null;
 
-  if (await isCalendarConfigured()) {
-    const calResult = await createCalendarEvent({
-      summary: `Interview: ${candidate.name} - ${candidate.position}`,
-      description: `Interview with ${candidate.name} for the ${candidate.position} position.\n\nCandidate email: ${candidate.email}${candidate.phone ? `\nPhone: ${candidate.phone}` : ""}`,
-      startTime: scheduledAt,
-      durationMinutes: duration,
-      attendeeEmail: candidate.email,
-      location,
-    });
+  const eventParams = {
+    summary: `Interview: ${candidate.name} - ${candidate.position}`,
+    description: `Interview with ${candidate.name} for the ${candidate.position} position.\n\nCandidate email: ${candidate.email}${candidate.phone ? `\nPhone: ${candidate.phone}` : ""}`,
+    startTime: scheduledAt,
+    durationMinutes: duration,
+    attendeeEmail: candidate.email,
+    location,
+  };
+
+  const [googleConfigured, microsoftConfigured] = await Promise.all([
+    isGoogleConfigured(),
+    isMicrosoftConfigured(),
+  ]);
+
+  if (googleConfigured) {
+    const calResult = await createGoogleEvent(eventParams);
     if (calResult) {
       calendarEventId = calResult.eventId;
       calendarLink = calResult.calendarLink;
       meetLink = calResult.meetLink;
+    }
+  }
+
+  if (microsoftConfigured) {
+    const msResult = await createMicrosoftEvent(eventParams);
+    if (msResult) {
+      // Use Microsoft as primary if Google didn't produce results
+      if (!calendarEventId) calendarEventId = msResult.eventId;
+      if (!calendarLink) calendarLink = msResult.calendarLink;
+      if (!meetLink) meetLink = msResult.meetLink;
+      msCalendarEventId = msResult.eventId;
     }
   }
 
@@ -271,7 +310,9 @@ export async function scheduleInterview(
       position: candidate.position,
       scheduledAt,
       duration,
-      location: meetLink ? "Google Meet" : location,
+      location: meetLink
+        ? (meetLink.includes("teams.microsoft") ? "Microsoft Teams" : "Google Meet")
+        : location,
       calendarEventId,
       calendarLink,
       meetLink,

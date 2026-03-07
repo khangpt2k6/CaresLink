@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { scheduleInterview } from "@/lib/scheduling";
-import { deleteCalendarEvent } from "@/lib/google-calendar";
+import { deleteCalendarEvent as deleteGoogleEvent } from "@/lib/google-calendar";
+import { deleteCalendarEvent as deleteMicrosoftEvent } from "@/lib/microsoft-calendar";
 import { getDefaultDuration } from "@/lib/timezone";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -53,7 +54,10 @@ export async function POST(request: NextRequest) {
 
       for (const old of existingInterviews) {
         if (old.calendarEventId) {
-          await deleteCalendarEvent(old.calendarEventId).catch(() => {});
+          await Promise.all([
+            deleteGoogleEvent(old.calendarEventId).catch(() => {}),
+            deleteMicrosoftEvent(old.calendarEventId).catch(() => {}),
+          ]);
         }
         await prisma.interview.update({
           where: { id: old.id },

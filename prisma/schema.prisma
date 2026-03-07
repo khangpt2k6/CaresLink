@@ -73,6 +73,7 @@ model Settings {
   defaultDuration Int    @default(60) // interview duration in minutes (30, 45, 60, 90)
   videoPlatform   String @default("jitsi") // jitsi, zoom, google_meet, ms_teams
   videoLink       String? // custom meeting link for zoom/teams (optional)
+  scheduleVersion Int    @default(0) // bumped when recruiter updates availability
 }
 
 // Google Calendar OAuth tokens (single row for the recruiter)

@@ -41,14 +41,17 @@ export function DatePicker({
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
-  const calendarStart = addDays(monthStart, -getDay(monthStart));
 
   const days = useMemo(() => {
     const allDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
-    const prefixDays = eachDayOfInterval({
-      start: calendarStart,
-      end: addDays(monthStart, -1),
-    });
+    const prefixCount = getDay(monthStart); // 0 (Sun) to 6 (Sat)
+    const prefixDays =
+      prefixCount > 0
+        ? eachDayOfInterval({
+            start: addDays(monthStart, -prefixCount),
+            end: addDays(monthStart, -1),
+          })
+        : [];
     const totalCells = prefixDays.length + allDays.length;
     const suffixCount = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
     const suffixDays =
@@ -59,7 +62,7 @@ export function DatePicker({
           })
         : [];
     return [...prefixDays, ...allDays, ...suffixDays];
-  }, [currentMonth, monthStart, monthEnd, calendarStart]);
+  }, [currentMonth, monthStart, monthEnd]);
 
   const canGoPrev = !isBefore(startOfMonth(currentMonth), startOfMonth(new Date()));
 

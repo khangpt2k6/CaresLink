@@ -78,7 +78,7 @@ function CancelContent() {
     <div className="flex min-h-screen flex-col items-center px-4 py-8">
       {/* Header */}
       <div className="mb-8 flex flex-col items-center gap-3">
-        <Image src="/careslink_logo.jpg" alt="CaresLink" width={48} height={48} className="rounded-full" />
+        <Image src="/careslink.png" alt="CaresLink" width={48} height={48} className="rounded-full" />
         <div className="text-center">
           <h1 className="text-xl font-bold text-[#37352f]">CaresLink</h1>
           <p className="text-sm text-[#9b9a97]">Cancel Interview</p>

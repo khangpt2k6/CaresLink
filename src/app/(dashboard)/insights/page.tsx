@@ -17,9 +17,7 @@ interface Insight {
 interface Metrics {
   totalCandidates: number;
   emailsSent: number;
-  smsSent: number;
   responseRateEmail: number;
-  responseRateSms: number;
   interviewsScheduled: number;
   noShowCount: number;
   noShowRate: number;
@@ -28,7 +26,7 @@ interface Metrics {
   hiresCount: number;
 }
 
-const emptyMetrics = { emailsSent: 0, smsSent: 0, responseRateEmail: 0, responseRateSms: 0, noShowRate: 0 };
+const emptyMetrics = { emailsSent: 0, responseRateEmail: 0, noShowRate: 0 };
 
 export default function InsightsPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);

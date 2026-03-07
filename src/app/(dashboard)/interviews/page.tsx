@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { InterviewCard } from "@/components/interview-card";
 import { format } from "date-fns";
 import { Calendar, Loader2, Plus, Clock, CalendarPlus, X } from "lucide-react";
@@ -21,6 +22,8 @@ interface Interview {
 interface Candidate { id: string; name: string; email: string; position: string; }
 
 export default function InterviewsPage() {
+  const { data: session } = useSession();
+  const isRecruiter = session?.user?.role === "EMPLOYER";
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
   const [reminderLoading, setReminderLoading] = useState<string | null>(null);
@@ -75,15 +78,17 @@ export default function InterviewsPage() {
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#1a2b3c]">Interviews</h1>
-          <p className="text-sm text-[#5a6b7c]">Upcoming sessions & reminders</p>
+          <p className="text-sm text-[#5a6b7c]">{isRecruiter ? "Upcoming sessions & reminders" : "Your upcoming interviews"}</p>
         </div>
-        <button onClick={handleOpenBooking} className="inline-flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0077b6] transition-colors">
-          <Plus className="h-4 w-4" /> Book Interview
-        </button>
+        {isRecruiter && (
+          <button onClick={handleOpenBooking} className="inline-flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0077b6] transition-colors">
+            <Plus className="h-4 w-4" /> Book Interview
+          </button>
+        )}
       </div>
 
-      {/* Booking Panel */}
-      {showBooking && (
+      {/* Booking Panel — recruiter only */}
+      {isRecruiter && showBooking && (
         <div className="card mb-4 p-5 animate-in">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -149,13 +154,15 @@ export default function InterviewsPage() {
       ) : (
         <div className="space-y-2">
           {interviews.map((i) => (
-            <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} reminderLoading={reminderLoading} deleteLoading={deleteLoading} />
+            <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} reminderLoading={reminderLoading} deleteLoading={deleteLoading} showRecruiterActions={isRecruiter} />
           ))}
           {interviews.length === 0 && (
             <div className="card py-16 text-center">
               <Calendar className="mx-auto h-8 w-8 text-[#c4cdd8]" />
               <p className="mt-3 text-sm font-medium text-[#1a2b3c]">No upcoming interviews</p>
-              <p className="mt-1 text-xs text-[#8a95a3]">Click &quot;Book Interview&quot; to schedule one</p>
+              <p className="mt-1 text-xs text-[#8a95a3]">
+                {isRecruiter ? 'Click "Book Interview" to schedule one' : 'You have no upcoming interviews scheduled.'}
+              </p>
             </div>
           )}
         </div>

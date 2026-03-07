@@ -145,7 +145,7 @@ export default function BookPage() {
       {/* Header */}
       <div className="mb-8 flex flex-col items-center gap-3">
         <Image
-          src="/careslink_logo.jpg"
+          src="/careslink.png"
           alt="CaresLink"
           width={48}
           height={48}

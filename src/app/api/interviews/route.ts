@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/db";
 import { deleteCalendarEvent as deleteGoogleEvent } from "@/lib/google-calendar";
 import { deleteCalendarEvent as deleteMicrosoftEvent } from "@/lib/microsoft-calendar";
@@ -6,6 +7,14 @@ import { sendEmail } from "@/lib/sendgrid";
 import { getTimezone, getTimezoneAbbr, formatInTimezone } from "@/lib/timezone";
 
 export async function DELETE(request: NextRequest) {
+  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (token.role !== "EMPLOYER") {
+    return NextResponse.json({ error: "Only recruiters can cancel interviews. Use the cancel link from your email." }, { status: 403 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -98,12 +107,27 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const upcoming = searchParams.get("upcoming") !== "false";
 
+    const baseWhere = upcoming
+      ? { completed: false, noShow: false, cancelled: false, scheduledAt: { gte: new Date() } }
+      : {};
+
+    // Candidates only see their own interviews (matched by email)
+    const where =
+      token.role === "CANDIDATE" && token.email
+        ? { ...baseWhere, candidate: { email: { equals: String(token.email), mode: "insensitive" } } }
+        : baseWhere;
+
     const interviews = await prisma.interview.findMany({
-      where: upcoming ? { completed: false, noShow: false, cancelled: false, scheduledAt: { gte: new Date() } } : undefined,
+      where: Object.keys(where).length ? where : undefined,
       orderBy: { scheduledAt: "asc" },
       include: { candidate: true },
     });
@@ -115,6 +139,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+  if (!token?.sub) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (token.role !== "EMPLOYER") {
+    return NextResponse.json({ error: "Only recruiters can schedule interviews with candidates." }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
     const { candidateId, scheduledAt, duration = 60, location = "Video Call" } = body;

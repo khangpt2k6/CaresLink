@@ -8,6 +8,63 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum Role {
+  EMPLOYER
+  CANDIDATE
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  password       String?
+  role           Role?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  accounts              Account[]
+  sessions              Session[]
+  candidateAvailability CandidateAvailability[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 model Candidate {
   id        String   @id @default(cuid())
   name      String
@@ -96,6 +153,19 @@ model MicrosoftCalendarToken {
   email        String?  // connected Microsoft account email
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// Candidate weekly availability (recurring schedule per user)
+model CandidateAvailability {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek Int     // 0=Sunday, 1=Monday, ... 6=Saturday
+  startHour Float   // e.g. 9 = 9:00 AM, 9.5 = 9:30 AM
+  endHour   Float   // e.g. 17 = 5:00 PM, 17.5 = 5:30 PM
+  enabled   Boolean @default(true)
+
+  @@unique([userId, dayOfWeek])
 }
 
 model Event {

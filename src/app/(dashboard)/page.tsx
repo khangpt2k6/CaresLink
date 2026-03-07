@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { MetricCard, MetricsSection } from "@/components/metrics-cards";
+import { CandidateDashboard } from "@/components/candidate-dashboard";
 import {
   Users,
   CalendarCheck,
   AlertCircle,
   DollarSign,
   Mail,
-  MessageSquare,
   Bot,
   Lightbulb,
 } from "lucide-react";
@@ -17,9 +18,7 @@ import Link from "next/link";
 interface Metrics {
   totalCandidates: number;
   emailsSent: number;
-  smsSent: number;
   responseRateEmail: number;
-  responseRateSms: number;
   interviewsScheduled: number;
   noShowCount: number;
   noShowRate: number;
@@ -29,14 +28,21 @@ interface Metrics {
 }
 
 export default function DashboardPage() {
+  const { data: session } = useSession();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const isCandidate = session?.user?.role === "CANDIDATE";
 
   useEffect(() => {
+    if (isCandidate) return;
     fetch("/api/analytics?days=30")
       .then((r) => r.json())
       .then((d) => setMetrics(d.metrics))
       .catch(console.error);
-  }, []);
+  }, [isCandidate]);
+
+  if (isCandidate) {
+    return <CandidateDashboard />;
+  }
 
   return (
     <div className="p-6">
@@ -83,9 +89,7 @@ export default function DashboardPage() {
           <dl className="space-y-1">
             {[
               { icon: Mail, label: "Emails sent", val: metrics?.emailsSent },
-              { icon: MessageSquare, label: "SMS sent", val: metrics?.smsSent },
               { icon: Mail, label: "Email response", val: metrics ? `${(metrics.responseRateEmail * 100).toFixed(0)}%` : null },
-              { icon: MessageSquare, label: "SMS response", val: metrics ? `${(metrics.responseRateSms * 100).toFixed(0)}%` : null },
             ].map((row) => (
               <div
                 key={row.label}

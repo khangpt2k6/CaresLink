@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/db";
 
+async function requireEmployer(req: NextRequest) {
+  const token = await getToken({ req, secret: process.env.AUTH_SECRET });
+  if (!token?.sub) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  if (token.role !== "EMPLOYER") {
+    return { error: NextResponse.json({ error: "Only recruiters can manage candidates." }, { status: 403 }) };
+  }
+  return { token };
+}
+
 export async function PUT(request: NextRequest) {
+  const auth = await requireEmployer(request);
+  if (auth.error) return auth.error;
+
   try {
     const body = await request.json();
     const { id, name, email, phone, position } = body;
@@ -26,6 +41,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await requireEmployer(request);
+  if (auth.error) return auth.error;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -45,6 +63,9 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const auth = await requireEmployer(request);
+  if (auth.error) return auth.error;
+
   try {
     const { searchParams } = new URL(request.url);
     const position = searchParams.get("position") || undefined;
@@ -68,6 +89,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireEmployer(request);
+  if (auth.error) return auth.error;
+
   try {
     const body = await request.json();
     const { name, email, phone, position } = body;

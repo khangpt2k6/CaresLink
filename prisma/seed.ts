@@ -43,11 +43,9 @@ async function main() {
   await prisma.event.createMany({
     data: [
       { type: "email_sent", candidateId: candidate.id, channel: "email", cost: 0.02 },
-      { type: "sms_sent", candidateId: candidate.id, channel: "sms", cost: 0.05 },
       { type: "interview_scheduled", candidateId: candidate.id, interviewId: interview.id },
-      { type: "reminder_sent", candidateId: candidate.id, interviewId: interview.id, channel: "sms" },
+      { type: "reminder_sent", candidateId: candidate.id, interviewId: interview.id, channel: "email" },
       { type: "email_opened", candidateId: candidate.id, channel: "email" },
-      { type: "sms_replied", candidateId: candidate.id, channel: "sms" },
     ],
   });
 

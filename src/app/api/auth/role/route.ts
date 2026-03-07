@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
+  const token = await getToken({ req, secret: process.env.AUTH_SECRET });
 
-  if (!session?.user?.id) {
+  if (!token?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   }
 
   await prisma.user.update({
-    where: { id: session.user.id },
+    where: { id: token.sub },
     data: { role },
   });
 

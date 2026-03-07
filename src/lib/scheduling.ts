@@ -117,18 +117,72 @@ export async function findPublicAvailableSlots(
   const rangeStart = startOfMonth > now ? startOfMonth : now;
   if (endOfMonth < now) return [];
 
-  const busySlots = (await isCalendarConfigured())
-    ? await getFreeBusySlots(rangeStart, endOfMonth)
-    : [];
+  // Batch all DB queries upfront (3 queries instead of 31+)
+  const [weeklySchedule, dateOverrides, existingInterviews, busySlots] = await Promise.all([
+    prisma.availability.findMany(),
+    prisma.dateOverride.findMany({
+      where: {
+        date: { gte: startOfMonth, lte: endOfMonth },
+      },
+    }),
+    prisma.interview.findMany({
+      where: {
+        scheduledAt: { gte: rangeStart, lte: endOfMonth },
+        completed: false,
+        noShow: false,
+        cancelled: false,
+      },
+    }),
+    isCalendarConfigured().then((configured) =>
+      configured ? getFreeBusySlots(rangeStart, endOfMonth) : []
+    ),
+  ]);
 
-  const existingInterviews = await prisma.interview.findMany({
-    where: {
-      scheduledAt: { gte: rangeStart, lte: endOfMonth },
-      completed: false,
-      noShow: false,
-      cancelled: false,
-    },
-  });
+  // Index weekly schedule by dayOfWeek
+  const scheduleByDay = new Map(weeklySchedule.map((s) => [s.dayOfWeek, s]));
+
+  // Index overrides by date string
+  const overrideByDate = new Map(
+    dateOverrides.map((o) => {
+      const d = new Date(o.date);
+      d.setHours(0, 0, 0, 0);
+      return [d.toISOString().split("T")[0], o];
+    })
+  );
+
+  // Helper: get slot starts for a date from cached data
+  function getSlotStartsFromCache(date: Date): { hour: number; minute: number }[] {
+    const dateKey = new Date(date);
+    dateKey.setHours(0, 0, 0, 0);
+    const dateStr = dateKey.toISOString().split("T")[0];
+    const override = overrideByDate.get(dateStr);
+
+    let startHour: number;
+    let endHour: number;
+
+    if (override) {
+      if (!override.available) return [];
+      startHour = override.startHour ?? 9;
+      endHour = override.endHour ?? 17;
+    } else {
+      const schedule = scheduleByDay.get(date.getDay());
+      if (!schedule || !schedule.enabled) return [];
+      startHour = schedule.startHour;
+      endHour = schedule.endHour;
+    }
+
+    if (startHour >= endHour) return [];
+
+    const slotsList: { hour: number; minute: number }[] = [];
+    let cur = startHour;
+    while (cur < endHour) {
+      const h = Math.floor(cur);
+      const m = Math.round((cur - h) * 60);
+      slotsList.push({ hour: h, minute: m });
+      cur += 0.5;
+    }
+    return slotsList;
+  }
 
   const slots: Date[] = [];
   const current = new Date(rangeStart);
@@ -136,7 +190,7 @@ export async function findPublicAvailableSlots(
   if (current < now) current.setDate(current.getDate() + 1);
 
   while (current <= endOfMonth) {
-    const slotStarts = await getAvailableSlotStarts(current);
+    const slotStarts = getSlotStartsFromCache(current);
 
     if (slotStarts.length === 0) {
       current.setDate(current.getDate() + 1);

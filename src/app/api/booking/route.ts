@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { scheduleInterview } from "@/lib/scheduling";
 import { deleteCalendarEvent } from "@/lib/google-calendar";
+import { getDefaultDuration } from "@/lib/timezone";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, phone, position, scheduledAt, duration = 60 } = body;
+    const { name, email, phone, position, scheduledAt } = body;
+    const duration = body.duration || await getDefaultDuration();
 
     if (!name || !email || !position || !scheduledAt) {
       return NextResponse.json(

@@ -9,6 +9,13 @@ import { generateICS } from "./ics";
 import { getTimezone, getTimezoneAbbr, formatInTimezone, getDefaultDuration } from "./timezone";
 import { addMinutes } from "date-fns";
 
+// Sanitize hour values — detect corrupted denormalized floats
+function sanitizeHour(value: number, fallback: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 24) return fallback;
+  if (value > 0 && value < 0.01) return fallback;
+  return value;
+}
+
 // Get available slot start times for a specific date (supports 30-min granularity)
 async function getAvailableSlotStarts(date: Date): Promise<{ hour: number; minute: number }[]> {
   const dayOfWeek = date.getDay();
@@ -28,8 +35,8 @@ async function getAvailableSlotStarts(date: Date): Promise<{ hour: number; minut
   } else {
     const schedule = await prisma.availability.findUnique({ where: { dayOfWeek } });
     if (!schedule || !schedule.enabled) return [];
-    startHour = schedule.startHour;
-    endHour = schedule.endHour;
+    startHour = sanitizeHour(schedule.startHour, 9);
+    endHour = sanitizeHour(schedule.endHour, 17);
   }
 
   if (startHour >= endHour) return [];
@@ -167,8 +174,8 @@ export async function findPublicAvailableSlots(
     } else {
       const schedule = scheduleByDay.get(date.getDay());
       if (!schedule || !schedule.enabled) return [];
-      startHour = schedule.startHour;
-      endHour = schedule.endHour;
+      startHour = sanitizeHour(schedule.startHour, 9);
+      endHour = sanitizeHour(schedule.endHour, 17);
     }
 
     if (startHour >= endHour) return [];

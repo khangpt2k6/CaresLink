@@ -70,15 +70,12 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-screen">
-      {/* Left - Illustration */}
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-[#eef6fb] p-12">
-        <Image
-          src="/careslink_cover.jpg"
+      {/* Left - Animated Illustration */}
+      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-[#eef6fb] p-12 relative overflow-hidden">
+        <img
+          src="/aniamted.gif"
           alt="CaresLink"
-          width={600}
-          height={500}
           className="max-w-full h-auto rounded-2xl"
-          priority
         />
       </div>
 

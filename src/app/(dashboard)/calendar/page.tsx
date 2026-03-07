@@ -1,12 +1,27 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay } from "date-fns";
-import { ChevronLeft, ChevronRight, Clock, Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink, Video } from "lucide-react";
+import {
+  format, startOfMonth, endOfMonth, eachDayOfInterval,
+  isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay,
+} from "date-fns";
+import {
+  ChevronLeft, ChevronRight, Clock, Save, Loader2, X,
+  Ban, Check, Globe, Timer, Link2, Unlink, Video,
+} from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+// Grid config: 7 AM -> 9 PM, 30-min slots
+const GRID_START = 7;
+const GRID_END = 21;
+const SLOT_MINS = 30;
+const SLOTS_PER_HOUR = 60 / SLOT_MINS;
+const TOTAL_SLOTS = (GRID_END - GRID_START) * SLOTS_PER_HOUR; // 28
+
+// Mon first
+const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const TIMEZONES = [
@@ -43,27 +58,66 @@ interface DateOverride {
   reason: string | null;
 }
 
-function HourSelect({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[11px] text-[#8a95a3] w-10">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="rounded-md border border-[#e2e8f0] bg-white px-2 py-1 text-xs text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]"
-      >
-        {Array.from({ length: 24 }, (_, i) => (
-          <option key={i} value={i}>
-            {i === 0 ? "12 AM" : i < 12 ? `${i} AM` : i === 12 ? "12 PM" : `${i - 12} PM`}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+function formatSlotTime(slotIndex: number): string {
+  const totalMins = GRID_START * 60 + slotIndex * SLOT_MINS;
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return m === 0 ? `${h12} ${ampm}` : `${h12}:${m.toString().padStart(2, "0")}`;
+}
+
+function formatHourLabel(slotIndex: number): string {
+  const totalMins = GRID_START * 60 + slotIndex * SLOT_MINS;
+  const h = Math.floor(totalMins / 60);
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12} ${ampm}`;
+}
+
+// slotGrid[dayIndex 0-6][slotIndex 0-27]  (dayIndex: 0=Mon...6=Sun)
+function scheduleToGrid(schedule: AvailabilityDay[]): boolean[][] {
+  const grid = Array.from({ length: 7 }, () => Array(TOTAL_SLOTS).fill(false));
+  schedule.forEach((day) => {
+    if (!day.enabled) return;
+    const dIdx = DAYS_ORDER.indexOf(day.dayOfWeek);
+    if (dIdx === -1) return;
+    for (let s = 0; s < TOTAL_SLOTS; s++) {
+      const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+      if (slotHour >= day.startHour && slotHour < day.endHour) {
+        grid[dIdx][s] = true;
+      }
+    }
+  });
+  return grid;
+}
+
+function gridToSchedule(schedule: AvailabilityDay[], slotGrid: boolean[][]): AvailabilityDay[] {
+  return schedule.map((day) => {
+    const dIdx = DAYS_ORDER.indexOf(day.dayOfWeek);
+    if (dIdx === -1) return day;
+    const slots = slotGrid[dIdx];
+    const first = slots.findIndex(Boolean);
+    const reversedFirst = [...slots].reverse().findIndex(Boolean);
+    const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
+    if (first === -1) return { ...day, enabled: false, startHour: 9, endHour: 17 };
+    return {
+      ...day,
+      enabled: true,
+      startHour: GRID_START + first / SLOTS_PER_HOUR,
+      endHour: GRID_START + (last + 1) / SLOTS_PER_HOUR,
+    };
+  });
 }
 
 export default function CalendarPage() {
   const [schedule, setSchedule] = useState<AvailabilityDay[]>([]);
+  const [slotGrid, setSlotGrid] = useState<boolean[][]>(
+    () => Array.from({ length: 7 }, () => Array(TOTAL_SLOTS).fill(false))
+  );
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState(true);
+
   const [overrides, setOverrides] = useState<DateOverride[]>([]);
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [saving, setSaving] = useState(false);
@@ -71,6 +125,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [overrideReason, setOverrideReason] = useState("");
+
   const [timezone, setTimezone] = useState("America/New_York");
   const [tzSaving, setTzSaving] = useState(false);
   const [duration, setDuration] = useState(60);
@@ -78,12 +133,13 @@ export default function CalendarPage() {
   const [videoPlatform, setVideoPlatform] = useState("jitsi");
   const [videoLink, setVideoLink] = useState("");
   const [videoSaving, setVideoSaving] = useState(false);
+
   const [gcalConnected, setGcalConnected] = useState(false);
   const [gcalEmail, setGcalEmail] = useState<string | null>(null);
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalOauthAvailable, setGcalOauthAvailable] = useState(false);
 
-  // Fetch weekly schedule + timezone + Google Calendar status
+  // Load data
   useEffect(() => {
     Promise.all([
       fetch("/api/availability").then((r) => r.json()),
@@ -92,6 +148,7 @@ export default function CalendarPage() {
     ])
       .then(([scheduleData, settings, gcal]) => {
         setSchedule(scheduleData);
+        setSlotGrid(scheduleToGrid(scheduleData));
         if (settings?.timezone) setTimezone(settings.timezone);
         if (settings?.defaultDuration) setDuration(settings.defaultDuration);
         if (settings?.videoPlatform) setVideoPlatform(settings.videoPlatform);
@@ -104,15 +161,15 @@ export default function CalendarPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  // Handle Google Calendar OAuth redirect result
+  // Google Calendar OAuth redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const gcalResult = params.get("gcal");
     if (gcalResult === "connected") {
       setGcalConnected(true);
-      fetch("/api/google-calendar").then((r) => r.json()).then((gcal) => {
-        setGcalEmail(gcal?.email || null);
-      });
+      fetch("/api/google-calendar")
+        .then((r) => r.json())
+        .then((gcal) => setGcalEmail(gcal?.email || null));
       window.history.replaceState({}, "", window.location.pathname);
     } else if (gcalResult === "error") {
       window.history.replaceState({}, "", window.location.pathname);
@@ -123,23 +180,52 @@ export default function CalendarPage() {
   const fetchOverrides = useCallback(async (month: Date) => {
     const monthStr = format(month, "yyyy-MM");
     const res = await fetch(`/api/availability/overrides?month=${monthStr}`);
-    const data = await res.json();
-    setOverrides(data);
+    setOverrides(await res.json());
   }, []);
 
   useEffect(() => {
     fetchOverrides(currentMonth);
   }, [currentMonth, fetchOverrides]);
 
-  // Save weekly schedule
+  // Global mouseup to end drag
+  useEffect(() => {
+    const up = () => setIsDragging(false);
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  }, []);
+
+  // Slot interaction
+  const handleSlotMouseDown = (dIdx: number, sIdx: number) => {
+    const newVal = !slotGrid[dIdx][sIdx];
+    setDragValue(newVal);
+    setIsDragging(true);
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      g[dIdx][sIdx] = newVal;
+      return g;
+    });
+  };
+
+  const handleSlotMouseEnter = (dIdx: number, sIdx: number) => {
+    if (!isDragging) return;
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      g[dIdx][sIdx] = dragValue;
+      return g;
+    });
+  };
+
+  // Save schedule
   const handleSave = async () => {
     setSaving(true);
     try {
+      const newSchedule = gridToSchedule(schedule, slotGrid);
       await fetch("/api/availability", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ schedule }),
+        body: JSON.stringify({ schedule: newSchedule }),
       });
+      setSchedule(newSchedule);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -149,47 +235,7 @@ export default function CalendarPage() {
     }
   };
 
-  // Toggle day enabled
-  const toggleDay = (dayOfWeek: number) => {
-    setSchedule((prev) =>
-      prev.map((d) => (d.dayOfWeek === dayOfWeek ? { ...d, enabled: !d.enabled } : d))
-    );
-  };
-
-  // Update hours
-  const updateHours = (dayOfWeek: number, field: "startHour" | "endHour", value: number) => {
-    setSchedule((prev) =>
-      prev.map((d) => (d.dayOfWeek === dayOfWeek ? { ...d, [field]: value } : d))
-    );
-  };
-
-  // Block/unblock a specific date
-  const toggleDateOverride = async (date: Date) => {
-    const existing = overrides.find((o) => isSameDay(new Date(o.date), date));
-
-    if (existing) {
-      // Remove override
-      await fetch(`/api/availability/overrides?id=${existing.id}`, { method: "DELETE" });
-      setOverrides((prev) => prev.filter((o) => o.id !== existing.id));
-    } else {
-      // Block this date
-      const res = await fetch("/api/availability/overrides", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: date.toISOString(),
-          available: false,
-          reason: overrideReason || "Blocked",
-        }),
-      });
-      const data = await res.json();
-      setOverrides((prev) => [...prev, data]);
-    }
-    setSelectedDate(null);
-    setOverrideReason("");
-  };
-
-  // Save timezone
+  // Settings
   const handleTimezoneChange = async (tz: string) => {
     setTimezone(tz);
     setTzSaving(true);
@@ -201,7 +247,6 @@ export default function CalendarPage() {
     setTzSaving(false);
   };
 
-  // Save duration
   const handleDurationChange = async (dur: number) => {
     setDuration(dur);
     setDurSaving(true);
@@ -213,7 +258,6 @@ export default function CalendarPage() {
     setDurSaving(false);
   };
 
-  // Save video platform
   const handleVideoPlatformChange = async (platform: string) => {
     setVideoPlatform(platform);
     setVideoSaving(true);
@@ -225,7 +269,6 @@ export default function CalendarPage() {
     setVideoSaving(false);
   };
 
-  // Save custom video link
   const handleVideoLinkSave = async () => {
     setVideoSaving(true);
     await fetch("/api/settings", {
@@ -236,15 +279,13 @@ export default function CalendarPage() {
     setVideoSaving(false);
   };
 
-  // Connect Google Calendar via OAuth
+  // Google Calendar
   const handleConnectGoogleCalendar = async () => {
     setGcalLoading(true);
     try {
       const res = await fetch("/api/google-calendar", { method: "POST" });
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      }
+      if (data.url) window.location.href = data.url;
     } catch {
       // ignore
     } finally {
@@ -252,7 +293,6 @@ export default function CalendarPage() {
     }
   };
 
-  // Disconnect Google Calendar
   const handleDisconnectGoogleCalendar = async () => {
     setGcalLoading(true);
     try {
@@ -266,13 +306,31 @@ export default function CalendarPage() {
     }
   };
 
-  // Calendar rendering
+  // Date override
+  const toggleDateOverride = async (date: Date) => {
+    const existing = overrides.find((o) => isSameDay(new Date(o.date), date));
+    if (existing) {
+      await fetch(`/api/availability/overrides?id=${existing.id}`, { method: "DELETE" });
+      setOverrides((prev) => prev.filter((o) => o.id !== existing.id));
+    } else {
+      const res = await fetch("/api/availability/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: date.toISOString(), available: false, reason: overrideReason || "Blocked" }),
+      });
+      const data = await res.json();
+      setOverrides((prev) => [...prev, data]);
+    }
+    setSelectedDate(null);
+    setOverrideReason("");
+  };
+
+  // Calendar helpers
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  const startPad = getDay(monthStart); // 0-6
+  const startPad = getDay(monthStart);
 
-  // Check if a date is available based on schedule + overrides
   const isDateAvailable = (date: Date) => {
     const override = overrides.find((o) => isSameDay(new Date(o.date), date));
     if (override) return override.available;
@@ -283,6 +341,31 @@ export default function CalendarPage() {
   const getOverride = (date: Date) =>
     overrides.find((o) => isSameDay(new Date(o.date), date));
 
+  // Check if a slot is the start of a contiguous block
+  const isBlockStart = (dIdx: number, sIdx: number) => {
+    if (!slotGrid[dIdx]?.[sIdx]) return false;
+    if (sIdx === 0) return true;
+    return !slotGrid[dIdx]?.[sIdx - 1];
+  };
+
+  // Check if a slot is the end of a contiguous block
+  const isBlockEnd = (dIdx: number, sIdx: number) => {
+    if (!slotGrid[dIdx]?.[sIdx]) return false;
+    if (sIdx === TOTAL_SLOTS - 1) return true;
+    return !slotGrid[dIdx]?.[sIdx + 1];
+  };
+
+  // Get block info for labeling
+  const getBlockLabel = (dIdx: number, sIdx: number) => {
+    if (!isBlockStart(dIdx, sIdx)) return null;
+    let end = sIdx;
+    while (end < TOTAL_SLOTS - 1 && slotGrid[dIdx]?.[end + 1]) end++;
+    const startTime = formatSlotTime(sIdx);
+    const endTime = formatSlotTime(end + 1);
+    const slotCount = end - sIdx + 1;
+    return { startTime, endTime, slotCount };
+  };
+
   if (loading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -292,66 +375,112 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-[#1a2b3c]">Calendar & Availability</h1>
-          <p className="text-xs text-[#8a95a3]">Set your weekly schedule and block specific dates</p>
+    <div className="p-6 max-w-[1400px] mx-auto">
+      {/* Header */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl font-bold text-[#1a2b3c]">Calendar & Availability</h1>
+            <p className="text-sm text-[#8a95a3] mt-0.5">Manage your weekly schedule, block dates, and configure meeting settings</p>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={cn(
+              "flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all shadow-sm",
+              saved
+                ? "bg-emerald-500 text-white shadow-emerald-200"
+                : "bg-[#0090d9] text-white hover:bg-[#007bc0] shadow-blue-200 hover:shadow-md"
+            )}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            {saved ? "Saved!" : "Save Changes"}
+          </button>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5">
-            <Timer className="h-3.5 w-3.5 text-[#0090d9]" />
+
+        {/* Settings bar */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm">
+            <Timer className="h-4 w-4 text-[#0090d9]" />
             <select
               value={duration}
               onChange={(e) => handleDurationChange(Number(e.target.value))}
-              className="bg-transparent text-xs font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
+              className="bg-transparent text-sm font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
             >
               <option value={30}>30 min</option>
               <option value={45}>45 min</option>
               <option value={60}>60 min</option>
               <option value={90}>90 min</option>
             </select>
-            {durSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
+            {durSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />}
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5">
-            <Globe className="h-3.5 w-3.5 text-[#0090d9]" />
+          <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm">
+            <Globe className="h-4 w-4 text-[#0090d9]" />
             <select
               value={timezone}
               onChange={(e) => handleTimezoneChange(e.target.value)}
-              className="bg-transparent text-xs font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
+              className="bg-transparent text-sm font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
             >
               {TIMEZONES.map((tz) => (
-                <option key={tz.value} value={tz.value}>
-                  {tz.label}
-                </option>
+                <option key={tz.value} value={tz.value}>{tz.label}</option>
               ))}
             </select>
-            {tzSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
+            {tzSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />}
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5">
-            <Video className="h-3.5 w-3.5 text-[#0090d9]" />
+          <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm">
+            <Video className="h-4 w-4 text-[#0090d9]" />
             <select
               value={videoPlatform}
               onChange={(e) => handleVideoPlatformChange(e.target.value)}
-              className="bg-transparent text-xs font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
+              className="bg-transparent text-sm font-medium text-[#1a2b3c] focus:outline-none cursor-pointer"
             >
               <option value="jitsi">Jitsi Meet (Free)</option>
               <option value="zoom">Zoom</option>
               <option value="google_meet">Google Meet</option>
               <option value="ms_teams">Microsoft Teams</option>
             </select>
-            {videoSaving && <Loader2 className="h-3 w-3 animate-spin text-[#0090d9]" />}
+            {videoSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" />}
+          </div>
+
+          {/* Google Calendar compact */}
+          <div className="flex items-center gap-2 rounded-xl border border-[#e2e8f0] bg-white px-4 py-2 shadow-sm ml-auto">
+            <Image src="/google-calendar.svg" alt="Google Calendar" width={18} height={18} />
+            {gcalConnected ? (
+              <>
+                <span className="text-xs font-medium text-emerald-600">Connected</span>
+                <button
+                  onClick={handleDisconnectGoogleCalendar}
+                  disabled={gcalLoading}
+                  className="ml-1 rounded-md p-1 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                >
+                  {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                </button>
+              </>
+            ) : gcalOauthAvailable ? (
+              <button
+                onClick={handleConnectGoogleCalendar}
+                disabled={gcalLoading}
+                className="flex items-center gap-1 text-xs font-medium text-[#0090d9] hover:text-[#007bc0]"
+              >
+                {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                Connect
+              </button>
+            ) : (
+              <span className="text-xs text-[#b0b7c0]">Not configured</span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Custom Video Link (for Zoom/Google Meet/Teams) */}
+      {/* Custom Video Link */}
       {videoPlatform !== "jitsi" && (
-        <div className="mb-4 rounded-xl border border-[#e2e8f0] bg-white p-4">
+        <div className="mb-6 rounded-xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <Video className="h-4 w-4 text-[#0090d9]" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+              <Video className="h-5 w-5 text-[#0090d9]" />
+            </div>
             <div className="flex-1">
-              <p className="text-xs font-semibold text-[#1a2b3c] mb-1.5">
+              <p className="text-sm font-semibold text-[#1a2b3c] mb-2">
                 {videoPlatform === "zoom" ? "Zoom" : videoPlatform === "google_meet" ? "Google Meet" : "Microsoft Teams"} Meeting Link
               </p>
               <div className="flex items-center gap-2">
@@ -364,292 +493,316 @@ export default function CalendarPage() {
                     videoPlatform === "google_meet" ? "https://meet.google.com/..." :
                     "https://teams.microsoft.com/l/meetup-join/..."
                   }
-                  className="flex-1 rounded-md border border-[#e2e8f0] px-2.5 py-1.5 text-xs text-[#1a2b3c] placeholder:text-[#b0b7c0] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]"
+                  className="flex-1 rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm text-[#1a2b3c] placeholder:text-[#b0b7c0] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20"
                 />
                 <button
                   onClick={handleVideoLinkSave}
                   disabled={videoSaving}
-                  className="rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bc0] transition-colors"
+                  className="rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-medium text-white hover:bg-[#007bc0] transition-colors"
                 >
-                  {videoSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                  {videoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
                 </button>
               </div>
-              <p className="mt-1 text-[10px] text-[#8a95a3]">
-                Paste your personal meeting room link. This will be used for all interviews.
-              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Google Calendar Connection */}
-      <div className="mb-6 rounded-xl border border-[#e2e8f0] bg-white p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg",
-              gcalConnected ? "bg-emerald-50" : "bg-[#f5f7fa]"
-            )}>
-              <Image src="/google-calendar.svg" alt="Google Calendar" width={20} height={20} />
+      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+        {/* Left: Visual week grid */}
+        <div className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm overflow-hidden">
+          {/* Grid header */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-[#e2e8f0] bg-gradient-to-r from-[#f8fafc] to-white">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0090d9]/10">
+                <Clock className="h-4 w-4 text-[#0090d9]" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-[#1a2b3c]">Weekly Schedule</h2>
+                <p className="text-[11px] text-[#8a95a3]">Click or drag to set your availability</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-semibold text-[#1a2b3c]">Google Calendar</h3>
-              {gcalConnected ? (
-                <p className="text-xs text-emerald-600">
-                  Connected{gcalEmail ? ` — ${gcalEmail}` : ""}
-                </p>
-              ) : (
-                <p className="text-xs text-[#8a95a3]">
-                  Sync your calendar to auto-detect busy times
-                </p>
-              )}
+            <div className="flex items-center gap-4 text-[11px] text-[#8a95a3]">
+              <div className="flex items-center gap-1.5">
+                <div className="h-3 w-3 rounded-[3px] bg-gradient-to-b from-[#0090d9] to-[#0078c0]" />
+                <span>Available</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="h-3 w-3 rounded-[3px] border border-[#e2e8f0] bg-[#fafbfc]" />
+                <span>Unavailable</span>
+              </div>
             </div>
           </div>
-          <div>
-            {gcalConnected ? (
-              <button
-                onClick={handleDisconnectGoogleCalendar}
-                disabled={gcalLoading}
-                className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
-              >
-                {gcalLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlink className="h-3 w-3" />}
-                Disconnect
-              </button>
-            ) : gcalOauthAvailable ? (
-              <button
-                onClick={handleConnectGoogleCalendar}
-                disabled={gcalLoading}
-                className="flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bc0] transition-colors"
-              >
-                {gcalLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />}
-                Connect
-              </button>
-            ) : (
-              <span className="text-[10px] text-[#b0b7c0]">OAuth not configured</span>
-            )}
+
+          {/* Grid */}
+          <div className="select-none">
+            {/* Day headers */}
+            <div
+              className="grid border-b border-[#e2e8f0] bg-[#f8fafc]"
+              style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}
+            >
+              <div className="border-r border-[#edf0f4]" />
+              {DAY_LABELS.map((d, dIdx) => {
+                const hasAvail = slotGrid[dIdx]?.some(Boolean);
+                return (
+                  <div
+                    key={d}
+                    className={cn(
+                      "py-3 text-center border-r border-[#edf0f4] last:border-r-0",
+                    )}
+                  >
+                    <div className={cn(
+                      "text-[11px] font-bold tracking-wider",
+                      hasAvail ? "text-[#0090d9]" : "text-[#8a95a3]"
+                    )}>
+                      {d}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Time rows */}
+            <div className="relative overflow-y-auto max-h-[560px]">
+              {Array.from({ length: TOTAL_SLOTS }, (_, sIdx) => {
+                const isHourStart = sIdx % SLOTS_PER_HOUR === 0;
+                return (
+                  <div
+                    key={sIdx}
+                    className="grid"
+                    style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}
+                  >
+                    {/* Time label */}
+                    <div className={cn(
+                      "flex h-[24px] items-center justify-end pr-3 border-r border-[#edf0f4]",
+                      isHourStart && "border-t border-[#e2e8f0]"
+                    )}>
+                      {isHourStart && (
+                        <span className="text-[10px] font-medium text-[#8a95a3] leading-none -translate-y-[1px]">
+                          {formatHourLabel(sIdx)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Day cells */}
+                    {Array.from({ length: 7 }, (_, dIdx) => {
+                      const active = slotGrid[dIdx]?.[sIdx] ?? false;
+                      const blockStart = isBlockStart(dIdx, sIdx);
+                      const blockEnd = isBlockEnd(dIdx, sIdx);
+                      const label = blockStart ? getBlockLabel(dIdx, sIdx) : null;
+
+                      return (
+                        <div
+                          key={dIdx}
+                          className={cn(
+                            "h-[24px] cursor-pointer border-r border-[#f0f2f5] last:border-r-0 relative group",
+                            isHourStart && !active && "border-t border-[#edf0f4]",
+                            isHourStart && active && "border-t border-[#0078c0]/30",
+                            active
+                              ? cn(
+                                  "bg-gradient-to-r from-[#0090d9] to-[#00a1f0]",
+                                  blockStart && "rounded-t-[4px]",
+                                  blockEnd && "rounded-b-[4px]",
+                                )
+                              : "bg-white hover:bg-[#f0f7ff]",
+                            !active && !isHourStart && "border-t border-[#f5f7fa]",
+                          )}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSlotMouseDown(dIdx, sIdx);
+                          }}
+                          onMouseEnter={() => handleSlotMouseEnter(dIdx, sIdx)}
+                        >
+                          {/* Block label on the first slot */}
+                          {label && label.slotCount >= 2 && (
+                            <div className="absolute inset-x-0 top-[2px] flex justify-center pointer-events-none z-10">
+                              <span className="text-[9px] font-semibold text-white/90 drop-shadow-sm truncate px-1">
+                                {label.startTime} - {label.endTime}
+                              </span>
+                            </div>
+                          )}
+                          {/* Hover tooltip for empty slots */}
+                          {!active && (
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#0090d9]/30" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* Left: Weekly Schedule */}
-        <div className="rounded-xl border border-[#e2e8f0] bg-white p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-[#0090d9]" />
-              <h2 className="text-sm font-semibold text-[#1a2b3c]">Weekly Schedule</h2>
-            </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-                saved
-                  ? "bg-emerald-50 text-emerald-600"
-                  : "bg-[#0090d9] text-white hover:bg-[#007bc0]"
-              )}
-            >
-              {saving ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : saved ? (
-                <Check className="h-3 w-3" />
-              ) : (
-                <Save className="h-3 w-3" />
-              )}
-              {saved ? "Saved" : "Save"}
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {schedule.map((day) => (
-              <div
-                key={day.dayOfWeek}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
-                  day.enabled
-                    ? "border-[#e2e8f0] bg-white"
-                    : "border-[#f0f0f0] bg-[#fafafa]"
-                )}
+        {/* Right sidebar */}
+        <div className="space-y-6">
+          {/* Monthly Calendar */}
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <button
+                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                className="rounded-lg p-1.5 text-[#8a95a3] hover:bg-[#f5f7fa] hover:text-[#1a2b3c] transition-colors"
               >
-                {/* Toggle */}
-                <button
-                  onClick={() => toggleDay(day.dayOfWeek)}
-                  className={cn(
-                    "flex h-5 w-9 items-center rounded-full p-0.5 transition-colors",
-                    day.enabled ? "bg-[#0090d9]" : "bg-[#d1d5db]"
-                  )}
-                >
-                  <div
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <h3 className="text-sm font-bold text-[#1a2b3c]">
+                {format(currentMonth, "MMMM yyyy")}
+              </h3>
+              <button
+                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                className="rounded-lg p-1.5 text-[#8a95a3] hover:bg-[#f5f7fa] hover:text-[#1a2b3c] transition-colors"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mb-2 grid grid-cols-7 text-center">
+              {DAY_SHORT.map((d) => (
+                <span key={d} className="py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#8a95a3]">{d}</span>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-1">
+              {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
+              {days.map((date) => {
+                const available = isDateAvailable(date);
+                const override = getOverride(date);
+                const today = isToday(date);
+                const isSelected = selectedDate && isSameDay(date, selectedDate);
+                return (
+                  <button
+                    key={date.toISOString()}
+                    onClick={() => setSelectedDate(isSelected ? null : date)}
                     className={cn(
-                      "h-4 w-4 rounded-full bg-white shadow transition-transform",
-                      day.enabled && "translate-x-4"
+                      "relative flex h-10 w-full items-center justify-center rounded-xl text-xs font-semibold transition-all",
+                      today && "ring-2 ring-[#0090d9] ring-offset-1",
+                      isSelected && "ring-2 ring-[#0090d9] scale-110 shadow-md",
+                      available && !override
+                        ? "bg-gradient-to-b from-[#e8f4fd] to-[#d4ecfa] text-[#0078c0] hover:from-[#d4ecfa] hover:to-[#c0e2f7]"
+                        : override && !override.available
+                          ? "bg-gradient-to-b from-red-50 to-red-100 text-red-500 hover:from-red-100 hover:to-red-150"
+                          : !available
+                            ? "bg-[#f5f7fa] text-[#b0b7c0] hover:bg-[#edf0f4] hover:text-[#8a95a3]"
+                            : "bg-gradient-to-b from-emerald-50 to-emerald-100 text-emerald-600 hover:from-emerald-100 hover:to-emerald-150"
                     )}
-                  />
-                </button>
+                  >
+                    {format(date, "d")}
+                    {override && (
+                      <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-400 ring-2 ring-white" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
-                {/* Day name */}
-                <span
-                  className={cn(
-                    "w-24 text-sm font-medium",
-                    day.enabled ? "text-[#1a2b3c]" : "text-[#b0b7c0]"
-                  )}
-                >
-                  {DAY_NAMES[day.dayOfWeek]}
-                </span>
+            <div className="mt-4 flex flex-wrap gap-3 text-[10px] text-[#8a95a3]">
+              <div className="flex items-center gap-1.5">
+                <div className="h-3 w-3 rounded-[3px] bg-gradient-to-b from-[#e8f4fd] to-[#d4ecfa]" />
+                Available
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="h-3 w-3 rounded-[3px] bg-[#f5f7fa]" />
+                Unavailable
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="h-3 w-3 rounded-[3px] bg-gradient-to-b from-red-50 to-red-100 ring-1 ring-red-200" />
+                Blocked
+              </div>
+            </div>
 
-                {/* Hours */}
-                {day.enabled ? (
-                  <div className="flex items-center gap-2">
-                    <HourSelect
-                      value={day.startHour}
-                      onChange={(v) => updateHours(day.dayOfWeek, "startHour", v)}
-                      label="From"
-                    />
-                    <span className="text-[#b0b7c0]">-</span>
-                    <HourSelect
-                      value={day.endHour}
-                      onChange={(v) => updateHours(day.dayOfWeek, "endHour", v)}
-                      label="To"
-                    />
+            {selectedDate && isSameMonth(selectedDate, currentMonth) && (
+              <div className="mt-4 rounded-xl border border-[#e2e8f0] bg-gradient-to-b from-[#f8fafc] to-white p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-sm font-bold text-[#1a2b3c]">
+                    {format(selectedDate, "EEEE, MMM d")}
+                  </span>
+                  <button onClick={() => setSelectedDate(null)} className="rounded-lg p-1 hover:bg-[#f5f7fa]">
+                    <X className="h-4 w-4 text-[#8a95a3]" />
+                  </button>
+                </div>
+                {getOverride(selectedDate) ? (
+                  <div>
+                    <p className="mb-3 text-xs text-[#8a95a3]">
+                      This date is blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
+                    </p>
+                    <button
+                      onClick={() => toggleDateOverride(selectedDate)}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 transition-colors"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Unblock Date
+                    </button>
                   </div>
                 ) : (
-                  <span className="text-xs text-[#b0b7c0]">Unavailable</span>
+                  <div>
+                    <input
+                      type="text"
+                      value={overrideReason}
+                      onChange={(e) => setOverrideReason(e.target.value)}
+                      placeholder="Reason (optional)"
+                      className="mb-3 w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-xs focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20"
+                    />
+                    <button
+                      onClick={() => toggleDateOverride(selectedDate)}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition-colors"
+                    >
+                      <Ban className="h-3.5 w-3.5" />
+                      Block This Date
+                    </button>
+                  </div>
                 )}
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right: Monthly Calendar with overrides */}
-        <div className="rounded-xl border border-[#e2e8f0] bg-white p-5">
-          {/* Month nav */}
-          <div className="mb-4 flex items-center justify-between">
-            <button
-              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-              className="rounded-lg p-1 text-[#8a95a3] hover:bg-[#f5f7fa] hover:text-[#1a2b3c]"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <h3 className="text-sm font-semibold text-[#1a2b3c]">
-              {format(currentMonth, "MMMM yyyy")}
-            </h3>
-            <button
-              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-              className="rounded-lg p-1 text-[#8a95a3] hover:bg-[#f5f7fa] hover:text-[#1a2b3c]"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            )}
           </div>
 
-          {/* Day headers */}
-          <div className="mb-1 grid grid-cols-7 text-center">
-            {DAY_SHORT.map((d) => (
-              <span key={d} className="py-1 text-[10px] font-semibold uppercase text-[#8a95a3]">
-                {d}
-              </span>
-            ))}
-          </div>
-
-          {/* Day grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {/* Pad start */}
-            {Array.from({ length: startPad }).map((_, i) => (
-              <div key={`pad-${i}`} />
-            ))}
-
-            {days.map((date) => {
-              const available = isDateAvailable(date);
-              const override = getOverride(date);
-              const today = isToday(date);
-              const isSelected = selectedDate && isSameDay(date, selectedDate);
-
-              return (
-                <button
-                  key={date.toISOString()}
-                  onClick={() => setSelectedDate(isSelected ? null : date)}
-                  className={cn(
-                    "relative flex h-10 w-full items-center justify-center rounded-lg text-xs font-medium transition-all",
-                    today && "ring-1 ring-[#0090d9]",
-                    isSelected && "ring-2 ring-[#0090d9]",
-                    available && !override
-                      ? "bg-[#e8f4fd] text-[#0090d9] hover:bg-[#d0ebfa]"
-                      : override && !override.available
-                        ? "bg-red-50 text-red-400 hover:bg-red-100"
-                        : !available
-                          ? "bg-[#f5f7fa] text-[#b0b7c0] hover:bg-[#edf0f4]"
-                          : "bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-                  )}
-                >
-                  {format(date, "d")}
-                  {override && (
-                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-400" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Legend */}
-          <div className="mt-4 flex flex-wrap gap-3 text-[10px] text-[#8a95a3]">
-            <div className="flex items-center gap-1">
-              <div className="h-2.5 w-2.5 rounded bg-[#e8f4fd]" />
-              Available
+          {/* Quick stats */}
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-5 shadow-sm">
+            <h3 className="text-sm font-bold text-[#1a2b3c] mb-3">Schedule Summary</h3>
+            <div className="space-y-2">
+              {DAY_LABELS.map((d, dIdx) => {
+                const slots = slotGrid[dIdx];
+                const activeCount = slots?.filter(Boolean).length ?? 0;
+                const hours = (activeCount * SLOT_MINS) / 60;
+                const first = slots?.findIndex(Boolean) ?? -1;
+                const reversedFirst = slots ? [...slots].reverse().findIndex(Boolean) : -1;
+                const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
+                return (
+                  <div key={d} className="flex items-center gap-3">
+                    <span className={cn(
+                      "text-[11px] font-bold w-8",
+                      activeCount > 0 ? "text-[#0090d9]" : "text-[#c8cdd4]"
+                    )}>
+                      {d.slice(0, 3)}
+                    </span>
+                    <div className="flex-1 h-2 rounded-full bg-[#f0f2f5] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#0090d9] to-[#00a1f0] transition-all duration-300"
+                        style={{ width: `${(activeCount / TOTAL_SLOTS) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-[#8a95a3] w-24 text-right">
+                      {activeCount > 0 ? (
+                        <>{formatSlotTime(first)} - {formatSlotTime(last + 1)}</>
+                      ) : (
+                        <span className="text-[#c8cdd4]">Unavailable</span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex items-center gap-1">
-              <div className="h-2.5 w-2.5 rounded bg-[#f5f7fa]" />
-              Unavailable
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="h-2.5 w-2.5 rounded bg-red-50 ring-1 ring-red-200" />
-              Blocked
-            </div>
-          </div>
-
-          {/* Selected date actions */}
-          {selectedDate && isSameMonth(selectedDate, currentMonth) && (
-            <div className="mt-4 rounded-lg border border-[#e2e8f0] bg-[#f5f7fa] p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#1a2b3c]">
-                  {format(selectedDate, "EEEE, MMM d")}
+            <div className="mt-3 pt-3 border-t border-[#f0f2f5]">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-[#8a95a3]">Total weekly hours</span>
+                <span className="text-sm font-bold text-[#0090d9]">
+                  {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
                 </span>
-                <button onClick={() => setSelectedDate(null)}>
-                  <X className="h-3.5 w-3.5 text-[#8a95a3]" />
-                </button>
               </div>
-
-              {getOverride(selectedDate) ? (
-                <div>
-                  <p className="mb-2 text-[11px] text-[#8a95a3]">
-                    This date is blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
-                  </p>
-                  <button
-                    onClick={() => toggleDateOverride(selectedDate)}
-                    className="flex items-center gap-1 rounded-md bg-emerald-500 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-emerald-600"
-                  >
-                    <Check className="h-3 w-3" />
-                    Unblock Date
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <input
-                    type="text"
-                    value={overrideReason}
-                    onChange={(e) => setOverrideReason(e.target.value)}
-                    placeholder="Reason (optional)"
-                    className="mb-2 w-full rounded-md border border-[#e2e8f0] px-2 py-1 text-xs focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]"
-                  />
-                  <button
-                    onClick={() => toggleDateOverride(selectedDate)}
-                    className="flex items-center gap-1 rounded-md bg-red-500 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-600"
-                  >
-                    <Ban className="h-3 w-3" />
-                    Block Date
-                  </button>
-                </div>
-              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

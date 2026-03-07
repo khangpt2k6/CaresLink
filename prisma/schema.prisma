@@ -46,8 +46,8 @@ model Interview {
 model Availability {
   id        String  @id @default(cuid())
   dayOfWeek Int     // 0=Sunday, 1=Monday, ... 6=Saturday
-  startHour Int     // 0-23 (e.g. 9 = 9:00 AM)
-  endHour   Int     // 0-23 (e.g. 17 = 5:00 PM)
+  startHour Float   // e.g. 9 = 9:00 AM, 9.5 = 9:30 AM
+  endHour   Float   // e.g. 17 = 5:00 PM, 17.5 = 5:30 PM
   enabled   Boolean @default(true)
 
   @@unique([dayOfWeek])

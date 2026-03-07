@@ -27,7 +27,7 @@ export async function PUT(request: NextRequest) {
     }
 
     for (const day of schedule) {
-      if (day.startHour >= day.endHour) {
+      if (day.enabled && day.startHour >= day.endHour) {
         return NextResponse.json(
           { error: `Invalid hours for day ${day.dayOfWeek}: start must be before end` },
           { status: 400 }

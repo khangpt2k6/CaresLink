@@ -9,8 +9,8 @@ import { generateICS } from "./ics";
 import { getTimezone, getTimezoneAbbr, formatInTimezone, getDefaultDuration } from "./timezone";
 import { addMinutes } from "date-fns";
 
-// Get available hours for a specific date from DB schedule + overrides
-async function getAvailableHours(date: Date): Promise<number[]> {
+// Get available slot start times for a specific date (supports 30-min granularity)
+async function getAvailableSlotStarts(date: Date): Promise<{ hour: number; minute: number }[]> {
   const dayOfWeek = date.getDay();
 
   // Check for date override first
@@ -18,19 +18,32 @@ async function getAvailableHours(date: Date): Promise<number[]> {
   dateOnly.setHours(0, 0, 0, 0);
   const override = await prisma.dateOverride.findUnique({ where: { date: dateOnly } });
 
+  let startHour: number;
+  let endHour: number;
+
   if (override) {
     if (!override.available) return []; // Blocked date
-    // Custom hours for this date
-    const start = override.startHour ?? 9;
-    const end = override.endHour ?? 17;
-    return Array.from({ length: end - start }, (_, i) => start + i);
+    startHour = override.startHour ?? 9;
+    endHour = override.endHour ?? 17;
+  } else {
+    const schedule = await prisma.availability.findUnique({ where: { dayOfWeek } });
+    if (!schedule || !schedule.enabled) return [];
+    startHour = schedule.startHour;
+    endHour = schedule.endHour;
   }
 
-  // Fall back to weekly schedule
-  const schedule = await prisma.availability.findUnique({ where: { dayOfWeek } });
-  if (!schedule || !schedule.enabled) return [];
+  if (startHour >= endHour) return [];
 
-  return Array.from({ length: schedule.endHour - schedule.startHour }, (_, i) => schedule.startHour + i);
+  // Generate 30-min slot starts from startHour to endHour
+  const slots: { hour: number; minute: number }[] = [];
+  let current = startHour;
+  while (current < endHour) {
+    const h = Math.floor(current);
+    const m = Math.round((current - h) * 60);
+    slots.push({ hour: h, minute: m });
+    current += 0.5;
+  }
+  return slots;
 }
 
 export async function findNextAvailableSlots(
@@ -57,11 +70,11 @@ export async function findNextAvailableSlots(
     const dayDate = new Date(now);
     dayDate.setDate(dayDate.getDate() + d);
 
-    const hours = await getAvailableHours(dayDate);
+    const slotStarts = await getAvailableSlotStarts(dayDate);
 
-    for (const hour of hours) {
+    for (const { hour, minute } of slotStarts) {
       const start = new Date(dayDate);
-      start.setHours(hour, 0, 0, 0);
+      start.setHours(hour, minute, 0, 0);
 
       if (start <= now) continue;
 
@@ -123,16 +136,16 @@ export async function findPublicAvailableSlots(
   if (current < now) current.setDate(current.getDate() + 1);
 
   while (current <= endOfMonth) {
-    const hours = await getAvailableHours(current);
+    const slotStarts = await getAvailableSlotStarts(current);
 
-    if (hours.length === 0) {
+    if (slotStarts.length === 0) {
       current.setDate(current.getDate() + 1);
       continue;
     }
 
-    for (const hour of hours) {
+    for (const { hour, minute } of slotStarts) {
       const start = new Date(current);
-      start.setHours(hour, 0, 0, 0);
+      start.setHours(hour, minute, 0, 0);
       if (start <= now) continue;
 
       const end = new Date(start.getTime() + duration * 60 * 1000);

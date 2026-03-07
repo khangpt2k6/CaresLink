@@ -48,20 +48,20 @@ export default function RegisterPage() {
     }
 
     // Auto sign in after registration
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-
-    if (result?.error) {
+    try {
+      await signIn("credentials", {
+        email,
+        password,
+        redirectTo: "/role-select",
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("NEXT_REDIRECT")) {
+        return; // Successful redirect
+      }
       setError("Account created but sign-in failed. Please login manually.");
       setLoading(false);
-      return;
     }
-
-    router.push("/role-select");
-    router.refresh();
   }
 
   async function handleGoogleSignIn() {

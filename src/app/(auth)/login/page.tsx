@@ -21,22 +21,19 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const result = await signIn("credentials", {
+      await signIn("credentials", {
         email,
         password,
-        redirect: false,
+        redirectTo: "/",
       });
-
-      if (result?.error) {
-        setError("Invalid email or password");
-        setLoading(false);
-        return;
+    } catch (err: unknown) {
+      // NextAuth v5 throws a NEXT_REDIRECT on success — that's normal
+      // Only show error for actual auth failures
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("NEXT_REDIRECT")) {
+        return; // This is a successful redirect, not an error
       }
-
-      router.push("/role-select");
-      router.refresh();
-    } catch {
-      setError("Something went wrong. Please try again.");
+      setError("Invalid email or password");
       setLoading(false);
     }
   }

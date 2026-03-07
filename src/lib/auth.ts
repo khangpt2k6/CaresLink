@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true,
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -70,14 +71,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
-      }
-      // Fetch role so it updates after role selection
-      if (token.email) {
+        // Fetch role on initial sign-in (runs in Node, not Edge)
         const dbUser = await prisma.user.findUnique({
-          where: { email: token.email },
+          where: { id: user.id as string },
+          select: { role: true },
+        });
+        token.role = dbUser?.role ?? null;
+      }
+      // When session is updated (e.g., after role selection), refetch role
+      if (trigger === "update") {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
           select: { role: true },
         });
         token.role = dbUser?.role ?? null;

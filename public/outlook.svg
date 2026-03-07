@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <path fill="#1976D2" d="M28 13h14v24H28z"/>
+  <path fill="#2196F3" d="M42 13l-7-7H28l7 7z"/>
+  <path fill="#1E88E5" d="M42 37l-7 7H28l7-7z"/>
+  <path fill="#1565C0" d="M28 6h7l7 7H28z"/>
+  <path fill="#1565C0" d="M28 44h7l7-7H28z"/>
+  <path fill="#42A5F5" d="M42 13v24l-7 7V6z"/>
+  <path fill="#1E88E5" d="M28 6v7h14z"/>
+  <path fill="#90CAF9" d="M42 13H28v24h14z"/>
+  <path fill="#1565C0" d="M31 18h8v2h-8zm0 4h8v2h-8zm0 4h8v2h-8zm0 4h5v2h-5z"/>
+  <linearGradient id="a" x1="5.04" y1="10.04" x2="22.96" y2="37.96" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#1565C0"/>
+    <stop offset="1" stop-color="#0D47A1"/>
+  </linearGradient>
+  <path fill="url(#a)" d="M4 10h20v28H4z" rx="2"/>
+  <path fill="#fff" d="M14 17c-3.87 0-7 3.13-7 7s3.13 7 7 7 7-3.13 7-7-3.13-7-7-7zm0 12c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+</svg>

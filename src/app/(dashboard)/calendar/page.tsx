@@ -165,6 +165,11 @@ export default function CalendarPage() {
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalOauthAvailable, setGcalOauthAvailable] = useState(false);
 
+  const [mscalConnected, setMscalConnected] = useState(false);
+  const [mscalEmail, setMscalEmail] = useState<string | null>(null);
+  const [mscalLoading, setMscalLoading] = useState(false);
+  const [mscalOauthAvailable, setMscalOauthAvailable] = useState(false);
+
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
   const videoDropdownRef = useRef<HTMLDivElement>(null);
   const gridScrollRef = useRef<HTMLDivElement>(null);
@@ -201,8 +206,9 @@ export default function CalendarPage() {
       fetch("/api/availability").then((r) => r.json()),
       fetch("/api/settings").then((r) => r.json()),
       fetch("/api/google-calendar").then((r) => r.json()),
+      fetch("/api/microsoft-calendar").then((r) => r.json()).catch(() => ({ connected: false, oauthAvailable: false })),
     ])
-      .then(([scheduleData, settings, gcal]) => {
+      .then(([scheduleData, settings, gcal, mscal]) => {
         setSchedule(scheduleData);
         setSlotGrid(scheduleToGrid(scheduleData));
         if (settings?.timezone) setTimezone(settings.timezone);
@@ -213,6 +219,9 @@ export default function CalendarPage() {
         setGcalOauthConnected(gcal?.oauthConnected || false);
         setGcalEmail(gcal?.email || null);
         setGcalOauthAvailable(gcal?.oauthAvailable || false);
+        setMscalConnected(mscal?.connected || false);
+        setMscalEmail(mscal?.email || null);
+        setMscalOauthAvailable(mscal?.oauthAvailable || false);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -233,6 +242,21 @@ export default function CalendarPage() {
         });
       window.history.replaceState({}, "", window.location.pathname);
     } else if (gcalResult === "error") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+
+    // Microsoft Calendar OAuth redirect
+    const mscalResult = params.get("mscal");
+    if (mscalResult === "connected") {
+      setMscalConnected(true);
+      fetch("/api/microsoft-calendar")
+        .then((r) => r.json())
+        .then((mscal) => {
+          setMscalEmail(mscal?.email || null);
+          setMscalConnected(mscal?.connected || false);
+        });
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (mscalResult === "error") {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -389,6 +413,32 @@ export default function CalendarPage() {
       // ignore
     } finally {
       setGcalLoading(false);
+    }
+  };
+
+  const handleConnectMicrosoftCalendar = async () => {
+    setMscalLoading(true);
+    try {
+      const res = await fetch("/api/microsoft-calendar", { method: "POST" });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch {
+      // ignore
+    } finally {
+      setMscalLoading(false);
+    }
+  };
+
+  const handleDisconnectMicrosoftCalendar = async () => {
+    setMscalLoading(true);
+    try {
+      await fetch("/api/microsoft-calendar", { method: "DELETE" });
+      setMscalConnected(false);
+      setMscalEmail(null);
+    } catch {
+      // ignore
+    } finally {
+      setMscalLoading(false);
     }
   };
 
@@ -568,6 +618,48 @@ export default function CalendarPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          {/* Google Meet OAuth connect - shown when Google Meet selected but no OAuth */}
+          {videoPlatform === "google_meet" && !gcalOauthConnected && gcalOauthAvailable && (
+            <button
+              onClick={handleConnectGoogleCalendar}
+              disabled={gcalLoading}
+              className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 hover:bg-amber-100 transition-colors"
+            >
+              <Image src="/google-meet.webp" alt="Google Meet" width={16} height={16} />
+              <span className="text-xs font-medium text-amber-700">Connect OAuth for Meet</span>
+              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600" /> : <Link2 className="h-3.5 w-3.5 text-amber-600" />}
+            </button>
+          )}
+
+          {/* Microsoft Calendar connect/disconnect */}
+          {mscalConnected ? (
+            <button
+              onClick={handleDisconnectMicrosoftCalendar}
+              disabled={mscalLoading}
+              className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 hover:bg-red-50 hover:border-red-200 transition-colors group"
+            >
+              <Image src="/outlook.svg" alt="Outlook" width={16} height={16} />
+              <span className="text-xs font-medium text-emerald-600 group-hover:hidden">Outlook</span>
+              <span className="text-xs font-medium text-red-500 hidden group-hover:inline">Disconnect</span>
+              {mscalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#9ca3af]" /> : (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-500 group-hover:hidden" />
+                  <Unlink className="h-3.5 w-3.5 text-red-400 hidden group-hover:block" />
+                </>
+              )}
+            </button>
+          ) : mscalOauthAvailable ? (
+            <button
+              onClick={handleConnectMicrosoftCalendar}
+              disabled={mscalLoading}
+              className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+            >
+              <Image src="/outlook.svg" alt="Outlook" width={16} height={16} />
+              <span className="text-xs font-medium text-[#0078d4]">Connect Outlook</span>
+              {mscalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0078d4]" /> : <Link2 className="h-3.5 w-3.5 text-[#0078d4]" />}
+            </button>
+          ) : null}
+
           {/* Google Calendar connect/disconnect */}
           {gcalConnected ? (
             <button
@@ -626,24 +718,6 @@ export default function CalendarPage() {
             <p className="text-xs font-medium text-emerald-800">Google Meet links will be auto-generated for each booking</p>
           </div>
           <Check className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-        </div>
-      )}
-
-      {/* Google Meet selected but no OAuth - prompt to connect */}
-      {videoPlatform === "google_meet" && !gcalOauthConnected && gcalOauthAvailable && (
-        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
-          <Image src="/google-meet.webp" alt="Google Meet" width={20} height={20} />
-          <div className="flex-1">
-            <p className="text-xs font-medium text-amber-800">Connect your Google Calendar via OAuth to auto-generate Meet links</p>
-            <p className="text-[10px] text-amber-600 mt-0.5">Service accounts cannot create Google Meet links. Click &quot;Connect Calendar&quot; to sign in with your Google account.</p>
-          </div>
-          <button
-            onClick={handleConnectGoogleCalendar}
-            disabled={gcalLoading}
-            className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors flex-shrink-0"
-          >
-            {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Connect"}
-          </button>
         </div>
       )}
 

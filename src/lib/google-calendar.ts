@@ -235,11 +235,43 @@ export async function createCalendarEvent(params: {
     });
 
     // Extract the auto-generated Google Meet link from the event
-    const generatedMeetLink = autoGenGoogleMeet
-      ? event.data.conferenceData?.entryPoints?.find(
+    let generatedMeetLink = meetLink;
+    if (autoGenGoogleMeet) {
+      // Try conferenceData entry points first
+      generatedMeetLink =
+        event.data.conferenceData?.entryPoints?.find(
           (ep) => ep.entryPointType === "video"
-        )?.uri || meetLink
-      : meetLink;
+        )?.uri || null;
+
+      // Fallback to hangoutLink (Google sometimes returns it here instead)
+      if (!generatedMeetLink) {
+        generatedMeetLink = event.data.hangoutLink || null;
+      }
+
+      // If conference data is still pending, poll the event once after a short delay
+      if (!generatedMeetLink && event.data.id) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+          const updated = await cal.events.get({
+            calendarId,
+            eventId: event.data.id,
+          });
+          generatedMeetLink =
+            updated.data.conferenceData?.entryPoints?.find(
+              (ep) => ep.entryPointType === "video"
+            )?.uri ||
+            updated.data.hangoutLink ||
+            null;
+        } catch {
+          // Ignore retry failure
+        }
+      }
+
+      // Final fallback to static link if configured
+      if (!generatedMeetLink) {
+        generatedMeetLink = meetLink;
+      }
+    }
 
     return {
       eventId: event.data.id || "",

@@ -161,7 +161,7 @@ export default function BookPage() {
       <div className="w-full max-w-2xl rounded-xl border border-[#e8e8e5] bg-white shadow-sm overflow-hidden">
         {/* Confirmed step */}
         {step === "confirmed" && result ? (
-          <div key="confirmed" className="p-8 animate-in">
+          <div key="confirmed" className="p-6 animate-in">
             <Confirmation
               interview={result.interview}
               candidate={result.candidate}

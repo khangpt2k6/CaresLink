@@ -1,0 +1,621 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import {
+  format, startOfMonth, endOfMonth, eachDayOfInterval,
+  isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay,
+  startOfWeek, endOfWeek, addWeeks, subWeeks, addDays,
+} from "date-fns";
+import {
+  ChevronLeft, ChevronRight, Save, Loader2, Check,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// Grid config: 0 AM -> 12 AM (24h), 30-min slots
+const GRID_START = 0;
+const GRID_END = 24;
+const SLOT_MINS = 30;
+const SLOTS_PER_HOUR = 60 / SLOT_MINS;
+const TOTAL_SLOTS = (GRID_END - GRID_START) * SLOTS_PER_HOUR; // 48
+
+const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon first for schedule
+const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+interface AvailabilityDay {
+  id?: string;
+  dayOfWeek: number;
+  startHour: number;
+  endHour: number;
+  enabled: boolean;
+}
+
+function formatHour(hour: number): string {
+  if (hour === 0 || hour === 24) return "12 AM";
+  if (hour === 12) return "12 PM";
+  if (hour < 12) return `${hour} AM`;
+  return `${hour - 12} PM`;
+}
+
+function formatSlotTime(slotIndex: number): string {
+  const totalMins = GRID_START * 60 + slotIndex * SLOT_MINS;
+  const h = Math.floor(totalMins / 60) % 24;
+  const m = totalMins % 60;
+  const ampm = h < 12 || h === 24 ? "AM" : "PM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return m === 0 ? `${h12} ${ampm}` : `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
+}
+
+// slotGrid[dayIndex 0-6][slotIndex 0-47]  (dayIndex: 0=Mon...6=Sun)
+function scheduleToGrid(schedule: AvailabilityDay[]): boolean[][] {
+  const grid = Array.from({ length: 7 }, () => Array(TOTAL_SLOTS).fill(false));
+  schedule.forEach((day) => {
+    if (!day.enabled) return;
+    const dIdx = DAYS_ORDER.indexOf(day.dayOfWeek);
+    if (dIdx === -1) return;
+    for (let s = 0; s < TOTAL_SLOTS; s++) {
+      const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+      if (slotHour >= day.startHour && slotHour < day.endHour) {
+        grid[dIdx][s] = true;
+      }
+    }
+  });
+  return grid;
+}
+
+function gridToSchedule(schedule: AvailabilityDay[], slotGrid: boolean[][]): AvailabilityDay[] {
+  return DAYS_ORDER.map((dayOfWeek, dIdx) => {
+    const existing = schedule.find((d) => d.dayOfWeek === dayOfWeek);
+    const slots = slotGrid[dIdx];
+    const first = slots.findIndex(Boolean);
+    const reversedFirst = [...slots].reverse().findIndex(Boolean);
+    const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
+    if (first === -1) return { ...existing, dayOfWeek, enabled: false, startHour: 9, endHour: 17 };
+    return {
+      ...existing,
+      dayOfWeek,
+      enabled: true,
+      startHour: GRID_START + first / SLOTS_PER_HOUR,
+      endHour: GRID_START + (last + 1) / SLOTS_PER_HOUR,
+    };
+  });
+}
+
+// Get current time position as percentage of 24h
+function getCurrentTimePosition(): { percent: number; hours: number; minutes: number } {
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const totalMinutes = hours * 60 + minutes;
+  const percent = (totalMinutes / (24 * 60)) * 100;
+  return { percent, hours, minutes };
+}
+
+export default function CandidateAvailabilityPage() {
+  const [schedule, setSchedule] = useState<AvailabilityDay[]>([]);
+  const [slotGrid, setSlotGrid] = useState<boolean[][]>(
+    () => Array.from({ length: 7 }, () => Array(TOTAL_SLOTS).fill(false))
+  );
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState(true);
+
+  const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
+  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
+    startOfWeek(new Date(), { weekStartsOn: 0 })
+  );
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  const [currentTime, setCurrentTime] = useState(getCurrentTimePosition());
+
+  // Week days for the calendar view
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
+  }, [currentWeekStart]);
+
+  // Current time ticker
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(getCurrentTimePosition());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Scroll to ~8 AM on mount
+  useEffect(() => {
+    if (gridScrollRef.current && !loading) {
+      const hourHeight = 60;
+      gridScrollRef.current.scrollTop = 8 * hourHeight;
+    }
+  }, [loading]);
+
+  // Load data
+  useEffect(() => {
+    fetch("/api/candidate-availability")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setSchedule(data);
+          setSlotGrid(scheduleToGrid(data));
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Sync mini calendar month when week changes
+  useEffect(() => {
+    const midWeek = addDays(currentWeekStart, 3);
+    if (!isSameMonth(midWeek, currentMonth)) {
+      setCurrentMonth(startOfMonth(midWeek));
+    }
+  }, [currentWeekStart, currentMonth]);
+
+  // Global mouseup to end drag
+  useEffect(() => {
+    const up = () => setIsDragging(false);
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  }, []);
+
+  // Map a calendar date to its slotGrid day index (0=Mon...6=Sun)
+  const dateToDayIndex = (date: Date): number => {
+    const jsDay = getDay(date); // 0=Sun
+    return DAYS_ORDER.indexOf(jsDay);
+  };
+
+  // Slot interaction
+  const handleSlotMouseDown = (dIdx: number, sIdx: number) => {
+    const newVal = !slotGrid[dIdx][sIdx];
+    setDragValue(newVal);
+    setIsDragging(true);
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      g[dIdx][sIdx] = newVal;
+      return g;
+    });
+  };
+
+  const handleSlotMouseEnter = (dIdx: number, sIdx: number) => {
+    if (!isDragging) return;
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      g[dIdx][sIdx] = dragValue;
+      return g;
+    });
+  };
+
+  // Save schedule
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const newSchedule = gridToSchedule(schedule, slotGrid);
+      const res = await fetch("/api/candidate-availability", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ schedule: newSchedule }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSchedule(updated);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Block start/end helpers for availability display
+  const isBlockStart = (dIdx: number, sIdx: number) => {
+    if (!slotGrid[dIdx]?.[sIdx]) return false;
+    if (sIdx === 0) return true;
+    return !slotGrid[dIdx]?.[sIdx - 1];
+  };
+
+  const isBlockEnd = (dIdx: number, sIdx: number) => {
+    if (!slotGrid[dIdx]?.[sIdx]) return false;
+    if (sIdx === TOTAL_SLOTS - 1) return true;
+    return !slotGrid[dIdx]?.[sIdx + 1];
+  };
+
+  const getBlockLabel = (dIdx: number, sIdx: number) => {
+    if (!isBlockStart(dIdx, sIdx)) return null;
+    let end = sIdx;
+    while (end < TOTAL_SLOTS - 1 && slotGrid[dIdx]?.[end + 1]) end++;
+    const startTime = formatSlotTime(sIdx);
+    const endTime = formatSlotTime(end + 1);
+    const slotCount = end - sIdx + 1;
+    return { startTime, endTime, slotCount };
+  };
+
+  // Navigation
+  const goToPrevWeek = () => setCurrentWeekStart(subWeeks(currentWeekStart, 1));
+  const goToNextWeek = () => setCurrentWeekStart(addWeeks(currentWeekStart, 1));
+  const goToToday = () => {
+    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
+    if (gridScrollRef.current) {
+      const now = new Date();
+      const targetScroll = Math.max(0, (now.getHours() - 1) * 60);
+      gridScrollRef.current.scrollTo({ top: targetScroll, behavior: "smooth" });
+    }
+  };
+
+  // Format current time for display
+  const formatCurrentTime = () => {
+    const { hours, minutes } = currentTime;
+    const ampm = hours < 12 ? "AM" : "PM";
+    const h12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+    return `${h12}:${minutes.toString().padStart(2, "0")} ${ampm}`;
+  };
+
+  // Check if date is in current viewed week
+  const isInCurrentWeek = (date: Date) => {
+    const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
+    return date >= currentWeekStart && date <= weekEnd;
+  };
+
+  // Mini calendar helpers
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const startPad = getDay(monthStart);
+
+  const isDateAvailable = useCallback((date: Date) => {
+    const daySchedule = schedule.find((s) => s.dayOfWeek === getDay(date));
+    return daySchedule?.enabled ?? false;
+  }, [schedule]);
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[#0090d9]" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 max-w-[1600px] mx-auto h-[calc(100vh-64px)] flex flex-col">
+      {/* Top bar */}
+      <div className="mb-3 flex items-center justify-between relative z-30">
+        <div>
+          <h1 className="text-lg font-semibold text-[#374151]">My Availability</h1>
+          <p className="text-xs text-[#9ca3af]">Set when you&apos;re available for interviews</p>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all",
+            saved
+              ? "bg-emerald-500 text-white"
+              : "bg-[#0090d9] text-white hover:bg-[#007bc0]"
+          )}
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+          {saved ? "Saved!" : "Save"}
+        </button>
+      </div>
+
+      {/* Main calendar area */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Week calendar */}
+        <div className="flex-1 flex flex-col border border-[#e5e7eb] rounded-lg bg-white overflow-hidden min-h-0">
+          {/* Calendar header with navigation */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e7eb] relative z-10">
+            <div className="flex items-center gap-4">
+              <h2 className="text-lg font-semibold text-[#374151]">
+                {format(currentWeekStart, "MMMM yyyy")}
+              </h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={goToPrevWeek}
+                  className="rounded-md p-1 text-[#6b7280] hover:bg-gray-100 transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={goToNextWeek}
+                  className="rounded-md p-1 text-[#6b7280] hover:bg-gray-100 transition-colors"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-[#374151] cursor-default"
+              >
+                Week
+              </button>
+              <button
+                onClick={goToToday}
+                className="rounded-md border border-[#e5e7eb] px-3 py-1.5 text-sm font-medium text-[#374151] hover:bg-gray-100 active:bg-gray-200 transition-colors cursor-pointer"
+              >
+                Today
+              </button>
+            </div>
+          </div>
+
+          {/* Day column headers */}
+          <div
+            className="grid border-b border-[#e5e7eb]"
+            style={{ gridTemplateColumns: "60px repeat(7, 1fr)" }}
+          >
+            <div className="py-3 text-center text-[10px] font-medium text-[#9ca3af] uppercase border-r border-[#f3f4f6]">
+              TIME
+            </div>
+            {weekDays.map((date) => {
+              const dayName = format(date, "EEE");
+              const dayNum = format(date, "d");
+              const today = isToday(date);
+              return (
+                <div
+                  key={date.toISOString()}
+                  className="py-3 text-center border-r border-[#f3f4f6] last:border-r-0"
+                >
+                  <span className={cn(
+                    "text-xs",
+                    today ? "text-blue-600 font-semibold" : "text-[#6b7280]"
+                  )}>
+                    {dayName}
+                  </span>
+                  <span className={cn(
+                    "ml-1.5 text-xs",
+                    today
+                      ? "inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white font-semibold"
+                      : "text-[#6b7280]"
+                  )}>
+                    {dayNum}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Scrollable time grid */}
+          <div ref={gridScrollRef} className="flex-1 overflow-y-auto select-none relative">
+            {/* Current time indicator */}
+            {weekDays.some((d) => isToday(d)) && (
+              <div
+                className="absolute left-0 right-0 z-20 pointer-events-none"
+                style={{ top: `${currentTime.hours * 60 + currentTime.minutes}px` }}
+              >
+                <div className="relative" style={{ marginLeft: "60px" }}>
+                  <div className="absolute -left-[60px] -translate-y-1/2 w-[60px] flex justify-end pr-1">
+                    <span className="bg-red-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                      {formatCurrentTime()}
+                    </span>
+                  </div>
+                  <div className="h-[2px] bg-red-500 relative">
+                    <div className="absolute -left-1.5 -top-[4px] w-[10px] h-[10px] rounded-full bg-red-500" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Hour rows */}
+            {Array.from({ length: 24 }, (_, hour) => (
+              <div
+                key={hour}
+                className="grid relative"
+                style={{
+                  gridTemplateColumns: "60px repeat(7, 1fr)",
+                  height: "60px",
+                }}
+              >
+                {/* Hour label */}
+                <div className="relative border-r border-[#f3f4f6]">
+                  {hour > 0 && (
+                    <span className="absolute -top-[9px] right-2 text-[11px] text-[#9ca3af]">
+                      {formatHour(hour)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Day cells - 2 slots per hour */}
+                {weekDays.map((date, colIdx) => {
+                  const dIdx = dateToDayIndex(date);
+                  const sIdx1 = hour * SLOTS_PER_HOUR; // :00
+                  const sIdx2 = hour * SLOTS_PER_HOUR + 1; // :30
+                  const active1 = slotGrid[dIdx]?.[sIdx1] ?? false;
+                  const active2 = slotGrid[dIdx]?.[sIdx2] ?? false;
+
+                  const blockStart1 = isBlockStart(dIdx, sIdx1);
+                  const blockEnd1 = isBlockEnd(dIdx, sIdx1);
+                  const blockStart2 = isBlockStart(dIdx, sIdx2);
+                  const blockEnd2 = isBlockEnd(dIdx, sIdx2);
+                  const label = blockStart1 ? getBlockLabel(dIdx, sIdx1) : null;
+
+                  return (
+                    <div
+                      key={colIdx}
+                      className="border-r border-[#f3f4f6] last:border-r-0 relative"
+                    >
+                      {/* Top half (:00) */}
+                      <div
+                        className={cn(
+                          "absolute inset-x-0 top-0 h-[30px] cursor-pointer border-t border-[#f3f4f6] transition-colors",
+                          active1
+                            ? cn(
+                                "bg-[#e0f2fe] border-l-2 border-l-[#0090d9]",
+                                blockStart1 && "rounded-t",
+                                blockEnd1 && "rounded-b",
+                              )
+                            : "hover:bg-[#f9fafb]",
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSlotMouseDown(dIdx, sIdx1);
+                        }}
+                        onMouseEnter={() => handleSlotMouseEnter(dIdx, sIdx1)}
+                      >
+                        {label && label.slotCount >= 2 && (
+                          <div className="absolute inset-x-1 top-1 pointer-events-none z-10">
+                            <span className="text-[10px] font-medium text-[#0090d9] leading-none">
+                              Available
+                            </span>
+                            <br />
+                            <span className="text-[9px] text-[#0090d9]/70">
+                              {label.startTime} - {label.endTime}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {/* Bottom half (:30) */}
+                      <div
+                        className={cn(
+                          "absolute inset-x-0 top-[30px] h-[30px] cursor-pointer border-t border-dashed border-[#f3f4f6] transition-colors",
+                          active2
+                            ? cn(
+                                "bg-[#e0f2fe] border-l-2 border-l-[#0090d9]",
+                                blockStart2 && "rounded-t",
+                                blockEnd2 && "rounded-b",
+                              )
+                            : "hover:bg-[#f9fafb]",
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSlotMouseDown(dIdx, sIdx2);
+                        }}
+                        onMouseEnter={() => handleSlotMouseEnter(dIdx, sIdx2)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right sidebar - Mini calendar + Summary */}
+        <div className="w-[280px] flex-shrink-0 space-y-4 overflow-y-auto">
+          {/* Mini Calendar */}
+          <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-[#374151]">
+                {format(currentMonth, "yyyy")}
+              </h3>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                  className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                  className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Month name */}
+            <div className="text-center mb-2">
+              <span className="text-xs font-medium text-[#6b7280]">
+                {format(currentMonth, "MMMM")}
+              </span>
+            </div>
+
+            {/* Day of week headers */}
+            <div className="grid grid-cols-7 mb-1">
+              {["SU", "MO", "TU", "WE", "TH", "FR", "SA"].map((d) => (
+                <span key={d} className="py-1 text-center text-[10px] font-medium text-[#9ca3af]">{d}</span>
+              ))}
+            </div>
+
+            {/* Date cells */}
+            <div className="grid grid-cols-7 gap-y-0.5">
+              {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
+              {days.map((date) => {
+                const today = isToday(date);
+                const inWeek = isInCurrentWeek(date);
+                const available = isDateAvailable(date);
+                return (
+                  <button
+                    key={date.toISOString()}
+                    onClick={() => {
+                      setCurrentWeekStart(startOfWeek(date, { weekStartsOn: 0 }));
+                    }}
+                    className={cn(
+                      "flex h-7 w-full items-center justify-center text-[11px] transition-all relative",
+                      inWeek && "bg-blue-50",
+                      today
+                        ? "font-bold"
+                        : "font-normal",
+                      today
+                        ? "text-white"
+                        : inWeek
+                          ? "text-[#374151]"
+                          : "text-[#6b7280] hover:bg-gray-50",
+                    )}
+                  >
+                    {today && (
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="w-6 h-6 rounded-full bg-blue-600" />
+                      </span>
+                    )}
+                    <span className="relative z-10">{format(date, "d")}</span>
+                    {available && !isSameMonth(date, currentMonth) ? null : available && (
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#0090d9]" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Schedule Summary */}
+          <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
+            <h3 className="text-sm font-semibold text-[#374151] mb-3">Schedule Summary</h3>
+            <div className="space-y-2">
+              {DAY_LABELS.map((d, dIdx) => {
+                const slots = slotGrid[dIdx];
+                const activeCount = slots?.filter(Boolean).length ?? 0;
+                const first = slots?.findIndex(Boolean) ?? -1;
+                const reversedFirst = slots ? [...slots].reverse().findIndex(Boolean) : -1;
+                const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
+                return (
+                  <div key={d} className="flex items-center gap-2">
+                    <span className={cn(
+                      "text-[10px] font-semibold w-7",
+                      activeCount > 0 ? "text-[#374151]" : "text-[#d1d5db]"
+                    )}>
+                      {d}
+                    </span>
+                    <div className="flex-1 h-1.5 rounded-full bg-[#f3f4f6] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[#0090d9] transition-all duration-300"
+                        style={{ width: `${(activeCount / TOTAL_SLOTS) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-[#9ca3af] w-20 text-right">
+                      {activeCount > 0 ? (
+                        <>{formatSlotTime(first)} - {formatSlotTime(last + 1)}</>
+                      ) : (
+                        <span className="text-[#d1d5db]">Unavailable</span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 pt-3 border-t border-[#f3f4f6]">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[#9ca3af]">Total weekly hours</span>
+                <span className="text-sm font-semibold text-[#0090d9]">
+                  {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

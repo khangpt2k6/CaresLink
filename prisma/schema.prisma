@@ -24,8 +24,9 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  accounts Account[]
-  sessions Session[]
+  accounts              Account[]
+  sessions              Session[]
+  candidateAvailability CandidateAvailability[]
 }
 
 model Account {
@@ -152,6 +153,19 @@ model MicrosoftCalendarToken {
   email        String?  // connected Microsoft account email
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// Candidate weekly availability (recurring schedule per user)
+model CandidateAvailability {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek Int     // 0=Sunday, 1=Monday, ... 6=Saturday
+  startHour Float   // e.g. 9 = 9:00 AM, 9.5 = 9:30 AM
+  endHour   Float   // e.g. 17 = 5:00 PM, 17.5 = 5:30 PM
+  enabled   Boolean @default(true)
+
+  @@unique([userId, dayOfWeek])
 }
 
 model Event {

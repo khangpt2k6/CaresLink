@@ -74,6 +74,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
+        token.email = user.email ?? token.email;
         // Fetch role on initial sign-in (runs in Node, not Edge)
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id as string },

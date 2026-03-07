@@ -31,12 +31,14 @@ export function InterviewCard({
   onDelete,
   reminderLoading,
   deleteLoading,
+  showRecruiterActions = true,
 }: {
   interview: Interview;
   onSendReminder: (id: string) => void;
   onDelete: (id: string) => void;
   reminderLoading: string | null;
   deleteLoading: string | null;
+  showRecruiterActions?: boolean;
 }) {
   const scheduledDate = new Date(interview.scheduledAt);
   const isPast = scheduledDate < new Date();
@@ -88,23 +90,27 @@ export function InterviewCard({
               <ExternalLink className="h-3 w-3" /> Calendar
             </a>
           )}
-          {!interview.reminderSent && !isPast ? (
-            <button onClick={() => onSendReminder(interview.id)} disabled={reminderLoading === interview.id}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors disabled:opacity-40">
-              {reminderLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bell className="h-3 w-3" />}
-              Remind
-            </button>
-          ) : interview.reminderSent ? (
-            <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-[#059669]">
-              <CheckCircle2 className="h-3 w-3" /> Sent
-            </span>
-          ) : null}
-          <button
-            onClick={() => { if (confirm("Cancel this interview?")) onDelete(interview.id); }}
-            disabled={deleteLoading === interview.id}
-            className="rounded-md p-1.5 text-[#8a95a3] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors disabled:opacity-40">
-            {deleteLoading === interview.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-          </button>
+          {showRecruiterActions && (
+            <>
+              {!interview.reminderSent && !isPast ? (
+                <button onClick={() => onSendReminder(interview.id)} disabled={reminderLoading === interview.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors disabled:opacity-40">
+                  {reminderLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bell className="h-3 w-3" />}
+                  Remind
+                </button>
+              ) : interview.reminderSent ? (
+                <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-[#059669]">
+                  <CheckCircle2 className="h-3 w-3" /> Sent
+                </span>
+              ) : null}
+              <button
+                onClick={() => { if (confirm("Cancel this interview?")) onDelete(interview.id); }}
+                disabled={deleteLoading === interview.id}
+                className="rounded-md p-1.5 text-[#8a95a3] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors disabled:opacity-40">
+                {deleteLoading === interview.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

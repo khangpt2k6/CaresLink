@@ -3,9 +3,7 @@ import { prisma } from "./db";
 export interface RecruitmentMetrics {
   totalCandidates: number;
   emailsSent: number;
-  smsSent: number;
   responseRateEmail: number;
-  responseRateSms: number;
   interviewsScheduled: number;
   noShowCount: number;
   noShowRate: number;
@@ -45,9 +43,7 @@ export async function getMetrics(
   });
 
   const emailsSent = events.filter((e) => e.type === "email_sent").length;
-  const smsSent = events.filter((e) => e.type === "sms_sent").length;
   const emailOpened = events.filter((e) => e.type === "email_opened").length;
-  const smsReplied = events.filter((e) => e.type === "sms_replied").length;
   const interviews = events.filter((e) => e.type === "interview_scheduled").length;
   const noShows = events.filter((e) => e.type === "interview_no_show").length;
   const hires = events.filter(
@@ -60,9 +56,7 @@ export async function getMetrics(
   return {
     totalCandidates: uniqueCandidates,
     emailsSent,
-    smsSent,
     responseRateEmail: emailsSent ? emailOpened / emailsSent : 0,
-    responseRateSms: smsSent ? smsReplied / smsSent : 0,
     interviewsScheduled: interviews,
     noShowCount: noShows,
     noShowRate: interviews ? noShows / interviews : 0,
@@ -84,7 +78,7 @@ export function getInsights(metrics: RecruitmentMetrics): Insight[] {
       metric: "noShowRate",
       currentValue: `${(metrics.noShowRate * 100).toFixed(0)}%`,
       recommendedAction:
-        "Enable SMS reminders 24h before interviews; consider a confirmation reply flow.",
+        "Enable email reminders 24h before interviews; consider a confirmation reply flow.",
       priority: "high",
     });
   } else if (metrics.noShowRate > 0) {
@@ -93,32 +87,9 @@ export function getInsights(metrics: RecruitmentMetrics): Insight[] {
       description: `No-show rate is ${(metrics.noShowRate * 100).toFixed(0)}%. Room to improve with more reminders.`,
       metric: "noShowRate",
       currentValue: `${(metrics.noShowRate * 100).toFixed(0)}%`,
-      recommendedAction: "Add a 1-hour-before SMS reminder to further reduce no-shows.",
+      recommendedAction: "Add a 1-hour-before email reminder to further reduce no-shows.",
       priority: "low",
     });
-  }
-
-  if (metrics.emailsSent >= 3 || metrics.smsSent >= 3) {
-    if (metrics.responseRateSms > metrics.responseRateEmail) {
-      insights.push({
-        title: "SMS Outperforms Email",
-        description: `SMS response rate (${(metrics.responseRateSms * 100).toFixed(0)}%) beats email (${(metrics.responseRateEmail * 100).toFixed(0)}%).`,
-        metric: "responseRate",
-        currentValue: `SMS: ${(metrics.responseRateSms * 100).toFixed(0)}%, Email: ${(metrics.responseRateEmail * 100).toFixed(0)}%`,
-        recommendedAction:
-          "Prioritize SMS for time-sensitive outreach (scheduling, reminders).",
-        priority: "high",
-      });
-    } else if (metrics.responseRateEmail > metrics.responseRateSms && metrics.smsSent > 0) {
-      insights.push({
-        title: "Email Outperforms SMS",
-        description: `Email response rate (${(metrics.responseRateEmail * 100).toFixed(0)}%) beats SMS (${(metrics.responseRateSms * 100).toFixed(0)}%).`,
-        metric: "responseRate",
-        currentValue: `Email: ${(metrics.responseRateEmail * 100).toFixed(0)}%, SMS: ${(metrics.responseRateSms * 100).toFixed(0)}%`,
-        recommendedAction: "Use email for initial contact; reserve SMS for reminders only.",
-        priority: "medium",
-      });
-    }
   }
 
   if (metrics.hiresCount > 0 && metrics.costPerHire > 500) {
@@ -140,7 +111,7 @@ export function getInsights(metrics: RecruitmentMetrics): Insight[] {
       metric: "responseRateEmail",
       currentValue: `${(metrics.responseRateEmail * 100).toFixed(0)}%`,
       recommendedAction:
-        "Improve subject lines; send at optimal times (Tue–Thu 10–11am); add SMS follow-up.",
+        "Improve subject lines; send at optimal times (Tue–Thu 10–11am); add a follow-up email sequence.",
       priority: "high",
     });
   }

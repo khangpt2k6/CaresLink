@@ -44,8 +44,14 @@ export default auth((req) => {
   // If logged in and on login/register, redirect to dashboard
   if (isLoggedIn && role && (pathname === "/login" || pathname === "/register")) {
     if (role === "CANDIDATE") {
-      return NextResponse.redirect(new URL("/book", req.url));
+      return NextResponse.redirect(new URL("/", req.url));
     }
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+
+  // Block candidates from employer-only routes
+  const employerOnlyPaths = ["/candidates", "/calendar", "/insights"];
+  if (role === "CANDIDATE" && employerOnlyPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 

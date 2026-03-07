@@ -7,7 +7,6 @@ import {
 } from "@google/generative-ai";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
-import { sendSms } from "./twilio";
 import { sendReminder } from "./scheduling";
 
 const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
@@ -55,18 +54,6 @@ const functionDeclarations: FunctionDeclaration[] = [
     },
   },
   {
-    name: "send_sms",
-    description: "Send an SMS to a candidate (candidate must have phone number)",
-    parameters: {
-      type: SchemaType.OBJECT,
-      properties: {
-        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
-        message: { type: SchemaType.STRING, description: "SMS message (max 160 chars recommended)" },
-      },
-      required: ["candidate_id", "message"],
-    },
-  },
-  {
     name: "send_booking_link",
     description: "Send the self-service booking link to a candidate so they can choose their own interview time. This is the preferred way to schedule interviews — let candidates pick a time that works for them.",
     parameters: {
@@ -80,7 +67,7 @@ const functionDeclarations: FunctionDeclaration[] = [
   },
   {
     name: "send_reminder",
-    description: "Send an interview reminder via SMS to the candidate",
+    description: "Send an interview reminder via email to the candidate",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -132,23 +119,6 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
           data: { status: c.status === "applied" ? "contacted" : c.status },
         });
         return { success: true, message: "Email sent" };
-      }
-      return { success: false, error: result.error };
-    }
-    case "send_sms": {
-      const c = await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) } });
-      if (!c) return { error: "Candidate not found" };
-      if (!c.phone) return { error: "Candidate has no phone number" };
-      const result = await sendSms(c.phone, String(args.message));
-      if (result.success) {
-        await prisma.event.create({
-          data: { type: "sms_sent", candidateId: c.id, channel: "sms", cost: 0.05 },
-        });
-        await prisma.candidate.update({
-          where: { id: c.id },
-          data: { status: c.status === "applied" ? "contacted" : c.status },
-        });
-        return { success: true, message: "SMS sent" };
       }
       return { success: false, error: result.error };
     }
@@ -212,11 +182,14 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         }
         const { interview, candidate } = r as {
           interview: { id: string; position: string; scheduledAt: Date };
-          candidate: { id: string; phone: string | null };
+          candidate: { id: string; email: string; name: string };
         };
-        if (!candidate.phone) return { error: "Candidate has no phone" };
         const msg = `Reminder: Your ${interview.position} interview is scheduled. Please confirm you can attend.`;
-        const result = await sendSms(candidate.phone, msg);
+        const result = await sendEmail(
+          candidate.email,
+          `Interview Reminder — ${interview.position}`,
+          msg
+        );
         if (result.success) {
           await prisma.interview.update({
             where: { id: interview.id },
@@ -227,10 +200,10 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
               type: "reminder_sent",
               candidateId: candidate.id,
               interviewId: interview.id,
-              channel: "sms",
+              channel: "email",
             },
           });
-          return { success: true, message: "Reminder sent" };
+          return { success: true, message: "Reminder email sent" };
         }
         return { success: false, error: result.error };
       } catch (e) {
@@ -266,7 +239,7 @@ CRITICAL: When asked to contact a candidate, DO NOT ask for confirmation. Just d
 
 The booking page lets candidates see available times (based on HR availability, Google Calendar, and conflicts) and pick their own slot. Once they book, the system automatically creates a calendar event, generates a video call link, and sends a confirmation email.
 
-You can also use send_email or send_sms independently for follow-ups, custom messages, or other communications.
+You can also use send_email independently for follow-ups, custom messages, or other communications.
 
 Be concise. Act first, then confirm. Never ask "would you like me to..." — just do it.`,
   });

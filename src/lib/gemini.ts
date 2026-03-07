@@ -7,7 +7,7 @@ import {
 } from "@google/generative-ai";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
-import { sendReminder } from "./scheduling";
+import { sendReminder, scheduleInterview, findMutualAvailableSlots } from "./scheduling";
 
 const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
 if (!apiKey) {
@@ -74,6 +74,17 @@ const functionDeclarations: FunctionDeclaration[] = [
         interview_id: { type: SchemaType.STRING, description: "The interview ID" },
       },
       required: ["interview_id"],
+    },
+  },
+  {
+    name: "auto_book_interview",
+    description: "Find a time that works for BOTH the recruiter and the candidate (using their availability), then automatically schedule the interview and send the confirmation email. Use when the recruiter wants to auto-book instead of sending a booking link.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
+      },
+      required: ["candidate_id"],
     },
   },
 ];
@@ -172,6 +183,27 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         return { success: false, error: result.error };
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to send booking link" };
+      }
+    }
+    case "auto_book_interview": {
+      try {
+        const candidateId = String(args.candidate_id);
+        const slots = await findMutualAvailableSlots(candidateId);
+        if (slots.length === 0) {
+          return {
+            success: false,
+            error: "No mutual availability found. The candidate may need to set their availability at /availability, or try sending the booking link instead.",
+          };
+        }
+        const interview = await scheduleInterview(candidateId, slots[0]);
+        return {
+          success: true,
+          interview_id: interview.id,
+          scheduled_at: interview.scheduledAt.toISOString(),
+          note: `Interview auto-booked for ${interview.scheduledAt.toLocaleString()}. Confirmation email sent to the candidate.`,
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Failed to auto-book interview" };
       }
     }
     case "send_reminder": {

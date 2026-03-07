@@ -160,6 +160,7 @@ export default function CalendarPage() {
   const [videoSaving, setVideoSaving] = useState(false);
 
   const [gcalConnected, setGcalConnected] = useState(false);
+  const [gcalOauthConnected, setGcalOauthConnected] = useState(false);
   const [gcalEmail, setGcalEmail] = useState<string | null>(null);
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalOauthAvailable, setGcalOauthAvailable] = useState(false);
@@ -209,6 +210,7 @@ export default function CalendarPage() {
         if (settings?.videoPlatform) setVideoPlatform(settings.videoPlatform);
         if (settings?.videoLink) setVideoLink(settings.videoLink);
         setGcalConnected(gcal?.connected || false);
+        setGcalOauthConnected(gcal?.oauthConnected || false);
         setGcalEmail(gcal?.email || null);
         setGcalOauthAvailable(gcal?.oauthAvailable || false);
         setLoading(false);
@@ -222,9 +224,13 @@ export default function CalendarPage() {
     const gcalResult = params.get("gcal");
     if (gcalResult === "connected") {
       setGcalConnected(true);
+      setGcalOauthConnected(true);
       fetch("/api/google-calendar")
         .then((r) => r.json())
-        .then((gcal) => setGcalEmail(gcal?.email || null));
+        .then((gcal) => {
+          setGcalEmail(gcal?.email || null);
+          setGcalOauthConnected(gcal?.oauthConnected || false);
+        });
       window.history.replaceState({}, "", window.location.pathname);
     } else if (gcalResult === "error") {
       window.history.replaceState({}, "", window.location.pathname);
@@ -613,7 +619,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Auto-generated Google Meet info */}
-      {videoPlatform === "google_meet" && gcalConnected && (
+      {videoPlatform === "google_meet" && gcalOauthConnected && (
         <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3">
           <Image src="/google-meet.webp" alt="Google Meet" width={20} height={20} />
           <div className="flex-1">
@@ -623,8 +629,26 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* Google Meet selected but no OAuth - prompt to connect */}
+      {videoPlatform === "google_meet" && !gcalOauthConnected && gcalOauthAvailable && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
+          <Image src="/google-meet.webp" alt="Google Meet" width={20} height={20} />
+          <div className="flex-1">
+            <p className="text-xs font-medium text-amber-800">Connect your Google Calendar via OAuth to auto-generate Meet links</p>
+            <p className="text-[10px] text-amber-600 mt-0.5">Service accounts cannot create Google Meet links. Click &quot;Connect Calendar&quot; to sign in with your Google account.</p>
+          </div>
+          <button
+            onClick={handleConnectGoogleCalendar}
+            disabled={gcalLoading}
+            className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors flex-shrink-0"
+          >
+            {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Connect"}
+          </button>
+        </div>
+      )}
+
       {/* Custom Video Link */}
-      {videoPlatform !== "jitsi" && !(videoPlatform === "google_meet" && gcalConnected) && (
+      {videoPlatform !== "jitsi" && !(videoPlatform === "google_meet" && gcalOauthConnected) && (
         <div className="mb-3 rounded-lg border border-[#e5e7eb] bg-white px-4 py-3 flex items-center gap-3">
           <Image
             src={VIDEO_PLATFORM_ICONS[videoPlatform]?.src || "/jitsi.png"}
@@ -732,7 +756,7 @@ export default function CalendarPage() {
           {/* Scrollable time grid */}
           <div ref={gridScrollRef} className="flex-1 overflow-y-auto select-none relative">
             {/* Current time indicator */}
-            {weekDays.some(isToday) && (
+            {weekDays.some((d) => isToday(d)) && (
               <div
                 className="absolute left-0 right-0 z-20 pointer-events-none"
                 style={{ top: `${currentTime.hours * 60 + currentTime.minutes}px` }}

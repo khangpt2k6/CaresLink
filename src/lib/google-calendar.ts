@@ -74,15 +74,15 @@ export async function disconnectCalendar() {
   }
 }
 
-export async function getConnectionStatus(): Promise<{ connected: boolean; email?: string; method?: string }> {
+export async function getConnectionStatus(): Promise<{ connected: boolean; oauthConnected: boolean; email?: string; method?: string }> {
   try {
     const token = await prisma.googleCalendarToken.findUnique({ where: { id: "default" } });
-    if (token) return { connected: true, email: token.email || undefined, method: "oauth" };
+    if (token) return { connected: true, oauthConnected: true, email: token.email || undefined, method: "oauth" };
   } catch {
     // Table might not exist yet
   }
-  if (saCredentials) return { connected: true, email: saCredentials.client_email, method: "service_account" };
-  return { connected: false };
+  if (saCredentials) return { connected: true, oauthConnected: false, email: saCredentials.client_email, method: "service_account" };
+  return { connected: false, oauthConnected: false };
 }
 
 async function getOAuthCalendar(): Promise<calendar_v3.Calendar | null> {

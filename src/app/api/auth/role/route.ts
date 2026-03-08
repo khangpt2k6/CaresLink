@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
   });
 
   // Store role in Clerk publicMetadata for sidebar/nav
-  await clerkClient().users.updateUserMetadata(userId, {
+  const client = await clerkClient();
+  await client.users.updateUserMetadata(userId, {
     publicMetadata: { role },
   });
 

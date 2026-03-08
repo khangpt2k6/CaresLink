@@ -10,7 +10,8 @@ export async function getOrCreateUser(clerkUserId: string) {
   });
   if (existing) return existing;
 
-  const clerkUser = await clerkClient().users.getUser(clerkUserId);
+  const client = await clerkClient();
+  const clerkUser = await client.users.getUser(clerkUserId);
   const email = clerkUser.emailAddresses[0]?.emailAddress;
   if (!email) return null;
 

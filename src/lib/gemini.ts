@@ -161,6 +161,24 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         const c = await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) } });
         if (!c) return { error: "Candidate not found" };
 
+        const existingInterview = await prisma.interview.findFirst({
+          where: {
+            candidateId: c.id,
+            cancelled: false,
+            completed: false,
+            noShow: false,
+            scheduledAt: { gt: new Date() },
+          },
+        });
+        if (existingInterview) {
+          return {
+            success: false,
+            already_scheduled: true,
+            scheduled_at: existingInterview.scheduledAt.toISOString(),
+            error: `Cannot send booking link. This candidate already has an interview on ${existingInterview.scheduledAt.toLocaleString()}. Cancel it first to reschedule.`,
+          };
+        }
+
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         const bookingUrl = `${appUrl}/book`;
         const rawMessage = args.message ? String(args.message) : "";
@@ -211,6 +229,25 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
     case "auto_book_interview": {
       try {
         const candidateId = String(args.candidate_id);
+
+        const existingInterview = await prisma.interview.findFirst({
+          where: {
+            candidateId,
+            cancelled: false,
+            completed: false,
+            noShow: false,
+            scheduledAt: { gt: new Date() },
+          },
+        });
+        if (existingInterview) {
+          return {
+            success: false,
+            already_scheduled: true,
+            scheduled_at: existingInterview.scheduledAt.toISOString(),
+            error: `Cannot book. This candidate already has an interview on ${existingInterview.scheduledAt.toLocaleString()}. Cancel it first to reschedule.`,
+          };
+        }
+
         const slots = await findMutualAvailableSlots(candidateId);
         if (slots.length === 0) {
           return {
@@ -296,7 +333,9 @@ The booking page lets candidates see available times (based on HR availability, 
 
 You can also use send_email independently for follow-ups, custom messages, or other communications.
 
-Be concise. Act first, then confirm. Never ask "would you like me to..." — just do it.`,
+When a function returns already_scheduled: true, tell the employer directly: "This candidate already has an interview scheduled on [date]. Cancel it first to reschedule."
+
+Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`,
   });
 
   const chat = model.startChat({

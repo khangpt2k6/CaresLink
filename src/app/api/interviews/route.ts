@@ -174,6 +174,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const existingInterview = await prisma.interview.findFirst({
+      where: {
+        candidateId,
+        cancelled: false,
+        completed: false,
+        noShow: false,
+        scheduledAt: { gt: new Date() },
+      },
+    });
+    if (existingInterview) {
+      return NextResponse.json(
+        { error: `This candidate already has an upcoming interview scheduled for ${existingInterview.scheduledAt.toLocaleString()}. Please cancel it first before scheduling a new one.` },
+        { status: 409 }
+      );
+    }
+
     const { scheduleInterview } = await import("@/lib/scheduling");
     const interview = await scheduleInterview(
       candidateId,

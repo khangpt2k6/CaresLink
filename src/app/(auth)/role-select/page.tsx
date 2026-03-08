@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useUser } from "@clerk/nextjs";
 import Image from "next/image";
 import { Briefcase, UserSearch } from "lucide-react";
 
 export default function RoleSelectPage() {
   const router = useRouter();
-  const { data: session, update } = useSession();
+  const { user } = useUser();
   const [selected, setSelected] = useState<"EMPLOYER" | "CANDIDATE" | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +23,6 @@ export default function RoleSelectPage() {
     });
 
     if (res.ok) {
-      await update(); // refresh session with new role
       if (selected === "EMPLOYER") {
         router.push("/");
       } else {
@@ -53,7 +52,7 @@ export default function RoleSelectPage() {
         {/* Heading */}
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900">
-            Welcome{session?.user?.name ? `, ${session.user.name}` : ""}!
+            Welcome{user?.firstName ? `, ${user.firstName}` : ""}!
           </h1>
           <p className="mt-2 text-sm text-gray-500">
             Choose your profile type to get started

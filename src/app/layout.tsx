@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SessionProvider } from "@/components/session-provider";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,10 +16,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-white antialiased">
-        <SessionProvider>{children}</SessionProvider>
-      </body>
-    </html>
+    <ClerkProvider
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      afterSignOutUrl="/sign-in"
+    >
+      <html lang="en">
+        <body className="min-h-screen bg-white antialiased">
+          {children}
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useUser } from "@clerk/nextjs";
 import { InterviewCard } from "@/components/interview-card";
 import { format } from "date-fns";
 import { Calendar, Loader2, Plus, Clock, CalendarPlus, X } from "lucide-react";
@@ -24,8 +24,11 @@ interface Interview {
 interface Candidate { id: string; name: string; email: string; position: string; }
 
 export default function InterviewsPage() {
-  const { data: session } = useSession();
-  const isRecruiter = session?.user?.role === "EMPLOYER";
+  const [role, setRole] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/auth/me").then((r) => r.ok ? r.json() : null).then((d) => d && setRole(d.role));
+  }, []);
+  const isRecruiter = role === "EMPLOYER";
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [pastInterviews, setPastInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);

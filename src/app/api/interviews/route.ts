@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { requireUser, requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 import { deleteCalendarEvent as deleteGoogleEvent } from "@/lib/google-calendar";
 import { deleteCalendarEvent as deleteMicrosoftEvent } from "@/lib/microsoft-calendar";
@@ -7,13 +7,8 @@ import { sendEmail } from "@/lib/sendgrid";
 import { getTimezone, getTimezoneAbbr, formatInTimezone } from "@/lib/timezone";
 
 export async function DELETE(request: NextRequest) {
-  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
-  if (!token?.sub) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (token.role !== "EMPLOYER") {
-    return NextResponse.json({ error: "Only recruiters can cancel interviews. Use the cancel link from your email." }, { status: 403 });
-  }
+  const result = await requireEmployer(request);
+  if (result.error) return result.error;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -107,10 +102,9 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
-  if (!token?.sub) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const result = await requireUser(request);
+  if (result.error) return result.error;
+  const { user } = result;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -119,7 +113,7 @@ export async function GET(request: NextRequest) {
     const pastDays = Math.min(30, Math.max(1, parseInt(searchParams.get("days") || "7", 10)));
 
     let baseWhere: Record<string, unknown> = {};
-    if (past && token.role === "EMPLOYER") {
+    if (past && user.role === "EMPLOYER") {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - pastDays);
       baseWhere = {
@@ -139,8 +133,8 @@ export async function GET(request: NextRequest) {
 
     // Candidates only see their own interviews (matched by email)
     const where =
-      token.role === "CANDIDATE" && token.email
-        ? { ...baseWhere, candidate: { email: { equals: String(token.email), mode: "insensitive" } } }
+      user.role === "CANDIDATE" && user.email
+        ? { ...baseWhere, candidate: { email: { equals: String(user.email), mode: "insensitive" } } }
         : baseWhere;
 
     const interviews = await prisma.interview.findMany({
@@ -156,13 +150,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
-  if (!token?.sub) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (token.role !== "EMPLOYER") {
-    return NextResponse.json({ error: "Only recruiters can schedule interviews with candidates." }, { status: 403 });
-  }
+  const result = await requireEmployer(request);
+  if (result.error) return result.error;
 
   try {
     const body = await request.json();

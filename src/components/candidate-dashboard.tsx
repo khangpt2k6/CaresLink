@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useUser } from "@clerk/nextjs";
 import { Calendar, Clock, Video, CheckCircle, Loader2, XCircle, RefreshCw, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 
@@ -18,7 +18,7 @@ interface Interview {
 }
 
 export function CandidateDashboard() {
-  const { data: session } = useSession();
+  const { user } = useUser();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancelLoading, setCancelLoading] = useState<string | null>(null);
@@ -31,13 +31,13 @@ export function CandidateDashboard() {
         // Filter to only show interviews for this candidate's email
         const mine = (data || []).filter(
           (i: Interview & { candidate?: { email?: string } }) =>
-            i.candidate?.email === session?.user?.email
+            i.candidate?.email === user?.primaryEmailAddress?.emailAddress
         );
         setInterviews(mine);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [session?.user?.email]);
+  }, [user?.primaryEmailAddress?.emailAddress]);
 
   const upcoming = interviews.filter(
     (i) => !i.cancelled && !i.completed && new Date(i.scheduledAt) > new Date()
@@ -52,7 +52,7 @@ export function CandidateDashboard() {
       .then((data) => {
         const mine = (data || []).filter(
           (i: Interview & { candidate?: { email?: string } }) =>
-            i.candidate?.email === session?.user?.email
+            i.candidate?.email === user?.primaryEmailAddress?.emailAddress
         );
         setInterviews(mine);
       })
@@ -60,14 +60,14 @@ export function CandidateDashboard() {
   };
 
   const handleCancel = async (id: string) => {
-    if (!session?.user?.email) return;
+    if (!user?.primaryEmailAddress?.emailAddress) return;
     if (!confirm("Are you sure you want to cancel this interview?")) return;
     setCancelLoading(id);
     try {
       const res = await fetch("/api/booking/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interviewId: id, email: session.user.email }),
+        body: JSON.stringify({ interviewId: id, email: user!.primaryEmailAddress!.emailAddress }),
       });
       const data = await res.json();
       if (data.success) fetchInterviews();
@@ -77,13 +77,13 @@ export function CandidateDashboard() {
   };
 
   const handleConfirm = async (id: string) => {
-    if (!session?.user?.email) return;
+    if (!user?.primaryEmailAddress?.emailAddress) return;
     setConfirmLoading(id);
     try {
       const res = await fetch("/api/booking/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interviewId: id, email: session.user.email }),
+        body: JSON.stringify({ interviewId: id, email: user!.primaryEmailAddress!.emailAddress }),
       });
       const data = await res.json();
       if (data.success) fetchInterviews();
@@ -97,7 +97,7 @@ export function CandidateDashboard() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[#1a2b3c]">
-          Welcome back, {session?.user?.name?.split(" ")[0] || "there"}
+          Welcome back, {user?.firstName || "there"}
         </h1>
         <p className="text-sm text-[#5a6b7c]">
           View your upcoming interviews and book new ones

@@ -358,17 +358,17 @@ export default function CandidateAvailabilityPage() {
         </button>
       </div>
 
-      {/* Main calendar area - integrated layout */}
-      <div className="flex-1 flex gap-3 min-h-0">
+      {/* Main calendar area */}
+      <div className="flex-1 flex min-h-0 border border-[#e5e7eb] rounded-lg bg-white overflow-hidden">
         {/* Week calendar */}
-        <div className="flex-1 flex flex-col border border-[#e5e7eb] rounded-lg bg-white overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col min-h-0">
           {/* Calendar header with navigation */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e7eb] relative z-10">
-            <div className="flex items-center gap-4">
-              <h2 className="text-lg font-semibold text-[#374151]">
+          <div className="flex items-center justify-between px-4 h-[41px] border-b border-[#e5e7eb] relative z-10">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold text-[#374151]">
                 {format(currentWeekStart, "MMMM yyyy")}
               </h2>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={goToPrevWeek}
                   className="rounded-md p-1 text-[#6b7280] hover:bg-gray-100 transition-colors"
@@ -383,15 +383,15 @@ export default function CandidateAvailabilityPage() {
                 </button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button
-                className="inline-flex items-center rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-[#374151] cursor-default"
+                className="inline-flex items-center rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-[#374151] cursor-default"
               >
                 Week
               </button>
               <button
                 onClick={goToToday}
-                className="rounded-md border border-[#e5e7eb] px-3 py-1.5 text-sm font-medium text-[#374151] hover:bg-gray-100 active:bg-gray-200 transition-colors cursor-pointer"
+                className="rounded-md border border-[#e5e7eb] px-3 py-1.5 text-xs font-medium text-[#374151] hover:bg-gray-100 active:bg-gray-200 transition-colors cursor-pointer"
               >
                 Today
               </button>
@@ -403,7 +403,7 @@ export default function CandidateAvailabilityPage() {
             className="grid border-b border-[#e5e7eb]"
             style={{ gridTemplateColumns: "60px repeat(7, 1fr)" }}
           >
-            <div className="py-3 text-center text-[10px] font-medium text-[#9ca3af] uppercase border-r border-[#f3f4f6]">
+            <div className="py-2 text-center text-[10px] font-medium text-[#9ca3af] uppercase border-r border-[#f3f4f6]">
               TIME
             </div>
             {weekDays.map((date) => {
@@ -413,7 +413,7 @@ export default function CandidateAvailabilityPage() {
               return (
                 <div
                   key={date.toISOString()}
-                  className="py-3 text-center border-r border-[#f3f4f6] last:border-r-0"
+                  className="py-2 text-center border-r border-[#f3f4f6] last:border-r-0"
                 >
                   <span className={cn(
                     "text-xs",
@@ -545,16 +545,16 @@ export default function CandidateAvailabilityPage() {
           </div>
         </div>
 
-        {/* Right sidebar - integrated panel with toggle inside */}
+        {/* Right sidebar - shares same card */}
         <div className={cn(
-          "flex-shrink-0 rounded-lg border border-[#e5e7eb] bg-white transition-all duration-200 overflow-hidden",
-          sidebarOpen ? "w-[260px]" : "w-[42px]"
+          "flex-shrink-0 border-l border-[#e5e7eb] bg-white transition-all duration-200 overflow-hidden",
+          sidebarOpen ? "w-[260px]" : "w-10"
         )}>
-          {/* Sidebar header with toggle */}
+          {/* Sidebar header - height matches calendar header */}
           <div className={cn(
-            "flex items-center border-b border-[#e5e7eb] px-3 py-2",
+            "flex items-center border-b border-[#e5e7eb] px-2",
             sidebarOpen ? "justify-between" : "justify-center"
-          )}>
+          )} style={{ height: "41px" }}>
             {sidebarOpen && (
               <span className="text-xs font-semibold text-[#374151]">
                 {format(currentMonth, "MMMM yyyy")}
@@ -575,7 +575,7 @@ export default function CandidateAvailabilityPage() {
           </div>
 
           {sidebarOpen && (
-            <div className="p-3 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
+            <div className="p-3 space-y-4 overflow-y-auto" style={{ maxHeight: "calc(100% - 40px)" }}>
               {/* Mini Calendar */}
               <div>
                 <div className="flex items-center justify-between mb-2">

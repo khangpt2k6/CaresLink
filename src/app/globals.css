@@ -10,9 +10,9 @@
   --border: #e2e8f0;
   --bg: #f5f7fa;
   --bg-card: #ffffff;
-  --sidebar-bg: #0a1628;
-  --sidebar-text: #94a3b8;
-  --sidebar-active: #ffffff;
+  --sidebar-bg: #e8ecf2;
+  --sidebar-text: #5a6b7c;
+  --sidebar-active: #1a2b3c;
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
@@ -64,7 +64,7 @@ body {
 
 /* === Active sidebar indicator === */
 .nav-active {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.07);
   font-weight: 600;
   color: var(--sidebar-active);
 }

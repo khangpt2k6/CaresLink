@@ -19,6 +19,9 @@ const GRID_END = 24;
 const SLOT_MINS = 30;
 const SLOTS_PER_HOUR = 60 / SLOT_MINS;
 const TOTAL_SLOTS = (GRID_END - GRID_START) * SLOTS_PER_HOUR; // 48
+// Compact row height so full day fits in one page (24px/hour = 576px total)
+const HOUR_HEIGHT = 24;
+const SLOT_HEIGHT = HOUR_HEIGHT / 2; // 12px per 30-min slot
 
 const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon first for schedule
 const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -172,7 +175,7 @@ export default function CalendarPage() {
 
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
   const videoDropdownRef = useRef<HTMLDivElement>(null);
-  const gridScrollRef = useRef<HTMLDivElement>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
 
   const [currentTime, setCurrentTime] = useState(getCurrentTimePosition());
 
@@ -188,14 +191,6 @@ export default function CalendarPage() {
     }, 60000);
     return () => clearInterval(interval);
   }, []);
-
-  // Scroll to ~8 AM on mount
-  useEffect(() => {
-    if (gridScrollRef.current && !loading) {
-      const hourHeight = 60; // each hour row is 60px
-      gridScrollRef.current.scrollTop = 8 * hourHeight;
-    }
-  }, [loading]);
 
   // Timezone short label
   const tzShort = TIMEZONES.find((tz) => tz.value === timezone)?.short || "EST";
@@ -297,6 +292,38 @@ export default function CalendarPage() {
     window.addEventListener("mouseup", up);
     return () => window.removeEventListener("mouseup", up);
   }, []);
+
+  // MouseMove during drag: capture fast movements that skip over cells (mouseenter misses them)
+  // IMPORTANT: Display columns are Sun,Mon,Tue... but slotGrid uses Mon=0,Tue=1...Sun=6
+  useEffect(() => {
+    if (!isDragging) return;
+    const grid = gridContainerRef.current;
+    if (!grid) return;
+
+    const handleMove = (e: MouseEvent) => {
+      const rect = grid.getBoundingClientRect();
+      const relX = e.clientX - rect.left;
+      const relY = e.clientY - rect.top + (grid as HTMLDivElement).scrollTop;
+      if (relY < 0 || relY >= TOTAL_SLOTS * SLOT_HEIGHT || relX < 60) return;
+
+      const dayColWidth = (rect.width - 60) / 7;
+      if (relX >= rect.width) return;
+
+      const colIndex = Math.min(6, Math.max(0, Math.floor((relX - 60) / dayColWidth)));
+      const dIdx = DAYS_ORDER.indexOf(getDay(weekDays[colIndex])); // Map display col -> slotGrid day
+      const sIdx = Math.min(TOTAL_SLOTS - 1, Math.max(0, Math.floor(relY / SLOT_HEIGHT)));
+
+      setSlotGrid((prev) => {
+        if (prev[dIdx]?.[sIdx] === dragValue) return prev;
+        const g = prev.map((row) => [...row]);
+        g[dIdx][sIdx] = dragValue;
+        return g;
+      });
+    };
+
+    window.addEventListener("mousemove", handleMove, { passive: true });
+    return () => window.removeEventListener("mousemove", handleMove);
+  }, [isDragging, dragValue, weekDays]);
 
   // Map a calendar date to its slotGrid day index (0=Mon...6=Sun)
   const dateToDayIndex = (date: Date): number => {
@@ -506,17 +533,40 @@ export default function CalendarPage() {
     return { startTime, endTime, slotCount };
   };
 
+  // Seamless blocks overlay (Slashy-style): one div per contiguous block, no gaps
+  const availabilityBlocks = useMemo(() => {
+    const blocks: { colIndex: number; startSlot: number; slotCount: number; startTime: string; endTime: string }[] = [];
+    for (let dIdx = 0; dIdx < 7; dIdx++) {
+      const slots = slotGrid[dIdx] || [];
+      let i = 0;
+      while (i < TOTAL_SLOTS) {
+        if (!slots[i]) {
+          i++;
+          continue;
+        }
+        let end = i;
+        while (end < TOTAL_SLOTS && slots[end]) end++;
+        const colIndex = weekDays.findIndex((d) => DAYS_ORDER.indexOf(getDay(d)) === dIdx);
+        if (colIndex >= 0) {
+          blocks.push({
+            colIndex,
+            startSlot: i,
+            slotCount: end - i,
+            startTime: formatSlotTime(i),
+            endTime: formatSlotTime(end),
+          });
+        }
+        i = end;
+      }
+    }
+    return blocks;
+  }, [slotGrid, weekDays]);
+
   // Navigation
   const goToPrevWeek = () => setCurrentWeekStart(subWeeks(currentWeekStart, 1));
   const goToNextWeek = () => setCurrentWeekStart(addWeeks(currentWeekStart, 1));
   const goToToday = () => {
     setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
-    // Scroll to current time
-    if (gridScrollRef.current) {
-      const now = new Date();
-      const targetScroll = Math.max(0, (now.getHours() - 1) * 60);
-      gridScrollRef.current.scrollTo({ top: targetScroll, behavior: "smooth" });
-    }
   };
 
   // Format current time for display
@@ -751,8 +801,8 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Main calendar area */}
-      <div className="flex-1 flex gap-4 min-h-0">
+      {/* Main calendar area - integrated layout */}
+      <div className="flex-1 flex gap-3 min-h-0">
         {/* Week calendar */}
         <div className="flex-1 flex flex-col border border-[#e5e7eb] rounded-lg bg-white overflow-hidden min-h-0">
           {/* Calendar header with navigation */}
@@ -827,13 +877,13 @@ export default function CalendarPage() {
             })}
           </div>
 
-          {/* Scrollable time grid */}
-          <div ref={gridScrollRef} className="flex-1 overflow-y-auto select-none relative">
+          {/* Time grid - compact to fit full day on one page; scroll only when viewport is small */}
+          <div ref={gridContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden select-none relative min-h-0">
             {/* Current time indicator */}
             {weekDays.some((d) => isToday(d)) && (
               <div
                 className="absolute left-0 right-0 z-20 pointer-events-none"
-                style={{ top: `${currentTime.hours * 60 + currentTime.minutes}px` }}
+                style={{ top: `${(currentTime.hours * 60 + currentTime.minutes) / 60 * HOUR_HEIGHT}px` }}
               >
                 <div className="relative" style={{ marginLeft: "60px" }}>
                   {/* Time badge */}
@@ -850,14 +900,42 @@ export default function CalendarPage() {
               </div>
             )}
 
-            {/* Hour rows */}
+            {/* Seamless availability blocks overlay (Slashy-style) */}
+            <div
+              className="absolute top-0 left-0 right-0 z-[1] pointer-events-none"
+              style={{
+                height: `${TOTAL_SLOTS * SLOT_HEIGHT}px`,
+                display: "grid",
+                gridTemplateColumns: "60px repeat(7, 1fr)",
+                gridTemplateRows: `repeat(${TOTAL_SLOTS}, ${SLOT_HEIGHT}px)`,
+              }}
+            >
+              {availabilityBlocks.map((block, i) => (
+                <div
+                  key={`${block.colIndex}-${block.startSlot}-${i}`}
+                  className="relative mx-0.5 rounded-md bg-[#e0f2fe] border-l-2 border-l-[#0090d9] shadow-sm"
+                  style={{
+                    gridColumn: block.colIndex + 2,
+                    gridRow: `${block.startSlot + 1} / span ${block.slotCount}`,
+                  }}
+                >
+                  {block.slotCount >= 4 && (
+                    <span className="absolute left-1 top-0.5 right-1 text-[9px] font-medium text-[#0090d9] truncate">
+                      {block.startTime}-{block.endTime}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Hour rows - interaction layer */}
             {Array.from({ length: 24 }, (_, hour) => (
               <div
                 key={hour}
                 className="grid relative"
                 style={{
                   gridTemplateColumns: "60px repeat(7, 1fr)",
-                  height: "60px",
+                  height: `${HOUR_HEIGHT}px`,
                 }}
               >
                 {/* Hour label */}
@@ -877,59 +955,31 @@ export default function CalendarPage() {
                   const active1 = slotGrid[dIdx]?.[sIdx1] ?? false;
                   const active2 = slotGrid[dIdx]?.[sIdx2] ?? false;
 
-                  const blockStart1 = isBlockStart(dIdx, sIdx1);
-                  const blockEnd1 = isBlockEnd(dIdx, sIdx1);
-                  const blockStart2 = isBlockStart(dIdx, sIdx2);
-                  const blockEnd2 = isBlockEnd(dIdx, sIdx2);
-                  const label = blockStart1 ? getBlockLabel(dIdx, sIdx1) : null;
-
                   return (
                     <div
                       key={colIdx}
-                      className="border-r border-[#f3f4f6] last:border-r-0 relative"
+                      className="border-r border-[#f3f4f6] last:border-r-0 relative z-10"
                     >
-                      {/* Top half (:00) */}
+                      {/* Top half (:00) - transparent, overlay shows blocks */}
                       <div
                         className={cn(
-                          "absolute inset-x-0 top-0 h-[30px] cursor-pointer border-t border-[#f3f4f6] transition-colors",
-                          active1
-                            ? cn(
-                                "bg-[#e0f2fe] border-l-2 border-l-[#0090d9]",
-                                blockStart1 && "rounded-t",
-                                blockEnd1 && "rounded-b",
-                              )
-                            : "hover:bg-[#f9fafb]",
+                          "absolute inset-x-0 top-0 cursor-pointer transition-colors",
+                          !active1 && "hover:bg-[#f9fafb]",
                         )}
+                        style={{ height: `${SLOT_HEIGHT}px` }}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           handleSlotMouseDown(dIdx, sIdx1);
                         }}
                         onMouseEnter={() => handleSlotMouseEnter(dIdx, sIdx1)}
-                      >
-                        {label && label.slotCount >= 2 && (
-                          <div className="absolute inset-x-1 top-1 pointer-events-none z-10">
-                            <span className="text-[10px] font-medium text-[#0090d9] leading-none">
-                              Available
-                            </span>
-                            <br />
-                            <span className="text-[9px] text-[#0090d9]/70">
-                              {label.startTime} - {label.endTime}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                      />
                       {/* Bottom half (:30) */}
                       <div
                         className={cn(
-                          "absolute inset-x-0 top-[30px] h-[30px] cursor-pointer border-t border-dashed border-[#f3f4f6] transition-colors",
-                          active2
-                            ? cn(
-                                "bg-[#e0f2fe] border-l-2 border-l-[#0090d9]",
-                                blockStart2 && "rounded-t",
-                                blockEnd2 && "rounded-b",
-                              )
-                            : "hover:bg-[#f9fafb]",
+                          "absolute inset-x-0 cursor-pointer transition-colors",
+                          !active2 && "hover:bg-[#f9fafb]",
                         )}
+                        style={{ top: `${SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px` }}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           handleSlotMouseDown(dIdx, sIdx2);
@@ -944,8 +994,8 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Right sidebar - Mini calendar + Summary */}
-        <div className="w-[280px] flex-shrink-0 space-y-4 overflow-y-auto">
+        {/* Right sidebar - Mini calendar + Summary (compact, integrated) */}
+        <div className="w-[240px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
           {/* Mini Calendar */}
           <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
             <div className="flex items-center justify-between mb-3">

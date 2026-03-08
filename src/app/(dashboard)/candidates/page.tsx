@@ -65,11 +65,16 @@ export default function CandidatesPage() {
     finally { setDeleteLoading(null); }
   };
 
+  const handleCancelAi = () => {
+    abortRef.current?.abort();
+    setAiLoading(null);
+  };
+
   const handleContactAi = async (c: Candidate, mode: ContactMode) => {
     const message =
       mode === "booking_link"
         ? `Contact the candidate with ID "${c.id}" for the ${c.position} position. Send them the booking link so they can choose their own interview time.`
-        : `Contact the candidate with ID "${c.id}" for the ${c.position} position. Use auto_book_interview to find a time that works for both the recruiter and the candidate (who has email ${c.email}) and automatically schedule the interview.`;
+        : `Contact the candidate with ID "${c.id}" for the ${c.position} position. Use auto_book_interview to find a mutual time and schedule the interview automatically. Do NOT send the booking link.`;
     setContactModal(null);
     setAiLoading(c.id);
     abortRef.current = new AbortController();
@@ -90,12 +95,6 @@ export default function CandidatesPage() {
     } finally {
       setAiLoading(null);
       abortRef.current = null;
-    }
-  };
-
-  const handleCancelAi = () => {
-    if (abortRef.current) {
-      abortRef.current.abort();
     }
   };
 
@@ -126,35 +125,6 @@ export default function CandidatesPage() {
         </form>
       </div>
 
-      {/* AI Response + Cancel when loading */}
-      {aiPrompt && (
-        <div className="card animate-in mb-4 border-l-4 border-l-[#0090d9] p-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-[#e8f4fd] p-1.5">
-              <Bot className="h-4 w-4 text-[#0090d9]" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-[#1a2b3c]">AI Agent</p>
-              <p className="mt-1 text-sm leading-relaxed text-[#5a6b7c]">{aiPrompt}</p>
-            </div>
-          </div>
-        </div>
-      )}
-      {aiLoading && (
-        <div className="card mb-4 flex items-center justify-between border-l-4 border-l-[#0090d9] p-4">
-          <div className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 animate-spin text-[#0090d9]" />
-            <span className="text-sm text-[#5a6b7c]">Contacting AI...</span>
-          </div>
-          <button
-            onClick={handleCancelAi}
-            className="rounded-lg border border-[#e2e8f0] px-3 py-1.5 text-xs font-medium text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-
       {/* Contact AI modal */}
       {contactModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setContactModal(null)}>
@@ -166,14 +136,12 @@ export default function CandidatesPage() {
               </button>
             </div>
             <p className="mb-4 text-xs text-[#5a6b7c]">Choose how to schedule the interview:</p>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <button
                 onClick={() => handleContactAi(contactModal.candidate, "booking_link")}
-                className="flex w-full items-center gap-3 rounded-lg border border-[#e2e8f0] p-4 text-left transition-colors hover:border-[#0090d9] hover:bg-[#f8fafc]"
+                className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] p-4 text-left transition-colors hover:border-[#0090d9] hover:bg-[#f8fafc]"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e8f4fd]">
-                  <Link2 className="h-5 w-5 text-[#0090d9]" />
-                </div>
+                <Link2 className="h-5 w-5 text-[#0090d9]" />
                 <div>
                   <div className="text-sm font-medium text-[#1a2b3c]">Send booking link</div>
                   <div className="text-xs text-[#5a6b7c]">Candidate picks their own time</div>
@@ -181,17 +149,42 @@ export default function CandidatesPage() {
               </button>
               <button
                 onClick={() => handleContactAi(contactModal.candidate, "auto_book")}
-                className="flex w-full items-center gap-3 rounded-lg border border-[#e2e8f0] p-4 text-left transition-colors hover:border-[#0090d9] hover:bg-[#f8fafc]"
+                className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] p-4 text-left transition-colors hover:border-[#0090d9] hover:bg-[#f8fafc]"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e8f4fd]">
-                  <CalendarCheck className="h-5 w-5 text-[#0090d9]" />
-                </div>
+                <CalendarCheck className="h-5 w-5 text-[#0090d9]" />
                 <div>
                   <div className="text-sm font-medium text-[#1a2b3c]">Auto-book</div>
                   <div className="text-xs text-[#5a6b7c]">Find a time that works for both of you</div>
                 </div>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Response + Cancel during loading */}
+      {(aiPrompt || aiLoading) && (
+        <div className="card animate-in mb-4 border-l-4 border-l-[#0090d9] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-[#e8f4fd] p-1.5">
+                <Bot className="h-4 w-4 text-[#0090d9]" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#1a2b3c]">AI Agent</p>
+                <p className="mt-1 text-sm leading-relaxed text-[#5a6b7c]">
+                  {aiLoading ? "Contacting candidate..." : aiPrompt}
+                </p>
+              </div>
+            </div>
+            {aiLoading && (
+              <button
+                onClick={handleCancelAi}
+                className="shrink-0 rounded-lg border border-[#e2e8f0] px-3 py-1.5 text-xs font-medium text-[#5a6b7c] hover:bg-[#fef2f2] hover:text-[#dc2626] hover:border-[#fecaca]"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </div>
       )}

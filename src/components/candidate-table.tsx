@@ -27,17 +27,21 @@ const statusStyles: Record<string, string> = {
 export function CandidateTable({
   candidates,
   onContactAi,
+  onContactAiClick,
   onEdit,
   onDelete,
   aiLoading,
   deleteLoading,
+  onCancelAi,
 }: {
   candidates: Candidate[];
   onContactAi?: (candidate: Candidate) => void;
+  onContactAiClick?: (candidate: Candidate) => void;
   onEdit?: (id: string, data: { name: string; email: string; phone: string; position: string }) => void;
   onDelete?: (id: string) => void;
   aiLoading?: string | null;
   deleteLoading?: string | null;
+  onCancelAi?: () => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", position: "" });
@@ -60,7 +64,7 @@ export function CandidateTable({
     "w-full rounded-lg border border-[#e2e8f0] bg-white px-2 py-1 text-sm text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20";
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-x-auto">
       <table className="min-w-full">
         <thead>
           <tr className="border-b border-[#e2e8f0] bg-[#f8fafc]">
@@ -73,7 +77,7 @@ export function CandidateTable({
             <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#5a6b7c]">
               Status
             </th>
-            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#5a6b7c]">
+            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#5a6b7c] whitespace-nowrap" style={{ minWidth: 180 }}>
               Actions
             </th>
           </tr>
@@ -121,7 +125,7 @@ export function CandidateTable({
                   {c.status}
                 </span>
               </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right">
+              <td className="whitespace-nowrap px-4 py-3 text-right" style={{ minWidth: 180 }}>
                 <div className="inline-flex items-center gap-1.5">
                   {editingId === c.id ? (
                     <>
@@ -134,9 +138,9 @@ export function CandidateTable({
                     </>
                   ) : (
                     <>
-                      {onContactAi && (
+                      {(onContactAi || onContactAiClick) && (
                         <button
-                          onClick={() => onContactAi(c)}
+                          onClick={() => (onContactAiClick ?? onContactAi)?.(c)}
                           disabled={aiLoading === c.id}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#0077b6] disabled:opacity-40"
                         >

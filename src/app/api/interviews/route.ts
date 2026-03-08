@@ -115,10 +115,27 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const upcoming = searchParams.get("upcoming") !== "false";
+    const past = searchParams.get("past") === "true";
+    const pastDays = Math.min(30, Math.max(1, parseInt(searchParams.get("days") || "7", 10)));
 
-    const baseWhere = upcoming
-      ? { completed: false, noShow: false, cancelled: false, scheduledAt: { gte: new Date() } }
-      : {};
+    let baseWhere: Record<string, unknown> = {};
+    if (past && token.role === "EMPLOYER") {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - pastDays);
+      baseWhere = {
+        completed: false,
+        noShow: false,
+        cancelled: false,
+        scheduledAt: { gte: cutoff, lt: new Date() },
+      };
+    } else if (upcoming) {
+      baseWhere = {
+        completed: false,
+        noShow: false,
+        cancelled: false,
+        scheduledAt: { gte: new Date() },
+      };
+    }
 
     // Candidates only see their own interviews (matched by email)
     const where =
@@ -128,7 +145,7 @@ export async function GET(request: NextRequest) {
 
     const interviews = await prisma.interview.findMany({
       where: Object.keys(where).length ? where : undefined,
-      orderBy: { scheduledAt: "asc" },
+      orderBy: { scheduledAt: past ? "desc" : "asc" },
       include: { candidate: true },
     });
     return NextResponse.json(interviews);

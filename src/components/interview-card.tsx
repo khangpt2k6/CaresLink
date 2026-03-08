@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Video,
   Trash2,
+  UserX,
 } from "lucide-react";
 
 interface Interview {
@@ -20,6 +21,8 @@ interface Interview {
   location: string;
   reminderSent: boolean;
   confirmed: boolean;
+  noShow?: boolean;
+  completed?: boolean;
   calendarLink: string | null;
   meetLink: string | null;
   candidate: { name: string; email: string; phone: string | null };
@@ -29,15 +32,19 @@ export function InterviewCard({
   interview,
   onSendReminder,
   onDelete,
+  onMarkNoShow,
   reminderLoading,
   deleteLoading,
+  noShowLoading,
   showRecruiterActions = true,
 }: {
   interview: Interview;
   onSendReminder: (id: string) => void;
   onDelete: (id: string) => void;
+  onMarkNoShow?: (id: string) => void;
   reminderLoading: string | null;
   deleteLoading: string | null;
+  noShowLoading?: string | null;
   showRecruiterActions?: boolean;
 }) {
   const scheduledDate = new Date(interview.scheduledAt);
@@ -66,7 +73,15 @@ export function InterviewCard({
             {format(scheduledDate, "h:mm a")}
           </span>
           <span className="text-[#8a95a3]">{interview.duration}m</span>
-          {interview.confirmed ? (
+          {interview.noShow ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#fef2f2] px-2 py-0.5 text-[10px] font-medium text-[#dc2626]">
+              <UserX className="h-3 w-3" /> No-show
+            </span>
+          ) : interview.completed ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf5] px-2 py-0.5 text-[10px] font-medium text-[#059669]">
+              <CheckCircle2 className="h-3 w-3" /> Completed
+            </span>
+          ) : interview.confirmed ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf5] px-2 py-0.5 text-[10px] font-medium text-[#059669]">
               <CheckCircle2 className="h-3 w-3" /> Confirmed
             </span>
@@ -92,13 +107,23 @@ export function InterviewCard({
           )}
           {showRecruiterActions && (
             <>
+              {isPast && !interview.noShow && !interview.completed && onMarkNoShow && (
+                <button
+                  onClick={() => onMarkNoShow(interview.id)}
+                  disabled={noShowLoading === interview.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#b45309] hover:bg-[#fffbeb] transition-colors disabled:opacity-40"
+                >
+                  {noShowLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+                  Mark no-show
+                </button>
+              )}
               {!interview.reminderSent && !isPast ? (
                 <button onClick={() => onSendReminder(interview.id)} disabled={reminderLoading === interview.id}
                   className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors disabled:opacity-40">
                   {reminderLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bell className="h-3 w-3" />}
                   Remind
                 </button>
-              ) : interview.reminderSent ? (
+              ) : interview.reminderSent && !isPast ? (
                 <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-[#059669]">
                   <CheckCircle2 className="h-3 w-3" /> Sent
                 </span>

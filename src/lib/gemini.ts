@@ -87,6 +87,17 @@ const functionDeclarations: FunctionDeclaration[] = [
       required: ["candidate_id"],
     },
   },
+  {
+    name: "get_stale_candidates",
+    description: "Get candidates who haven't replied in 5+ days after outreach (email or booking link). Use to proactively suggest follow-ups.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        min_days: { type: SchemaType.NUMBER, description: "Minimum days since last outreach (default 5)", nullable: true },
+      },
+      required: [],
+    },
+  },
 ];
 
 async function executeFunction(name: string, args: Record<string, unknown>): Promise<object> {
@@ -116,6 +127,18 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         select: { id: true, name: true, email: true, position: true, status: true },
       });
       return { candidates, count: candidates.length };
+    }
+    case "get_stale_candidates": {
+      const { getStaleCandidates } = await import("./insights");
+      const minDays = typeof args.min_days === "number" ? args.min_days : 5;
+      const stale = await getStaleCandidates(minDays);
+      return { staleCandidates: stale, count: stale.length };
+    }
+    case "get_stale_candidates": {
+      const { getStaleCandidates } = await import("./insights");
+      const minDays = typeof args.min_days === "number" ? args.min_days : 5;
+      const stale = await getStaleCandidates(minDays);
+      return { staleCandidates: stale, count: stale.length };
     }
     case "send_email": {
       const c = await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) } });

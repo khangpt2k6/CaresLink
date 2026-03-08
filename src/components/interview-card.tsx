@@ -11,7 +11,10 @@ import {
   Video,
   Trash2,
   UserX,
+  XCircle,
+  RefreshCw,
 } from "lucide-react";
+import Link from "next/link";
 
 interface Interview {
   id: string;
@@ -33,18 +36,26 @@ export function InterviewCard({
   onSendReminder,
   onDelete,
   onMarkNoShow,
+  onCandidateCancel,
+  onCandidateConfirm,
   reminderLoading,
   deleteLoading,
   noShowLoading,
+  candidateCancelLoading,
+  candidateConfirmLoading,
   showRecruiterActions = true,
 }: {
   interview: Interview;
   onSendReminder: (id: string) => void;
   onDelete: (id: string) => void;
   onMarkNoShow?: (id: string) => void;
+  onCandidateCancel?: (id: string) => void;
+  onCandidateConfirm?: (id: string) => void;
   reminderLoading: string | null;
   deleteLoading: string | null;
   noShowLoading?: string | null;
+  candidateCancelLoading?: string | null;
+  candidateConfirmLoading?: string | null;
   showRecruiterActions?: boolean;
 }) {
   const scheduledDate = new Date(interview.scheduledAt);
@@ -134,6 +145,37 @@ export function InterviewCard({
                 className="rounded-md p-1.5 text-[#8a95a3] hover:bg-[#fef2f2] hover:text-[#dc2626] transition-colors disabled:opacity-40">
                 {deleteLoading === interview.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
               </button>
+            </>
+          )}
+          {!showRecruiterActions && !isPast && (
+            <>
+              {!interview.confirmed && onCandidateConfirm && (
+                <button
+                  onClick={() => onCandidateConfirm(interview.id)}
+                  disabled={candidateConfirmLoading === interview.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#ecfdf5] px-2.5 py-1.5 text-xs font-medium text-[#059669] hover:bg-[#d1fae5] transition-colors disabled:opacity-40"
+                >
+                  {candidateConfirmLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                  Confirm
+                </button>
+              )}
+              <Link
+                href="/book"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Reschedule
+              </Link>
+              {onCandidateCancel && (
+                <button
+                  onClick={() => { if (confirm("Are you sure you want to cancel this interview?")) onCandidateCancel(interview.id); }}
+                  disabled={candidateCancelLoading === interview.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#dc2626] hover:bg-[#fef2f2] transition-colors disabled:opacity-40"
+                >
+                  {candidateCancelLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
+                  Cancel
+                </button>
+              )}
             </>
           )}
         </div>

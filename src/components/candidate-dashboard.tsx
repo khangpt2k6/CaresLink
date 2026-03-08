@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Calendar, Clock, Video, CheckCircle } from "lucide-react";
+import { Calendar, Clock, Video, CheckCircle, Loader2, XCircle, RefreshCw, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 
 interface Interview {
@@ -21,6 +21,8 @@ export function CandidateDashboard() {
   const { data: session } = useSession();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cancelLoading, setCancelLoading] = useState<string | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/interviews")
@@ -43,6 +45,52 @@ export function CandidateDashboard() {
   const past = interviews.filter(
     (i) => i.completed || new Date(i.scheduledAt) <= new Date()
   );
+
+  const fetchInterviews = () => {
+    fetch("/api/interviews")
+      .then((r) => r.json())
+      .then((data) => {
+        const mine = (data || []).filter(
+          (i: Interview & { candidate?: { email?: string } }) =>
+            i.candidate?.email === session?.user?.email
+        );
+        setInterviews(mine);
+      })
+      .catch(console.error);
+  };
+
+  const handleCancel = async (id: string) => {
+    if (!session?.user?.email) return;
+    if (!confirm("Are you sure you want to cancel this interview?")) return;
+    setCancelLoading(id);
+    try {
+      const res = await fetch("/api/booking/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interviewId: id, email: session.user.email }),
+      });
+      const data = await res.json();
+      if (data.success) fetchInterviews();
+      else alert(data.error || "Failed to cancel");
+    } catch { alert("Failed to cancel interview"); }
+    finally { setCancelLoading(null); }
+  };
+
+  const handleConfirm = async (id: string) => {
+    if (!session?.user?.email) return;
+    setConfirmLoading(id);
+    try {
+      const res = await fetch("/api/booking/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interviewId: id, email: session.user.email }),
+      });
+      const data = await res.json();
+      if (data.success) fetchInterviews();
+      else alert(data.error || "Failed to confirm");
+    } catch { alert("Failed to confirm interview"); }
+    finally { setConfirmLoading(null); }
+  };
 
   return (
     <div className="p-6">
@@ -134,11 +182,20 @@ export function CandidateDashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {interview.confirmed && (
+                  <div className="flex items-center gap-2">
+                    {interview.confirmed ? (
                       <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-medium text-green-600">
                         Confirmed
                       </span>
+                    ) : (
+                      <button
+                        onClick={() => handleConfirm(interview.id)}
+                        disabled={confirmLoading === interview.id}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#ecfdf5] px-2.5 py-1.5 text-xs font-medium text-[#059669] hover:bg-[#d1fae5] transition-colors disabled:opacity-40"
+                      >
+                        {confirmLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                        Confirm
+                      </button>
                     )}
                     {interview.meetLink && (
                       <a
@@ -151,6 +208,21 @@ export function CandidateDashboard() {
                         Join
                       </a>
                     )}
+                    <Link
+                      href="/book"
+                      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#5a6b7c] hover:bg-[#f0f4f8] transition-colors"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Reschedule
+                    </Link>
+                    <button
+                      onClick={() => handleCancel(interview.id)}
+                      disabled={cancelLoading === interview.id}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#dc2626] hover:bg-[#fef2f2] transition-colors disabled:opacity-40"
+                    >
+                      {cancelLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
+                      Cancel
+                    </button>
                   </div>
                 </div>
               );

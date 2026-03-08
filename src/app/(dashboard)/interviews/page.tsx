@@ -40,6 +40,8 @@ export default function InterviewsPage() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [candidateCancelLoading, setCandidateCancelLoading] = useState<string | null>(null);
+  const [candidateConfirmLoading, setCandidateConfirmLoading] = useState<string | null>(null);
 
   const fetchInterviews = () => {
     setLoading(true);
@@ -83,6 +85,38 @@ export default function InterviewsPage() {
     setReminderLoading(id);
     try { const res = await fetch("/api/interviews/reminder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ interviewId: id }) }); const data = await res.json(); if (data.success) fetchInterviews(); else alert(data.error || data.message || "Failed"); }
     catch { alert("Failed to send reminder"); } finally { setReminderLoading(null); }
+  };
+
+  const handleCandidateCancel = async (id: string) => {
+    if (!session?.user?.email) return;
+    setCandidateCancelLoading(id);
+    try {
+      const res = await fetch("/api/booking/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interviewId: id, email: session.user.email }),
+      });
+      const data = await res.json();
+      if (data.success) fetchInterviews();
+      else alert(data.error || "Failed to cancel");
+    } catch { alert("Failed to cancel interview"); }
+    finally { setCandidateCancelLoading(null); }
+  };
+
+  const handleCandidateConfirm = async (id: string) => {
+    if (!session?.user?.email) return;
+    setCandidateConfirmLoading(id);
+    try {
+      const res = await fetch("/api/booking/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interviewId: id, email: session.user.email }),
+      });
+      const data = await res.json();
+      if (data.success) fetchInterviews();
+      else alert(data.error || "Failed to confirm");
+    } catch { alert("Failed to confirm interview"); }
+    finally { setCandidateConfirmLoading(null); }
   };
 
   const handleMarkNoShow = async (id: string) => {
@@ -180,7 +214,7 @@ export default function InterviewsPage() {
             <h2 className="mb-3 text-sm font-semibold text-[#1a2b3c]">Upcoming</h2>
             <div className="space-y-2">
               {interviews.map((i) => (
-                <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} onMarkNoShow={isRecruiter ? handleMarkNoShow : undefined} reminderLoading={reminderLoading} deleteLoading={deleteLoading} noShowLoading={noShowLoading} showRecruiterActions={isRecruiter} />
+                <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} onMarkNoShow={isRecruiter ? handleMarkNoShow : undefined} onCandidateCancel={!isRecruiter ? handleCandidateCancel : undefined} onCandidateConfirm={!isRecruiter ? handleCandidateConfirm : undefined} reminderLoading={reminderLoading} deleteLoading={deleteLoading} noShowLoading={noShowLoading} candidateCancelLoading={candidateCancelLoading} candidateConfirmLoading={candidateConfirmLoading} showRecruiterActions={isRecruiter} />
               ))}
               {interviews.length === 0 && (
                 <div className="card py-16 text-center">

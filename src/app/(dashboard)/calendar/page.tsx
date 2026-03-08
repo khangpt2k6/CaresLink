@@ -7,8 +7,8 @@ import {
   startOfWeek, endOfWeek, addWeeks, subWeeks, addDays,
 } from "date-fns";
 import {
-  ChevronLeft, ChevronRight, ChevronDown, Clock, Save, Loader2, X,
-  Ban, Check, Globe, Timer, Link2, Unlink,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronsLeft, ChevronsRight,
+  Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -19,9 +19,8 @@ const GRID_END = 24;
 const SLOT_MINS = 30;
 const SLOTS_PER_HOUR = 60 / SLOT_MINS;
 const TOTAL_SLOTS = (GRID_END - GRID_START) * SLOTS_PER_HOUR; // 48
-// Compact row height so full day fits in one page (24px/hour = 576px total)
-const HOUR_HEIGHT = 24;
-const SLOT_HEIGHT = HOUR_HEIGHT / 2; // 12px per 30-min slot
+const HOUR_HEIGHT = 60;
+const SLOT_HEIGHT = HOUR_HEIGHT / 2;
 
 const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon first for schedule
 const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -174,6 +173,7 @@ export default function CalendarPage() {
   const [mscalOauthAvailable, setMscalOauthAvailable] = useState(false);
 
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const videoDropdownRef = useRef<HTMLDivElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
 
@@ -191,6 +191,13 @@ export default function CalendarPage() {
     }, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  // Scroll to ~8 AM on mount
+  useEffect(() => {
+    if (gridContainerRef.current && !loading) {
+      gridContainerRef.current.scrollTop = 8 * HOUR_HEIGHT;
+    }
+  }, [loading]);
 
   // Timezone short label
   const tzShort = TIMEZONES.find((tz) => tz.value === timezone)?.short || "EST";
@@ -303,14 +310,14 @@ export default function CalendarPage() {
     const handleMove = (e: MouseEvent) => {
       const rect = grid.getBoundingClientRect();
       const relX = e.clientX - rect.left;
-      const relY = e.clientY - rect.top + (grid as HTMLDivElement).scrollTop;
+      const relY = e.clientY - rect.top + grid.scrollTop;
       if (relY < 0 || relY >= TOTAL_SLOTS * SLOT_HEIGHT || relX < 60) return;
 
       const dayColWidth = (rect.width - 60) / 7;
       if (relX >= rect.width) return;
 
       const colIndex = Math.min(6, Math.max(0, Math.floor((relX - 60) / dayColWidth)));
-      const dIdx = DAYS_ORDER.indexOf(getDay(weekDays[colIndex])); // Map display col -> slotGrid day
+      const dIdx = DAYS_ORDER.indexOf(getDay(weekDays[colIndex]));
       const sIdx = Math.min(TOTAL_SLOTS - 1, Math.max(0, Math.floor(relY / SLOT_HEIGHT)));
 
       setSlotGrid((prev) => {
@@ -586,9 +593,9 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="p-4 max-w-[1600px] mx-auto h-[calc(100vh-64px)] flex flex-col">
+    <div className="p-3 h-screen flex flex-col">
       {/* Top bar: Settings */}
-      <div className="mb-3 flex flex-wrap items-center gap-3 relative z-30">
+      <div className="mb-2 flex flex-wrap items-center gap-2 relative z-30">
         <div className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2">
           <Timer className="h-4 w-4 text-[#6b7280]" />
           <select
@@ -877,22 +884,20 @@ export default function CalendarPage() {
             })}
           </div>
 
-          {/* Time grid - compact to fit full day on one page; scroll only when viewport is small */}
-          <div ref={gridContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden select-none relative min-h-0">
+          {/* Scrollable time grid */}
+          <div ref={gridContainerRef} className="flex-1 min-h-0 overflow-y-auto select-none relative">
             {/* Current time indicator */}
             {weekDays.some((d) => isToday(d)) && (
               <div
                 className="absolute left-0 right-0 z-20 pointer-events-none"
-                style={{ top: `${(currentTime.hours * 60 + currentTime.minutes) / 60 * HOUR_HEIGHT}px` }}
+                style={{ top: `${currentTime.hours * HOUR_HEIGHT + (currentTime.minutes / 60) * HOUR_HEIGHT}px` }}
               >
                 <div className="relative" style={{ marginLeft: "60px" }}>
-                  {/* Time badge */}
                   <div className="absolute -left-[60px] -translate-y-1/2 w-[60px] flex justify-end pr-1">
                     <span className="bg-red-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">
                       {formatCurrentTime()}
                     </span>
                   </div>
-                  {/* Red line */}
                   <div className="h-[2px] bg-red-500 relative">
                     <div className="absolute -left-1.5 -top-[4px] w-[10px] h-[10px] rounded-full bg-red-500" />
                   </div>
@@ -900,11 +905,11 @@ export default function CalendarPage() {
               </div>
             )}
 
-            {/* Seamless availability blocks overlay (Slashy-style) */}
+            {/* Availability blocks overlay */}
             <div
               className="absolute top-0 left-0 right-0 z-[1] pointer-events-none"
               style={{
-                height: `${TOTAL_SLOTS * SLOT_HEIGHT}px`,
+                height: `${24 * HOUR_HEIGHT}px`,
                 display: "grid",
                 gridTemplateColumns: "60px repeat(7, 1fr)",
                 gridTemplateRows: `repeat(${TOTAL_SLOTS}, ${SLOT_HEIGHT}px)`,
@@ -919,16 +924,16 @@ export default function CalendarPage() {
                     gridRow: `${block.startSlot + 1} / span ${block.slotCount}`,
                   }}
                 >
-                  {block.slotCount >= 4 && (
+                  {block.slotCount >= 2 && (
                     <span className="absolute left-1 top-0.5 right-1 text-[9px] font-medium text-[#0090d9] truncate">
-                      {block.startTime}-{block.endTime}
+                      {block.startTime} - {block.endTime}
                     </span>
                   )}
                 </div>
               ))}
             </div>
 
-            {/* Hour rows - interaction layer */}
+            {/* Hour rows */}
             {Array.from({ length: 24 }, (_, hour) => (
               <div
                 key={hour}
@@ -938,7 +943,6 @@ export default function CalendarPage() {
                   height: `${HOUR_HEIGHT}px`,
                 }}
               >
-                {/* Hour label */}
                 <div className="relative border-r border-[#f3f4f6]">
                   {hour > 0 && (
                     <span className="absolute -top-[9px] right-2 text-[11px] text-[#9ca3af]">
@@ -947,11 +951,10 @@ export default function CalendarPage() {
                   )}
                 </div>
 
-                {/* Day cells - 2 slots per hour */}
                 {weekDays.map((date, colIdx) => {
                   const dIdx = dateToDayIndex(date);
-                  const sIdx1 = hour * SLOTS_PER_HOUR; // :00
-                  const sIdx2 = hour * SLOTS_PER_HOUR + 1; // :30
+                  const sIdx1 = hour * SLOTS_PER_HOUR;
+                  const sIdx2 = hour * SLOTS_PER_HOUR + 1;
                   const active1 = slotGrid[dIdx]?.[sIdx1] ?? false;
                   const active2 = slotGrid[dIdx]?.[sIdx2] ?? false;
 
@@ -960,7 +963,6 @@ export default function CalendarPage() {
                       key={colIdx}
                       className="border-r border-[#f3f4f6] last:border-r-0 relative z-10"
                     >
-                      {/* Top half (:00) - transparent, overlay shows blocks */}
                       <div
                         className={cn(
                           "absolute inset-x-0 top-0 cursor-pointer transition-colors",
@@ -973,7 +975,6 @@ export default function CalendarPage() {
                         }}
                         onMouseEnter={() => handleSlotMouseEnter(dIdx, sIdx1)}
                       />
-                      {/* Bottom half (:30) */}
                       <div
                         className={cn(
                           "absolute inset-x-0 cursor-pointer transition-colors",
@@ -994,175 +995,188 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Right sidebar - Mini calendar + Summary (compact, integrated) */}
-        <div className="w-[240px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
-          {/* Mini Calendar */}
-          <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-[#374151]">
-                {format(currentMonth, "yyyy")}
-              </h3>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                  className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                  className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Month name */}
-            <div className="text-center mb-2">
-              <span className="text-xs font-medium text-[#6b7280]">
-                {format(currentMonth, "MMMM")}
+        {/* Right sidebar - integrated panel with toggle inside */}
+        <div className={cn(
+          "flex-shrink-0 rounded-lg border border-[#e5e7eb] bg-white transition-all duration-200 overflow-hidden",
+          sidebarOpen ? "w-[260px]" : "w-[42px]"
+        )}>
+          {/* Sidebar header with toggle */}
+          <div className={cn(
+            "flex items-center border-b border-[#e5e7eb] px-3 py-2",
+            sidebarOpen ? "justify-between" : "justify-center"
+          )}>
+            {sidebarOpen && (
+              <span className="text-xs font-semibold text-[#374151]">
+                {format(currentMonth, "MMMM yyyy")}
               </span>
-            </div>
-
-            {/* Day of week headers */}
-            <div className="grid grid-cols-7 mb-1">
-              {["SU", "MO", "TU", "WE", "TH", "FR", "SA"].map((d) => (
-                <span key={d} className="py-1 text-center text-[10px] font-medium text-[#9ca3af]">{d}</span>
-              ))}
-            </div>
-
-            {/* Date cells */}
-            <div className="grid grid-cols-7 gap-y-0.5">
-              {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
-              {days.map((date) => {
-                const today = isToday(date);
-                const inWeek = isInCurrentWeek(date);
-                const override = getOverride(date);
-                const isSelected = selectedDate && isSameDay(date, selectedDate);
-                return (
-                  <button
-                    key={date.toISOString()}
-                    onClick={() => setSelectedDate(isSelected ? null : date)}
-                    className={cn(
-                      "flex h-7 w-full items-center justify-center text-[11px] transition-all relative",
-                      inWeek && "bg-blue-50",
-                      today
-                        ? "font-bold"
-                        : "font-normal",
-                      today && !isSelected
-                        ? "text-white"
-                        : inWeek
-                          ? "text-[#374151]"
-                          : "text-[#6b7280] hover:bg-gray-50",
-                      isSelected && "ring-1 ring-blue-500 rounded",
-                      override && !override.available && "text-red-400",
-                    )}
-                  >
-                    {today && !isSelected && (
-                      <span className="absolute inset-0 flex items-center justify-center">
-                        <span className="w-6 h-6 rounded-full bg-blue-600" />
-                      </span>
-                    )}
-                    <span className="relative z-10">{format(date, "d")}</span>
-                    {override && (
-                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((o) => !o)}
+              className="rounded-md p-1.5 text-[#6b7280] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+              title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            >
+              {sidebarOpen ? (
+                <ChevronsRight className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              )}
+            </button>
           </div>
 
-          {/* Date override panel */}
-          {selectedDate && isSameMonth(selectedDate, currentMonth) && (
-            <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-[#374151]">
-                  {format(selectedDate, "EEEE, MMM d")}
-                </span>
-                <button onClick={() => setSelectedDate(null)} className="rounded p-0.5 hover:bg-gray-100">
-                  <X className="h-3.5 w-3.5 text-[#9ca3af]" />
-                </button>
-              </div>
-              {getOverride(selectedDate) ? (
-                <div>
-                  <p className="mb-3 text-xs text-[#6b7280]">
-                    This date is blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
-                  </p>
+          {sidebarOpen && (
+            <div className="p-3 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
+              {/* Mini Calendar */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
                   <button
-                    onClick={() => toggleDateOverride(selectedDate)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600 transition-colors"
+                    onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                    className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
                   >
-                    <Check className="h-3.5 w-3.5" />
-                    Unblock Date
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                    className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
-              ) : (
-                <div>
-                  <input
-                    type="text"
-                    value={overrideReason}
-                    onChange={(e) => setOverrideReason(e.target.value)}
-                    placeholder="Reason (optional)"
-                    className="mb-3 w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  />
-                  <button
-                    onClick={() => toggleDateOverride(selectedDate)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white hover:bg-red-600 transition-colors"
-                  >
-                    <Ban className="h-3.5 w-3.5" />
-                    Block This Date
-                  </button>
+
+                <div className="grid grid-cols-7 mb-1">
+                  {["SU", "MO", "TU", "WE", "TH", "FR", "SA"].map((d) => (
+                    <span key={d} className="py-1 text-center text-[10px] font-medium text-[#9ca3af]">{d}</span>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-y-0.5">
+                  {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
+                  {days.map((date) => {
+                    const today = isToday(date);
+                    const inWeek = isInCurrentWeek(date);
+                    const override = getOverride(date);
+                    const isSelected = selectedDate && isSameDay(date, selectedDate);
+                    return (
+                      <button
+                        key={date.toISOString()}
+                        onClick={() => setSelectedDate(isSelected ? null : date)}
+                        className={cn(
+                          "flex h-7 w-full items-center justify-center text-[11px] transition-all relative rounded",
+                          inWeek && "bg-blue-50",
+                          today ? "font-bold" : "font-normal",
+                          today && !isSelected
+                            ? "text-white"
+                            : inWeek ? "text-[#374151]" : "text-[#6b7280] hover:bg-gray-50",
+                          isSelected && "ring-1 ring-blue-500",
+                          override && !override.available && "text-red-400",
+                        )}
+                      >
+                        {today && !isSelected && (
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="w-6 h-6 rounded-full bg-blue-600" />
+                          </span>
+                        )}
+                        <span className="relative z-10">{format(date, "d")}</span>
+                        {override && (
+                          <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Date override panel */}
+              {selectedDate && isSameMonth(selectedDate, currentMonth) && (
+                <div className="border-t border-[#f3f4f6] pt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-[#374151]">
+                      {format(selectedDate, "EEE, MMM d")}
+                    </span>
+                    <button onClick={() => setSelectedDate(null)} className="rounded p-0.5 hover:bg-gray-100">
+                      <X className="h-3 w-3 text-[#9ca3af]" />
+                    </button>
+                  </div>
+                  {getOverride(selectedDate) ? (
+                    <div>
+                      <p className="mb-2 text-[11px] text-[#6b7280]">
+                        Blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
+                      </p>
+                      <button
+                        onClick={() => toggleDateOverride(selectedDate)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 transition-colors"
+                      >
+                        <Check className="h-3 w-3" />
+                        Unblock
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="text"
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                        placeholder="Reason (optional)"
+                        className="mb-2 w-full rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                      <button
+                        onClick={() => toggleDateOverride(selectedDate)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 transition-colors"
+                      >
+                        <Ban className="h-3 w-3" />
+                        Block Date
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Schedule Summary */}
-          <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
-            <h3 className="text-sm font-semibold text-[#374151] mb-3">Schedule Summary</h3>
-            <div className="space-y-2">
-              {DAY_LABELS.map((d, dIdx) => {
-                const slots = slotGrid[dIdx];
-                const activeCount = slots?.filter(Boolean).length ?? 0;
-                const first = slots?.findIndex(Boolean) ?? -1;
-                const reversedFirst = slots ? [...slots].reverse().findIndex(Boolean) : -1;
-                const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
-                return (
-                  <div key={d} className="flex items-center gap-2">
-                    <span className={cn(
-                      "text-[10px] font-semibold w-7",
-                      activeCount > 0 ? "text-[#374151]" : "text-[#d1d5db]"
-                    )}>
-                      {d}
-                    </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-[#f3f4f6] overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[#0090d9] transition-all duration-300"
-                        style={{ width: `${(activeCount / TOTAL_SLOTS) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-[10px] text-[#9ca3af] w-20 text-right">
-                      {activeCount > 0 ? (
-                        <>{formatSlotTime(first)} - {formatSlotTime(last + 1)}</>
-                      ) : (
-                        <span className="text-[#d1d5db]">Unavailable</span>
-                      )}
+              {/* Schedule Summary */}
+              <div className="border-t border-[#f3f4f6] pt-3">
+                <h3 className="text-xs font-semibold text-[#374151] mb-2">Schedule Summary</h3>
+                <div className="space-y-1.5">
+                  {DAY_LABELS.map((d, dIdx) => {
+                    const slots = slotGrid[dIdx];
+                    const activeCount = slots?.filter(Boolean).length ?? 0;
+                    const first = slots?.findIndex(Boolean) ?? -1;
+                    const reversedFirst = slots ? [...slots].reverse().findIndex(Boolean) : -1;
+                    const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
+                    return (
+                      <div key={d} className="flex items-center gap-2">
+                        <span className={cn(
+                          "text-[10px] font-semibold w-7",
+                          activeCount > 0 ? "text-[#374151]" : "text-[#d1d5db]"
+                        )}>
+                          {d}
+                        </span>
+                        <div className="flex-1 h-1.5 rounded-full bg-[#f3f4f6] overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-[#0090d9] transition-all duration-300"
+                            style={{ width: `${(activeCount / TOTAL_SLOTS) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-[#9ca3af] w-20 text-right">
+                          {activeCount > 0 ? (
+                            <>{formatSlotTime(first)} - {formatSlotTime(last + 1)}</>
+                          ) : (
+                            <span className="text-[#d1d5db]">Unavailable</span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 pt-2 border-t border-[#f3f4f6]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-[#9ca3af]">Total weekly hours</span>
+                    <span className="text-sm font-semibold text-[#0090d9]">
+                      {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
                     </span>
                   </div>
-                );
-              })}
-            </div>
-            <div className="mt-3 pt-3 border-t border-[#f3f4f6]">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#9ca3af]">Total weekly hours</span>
-                <span className="text-sm font-semibold text-[#0090d9]">
-                  {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
-                </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

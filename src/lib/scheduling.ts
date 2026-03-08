@@ -133,6 +133,113 @@ export async function findNextAvailableSlots(
   return slots.slice(0, 8);
 }
 
+/** Get slot starts for a date based on candidate's weekly availability (from User with matching email) */
+function getCandidateSlotStartsForDate(
+  date: Date,
+  candidateScheduleByDay: Map<number, { startHour: number; endHour: number }>
+): { hour: number; minute: number }[] {
+  const dayOfWeek = date.getDay();
+  const schedule = candidateScheduleByDay.get(dayOfWeek);
+  if (!schedule || schedule.startHour >= schedule.endHour) return [];
+
+  const slots: { hour: number; minute: number }[] = [];
+  let cur = schedule.startHour;
+  while (cur < schedule.endHour) {
+    const h = Math.floor(cur);
+    const m = Math.round((cur - h) * 60);
+    slots.push({ hour: h, minute: m });
+    cur += 0.5;
+  }
+  return slots;
+}
+
+/**
+ * Find slots that work for BOTH recruiter (Availability + calendar) and candidate (CandidateAvailability).
+ * If the candidate has no User account or hasn't set availability, falls back to recruiter-only slots.
+ */
+export async function findMutualAvailableSlots(
+  candidateId: string,
+  durationMinutes?: number
+): Promise<Date[]> {
+  const duration = durationMinutes ?? await getDefaultDuration();
+  const candidate = await prisma.candidate.findUnique({
+    where: { id: candidateId },
+    include: { interviews: true },
+  });
+  if (!candidate) return [];
+
+  // Find User with matching email (candidate who set their availability)
+  const candidateUser = await prisma.user.findFirst({
+    where: {
+      email: { equals: candidate.email, mode: "insensitive" },
+      role: "CANDIDATE",
+    },
+  });
+
+  const candidateScheduleByDay = new Map<number, { startHour: number; endHour: number }>();
+  if (candidateUser) {
+    const candidateAvail = await prisma.candidateAvailability.findMany({
+      where: { userId: candidateUser.id, enabled: true },
+    });
+    for (const a of candidateAvail) {
+      const start = sanitizeHour(a.startHour, 9);
+      const end = sanitizeHour(a.endHour, 17);
+      if (start < end) candidateScheduleByDay.set(a.dayOfWeek, { startHour: start, endHour: end });
+    }
+  }
+
+  const hasCandidateAvailability = candidateScheduleByDay.size > 0;
+
+  const now = new Date();
+  const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const busySlots = await getAllBusySlots(now, weekFromNow);
+
+  const slots: Date[] = [];
+  for (let d = 1; d <= 7; d++) {
+    const dayDate = new Date(now);
+    dayDate.setDate(dayDate.getDate() + d);
+
+    const recruiterStarts = await getAvailableSlotStarts(dayDate);
+    const candidateStarts = hasCandidateAvailability
+      ? getCandidateSlotStartsForDate(dayDate, candidateScheduleByDay)
+      : recruiterStarts;
+
+    const slotStarts = hasCandidateAvailability
+      ? recruiterStarts.filter((r) =>
+          candidateStarts.some((c) => c.hour === r.hour && c.minute === r.minute)
+        )
+      : recruiterStarts;
+
+    for (const { hour, minute } of slotStarts) {
+      const start = new Date(dayDate);
+      start.setHours(hour, minute, 0, 0);
+      if (start <= now) continue;
+
+      const end = new Date(start.getTime() + duration * 60 * 1000);
+
+      const dbConflict = candidate.interviews.some(
+        (i) =>
+          !i.completed &&
+          !i.noShow &&
+          !i.cancelled &&
+          i.scheduledAt < end &&
+          new Date(i.scheduledAt.getTime() + i.duration * 60 * 1000) > start
+      );
+      if (dbConflict) continue;
+
+      const calConflict = busySlots.some((b) => {
+        const bStart = new Date(b.start);
+        const bEnd = new Date(b.end);
+        return bStart < end && bEnd > start;
+      });
+      if (calConflict) continue;
+
+      slots.push(start);
+    }
+  }
+  return slots.slice(0, 8);
+}
+
 export async function findPublicAvailableSlots(
   month: number, // 0-indexed (0 = January)
   year: number,

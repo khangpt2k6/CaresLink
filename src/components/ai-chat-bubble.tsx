@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { Bot, X, Send, Loader2 } from "lucide-react";
 
 export function AiChatBubble() {
@@ -9,6 +10,8 @@ export function AiChatBubble() {
   const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const isCalendarPage = pathname === "/calendar" || pathname === "/availability";
 
   useEffect(() => {
     if (scrollRef.current) {

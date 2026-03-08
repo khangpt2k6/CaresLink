@@ -10,8 +10,18 @@ export interface RecruitmentMetrics {
   totalCost: number;
   costPerHire: number;
   hiresCount: number;
+  timeToHireDays: number | null;
   periodStart: Date;
   periodEnd: Date;
+}
+
+export interface StaleCandidate {
+  id: string;
+  name: string;
+  email: string;
+  position: string;
+  daysSinceLastOutreach: number;
+  lastOutreachType: string;
 }
 
 export interface Insight {
@@ -42,9 +52,13 @@ export async function getMetrics(
     include: { candidate: true },
   });
 
-  const emailsSent = events.filter((e) => e.type === "email_sent").length;
+  // Count all email-related events: direct emails, booking links, reminders
+  const emailEventTypes = ["email_sent", "booking_link_sent", "reminder_sent"];
+  const emailsSent = events.filter((e) => emailEventTypes.includes(e.type)).length;
   const emailOpened = events.filter((e) => e.type === "email_opened").length;
-  const interviews = events.filter((e) => e.type === "interview_scheduled").length;
+  const interviews = events.filter((e) =>
+    e.type === "interview_scheduled" || e.type === "self_booked"
+  ).length;
   const noShows = events.filter((e) => e.type === "interview_no_show").length;
   const hires = events.filter(
     (e) => e.type === "status_changed" && (e.metadata || "").toLowerCase().includes("hired")
@@ -52,6 +66,25 @@ export async function getMetrics(
 
   const uniqueCandidates = new Set(events.map((e) => e.candidateId).filter(Boolean)).size;
   const totalCost = events.reduce((s, e) => s + (e.cost || 0), 0);
+
+  // Time-to-hire: from appliedAt to hire event (status_changed with hired)
+  let timeToHireDays: number | null = null;
+  const hireEvents = events.filter(
+    (e) => e.type === "status_changed" && (e.metadata || "").toLowerCase().includes("hired")
+  );
+  if (hireEvents.length > 0) {
+    const days: number[] = [];
+    for (const e of hireEvents) {
+      if (e.candidate?.appliedAt) {
+        const applied = new Date(e.candidate.appliedAt).getTime();
+        const hired = new Date(e.createdAt).getTime();
+        days.push((hired - applied) / (24 * 60 * 60 * 1000));
+      }
+    }
+    if (days.length > 0) {
+      timeToHireDays = Math.round(days.reduce((a, b) => a + b, 0) / days.length);
+    }
+  }
 
   return {
     totalCandidates: uniqueCandidates,
@@ -63,12 +96,58 @@ export async function getMetrics(
     totalCost,
     costPerHire: hires ? totalCost / hires : 0,
     hiresCount: hires,
+    timeToHireDays,
     periodStart,
     periodEnd,
   };
 }
 
-export function getInsights(metrics: RecruitmentMetrics): Insight[] {
+export async function getStaleCandidates(minDays = 5): Promise<StaleCandidate[]> {
+  const outreachTypes = ["email_sent", "booking_link_sent"];
+  const responseTypes = ["interview_scheduled", "self_booked"];
+
+  const candidates = await prisma.candidate.findMany({
+    where: { status: "contacted" },
+    include: {
+      events: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      },
+    },
+  });
+
+  const stale: StaleCandidate[] = [];
+  const now = new Date();
+
+  for (const c of candidates) {
+    const events = c.events;
+    const lastOutreach = events.find((e) => outreachTypes.includes(e.type));
+    if (!lastOutreach) continue;
+
+    const outreachAt = new Date(lastOutreach.createdAt);
+    const hasRespondedAfter = events.some(
+      (e) => responseTypes.includes(e.type) && new Date(e.createdAt) > outreachAt
+    );
+    if (hasRespondedAfter) continue;
+
+    const daysSince = Math.floor((now.getTime() - outreachAt.getTime()) / (24 * 60 * 60 * 1000));
+    if (daysSince >= minDays) {
+      stale.push({
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        position: c.position,
+        daysSinceLastOutreach: daysSince,
+        lastOutreachType: lastOutreach.type,
+      });
+    }
+  }
+
+  stale.sort((a, b) => b.daysSinceLastOutreach - a.daysSinceLastOutreach);
+  return stale;
+}
+
+export function getInsights(metrics: RecruitmentMetrics, staleCount = 0): Insight[] {
   const insights: Insight[] = [];
 
   if (metrics.noShowRate > 0.15) {
@@ -113,6 +192,40 @@ export function getInsights(metrics: RecruitmentMetrics): Insight[] {
       recommendedAction:
         "Improve subject lines; send at optimal times (Tue–Thu 10–11am); add a follow-up email sequence.",
       priority: "high",
+    });
+  }
+
+  if (metrics.hiresCount > 0 && metrics.timeToHireDays != null) {
+    const benchmark = 14; // typical 10–14 days
+    if (metrics.timeToHireDays > benchmark) {
+      insights.push({
+        title: "Time-to-Hire Above Benchmark",
+        description: `Average time-to-hire is ${metrics.timeToHireDays} days (benchmark: ~${benchmark} days).`,
+        metric: "timeToHireDays",
+        currentValue: `${metrics.timeToHireDays} days`,
+        recommendedAction: "Streamline scheduling; use booking links; reduce back-and-forth.",
+        priority: "medium",
+      });
+    } else {
+      insights.push({
+        title: "Time-to-Hire On Track",
+        description: `Average time-to-hire is ${metrics.timeToHireDays} days.`,
+        metric: "timeToHireDays",
+        currentValue: `${metrics.timeToHireDays} days`,
+        recommendedAction: "Keep using automated scheduling and reminders.",
+        priority: "low",
+      });
+    }
+  }
+
+  if (staleCount > 0) {
+    insights.push({
+      title: "Candidates Need Follow-Up",
+      description: `${staleCount} candidate${staleCount === 1 ? "" : "s"} haven't replied in 5+ days after outreach.`,
+      metric: "staleCandidates",
+      currentValue: String(staleCount),
+      recommendedAction: "Use Contact AI to send a friendly follow-up email or booking link.",
+      priority: "medium",
     });
   }
 

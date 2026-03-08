@@ -7,7 +7,7 @@ import {
 } from "@google/generative-ai";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
-import { sendReminder } from "./scheduling";
+import { sendReminder, scheduleInterview, findMutualAvailableSlots } from "./scheduling";
 
 const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
 if (!apiKey) {
@@ -76,6 +76,28 @@ const functionDeclarations: FunctionDeclaration[] = [
       required: ["interview_id"],
     },
   },
+  {
+    name: "auto_book_interview",
+    description: "Find a time that works for BOTH the recruiter and the candidate (using their availability), then automatically schedule the interview and send the confirmation email. Use when the recruiter wants to auto-book instead of sending a booking link.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
+      },
+      required: ["candidate_id"],
+    },
+  },
+  {
+    name: "get_stale_candidates",
+    description: "Get candidates who haven't replied in 5+ days after outreach (email or booking link). Use to proactively suggest follow-ups.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        min_days: { type: SchemaType.NUMBER, description: "Minimum days since last outreach (default 5)", nullable: true },
+      },
+      required: [],
+    },
+  },
 ];
 
 async function executeFunction(name: string, args: Record<string, unknown>): Promise<object> {
@@ -105,6 +127,18 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         select: { id: true, name: true, email: true, position: true, status: true },
       });
       return { candidates, count: candidates.length };
+    }
+    case "get_stale_candidates": {
+      const { getStaleCandidates } = await import("./insights");
+      const minDays = typeof args.min_days === "number" ? args.min_days : 5;
+      const stale = await getStaleCandidates(minDays);
+      return { staleCandidates: stale, count: stale.length };
+    }
+    case "get_stale_candidates": {
+      const { getStaleCandidates } = await import("./insights");
+      const minDays = typeof args.min_days === "number" ? args.min_days : 5;
+      const stale = await getStaleCandidates(minDays);
+      return { staleCandidates: stale, count: stale.length };
     }
     case "send_email": {
       const c = await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) } });
@@ -172,6 +206,27 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         return { success: false, error: result.error };
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to send booking link" };
+      }
+    }
+    case "auto_book_interview": {
+      try {
+        const candidateId = String(args.candidate_id);
+        const slots = await findMutualAvailableSlots(candidateId);
+        if (slots.length === 0) {
+          return {
+            success: false,
+            error: "No mutual availability found. The candidate may need to set their availability at /availability, or try sending the booking link instead.",
+          };
+        }
+        const interview = await scheduleInterview(candidateId, slots[0]);
+        return {
+          success: true,
+          interview_id: interview.id,
+          scheduled_at: interview.scheduledAt.toISOString(),
+          note: `Interview auto-booked for ${interview.scheduledAt.toLocaleString()}. Confirmation email sent to the candidate.`,
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Failed to auto-book interview" };
       }
     }
     case "send_reminder": {

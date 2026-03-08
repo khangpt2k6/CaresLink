@@ -22,7 +22,17 @@ export function startCronJobs() {
     }
   });
 
+  // Run daily at 9am for follow-up sequence (Day 1, 3, 5)
+  cron.schedule("0 9 * * *", async () => {
+    try {
+      await runFollowUpSequence();
+    } catch (e) {
+      console.error("[Cron] Follow-up sequence failed:", e);
+    }
+  });
+
   console.log("[Cron] Auto-reminder scheduler started (runs every 30 min)");
+  console.log("[Cron] Follow-up sequence (Day 1, 3, 5) runs daily at 9am");
 }
 
 async function checkAndSendReminders() {
@@ -153,5 +163,68 @@ async function checkAndSendReminders() {
       `Please Confirm Your Interview — ${interview.position}`,
       `Dear ${candidate.name},\n\nWe noticed you haven't confirmed your upcoming interview yet.\n\n📅 ${dateStr} for the ${interview.position} position.\n\nPlease let us know:\n✅ Confirm attendance: ${confirmUrl}\n❌ Cancel or reschedule: ${cancelUrl}\n\nThank you,\nCaresLink Recruiting`
     ).catch(() => {});
+  }
+
+  await runFollowUpSequence();
+}
+
+/** Day 1, 3, 5 follow-up sequence for unresponsive candidates (email only) */
+async function runFollowUpSequence() {
+  const { getStaleCandidates } = await import("@/lib/insights");
+  const stale = await getStaleCandidates(1); // min 1 day since outreach
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const companyName = process.env.COMPANY_NAME || "CaresLink Team";
+
+  for (const c of stale) {
+    const events = await prisma.event.findMany({
+      where: { candidateId: c.id },
+      orderBy: { createdAt: "desc" },
+    });
+    const outreachTypes = ["email_sent", "booking_link_sent"];
+    const followUpType = "follow_up_sent";
+    const lastOutreach = events.find((e) => outreachTypes.includes(e.type));
+    if (!lastOutreach) continue;
+
+    const lastFollowUp = events.find((e) => e.type === followUpType);
+    const lastFollowUpDay = lastFollowUp?.metadata
+      ? parseInt(JSON.parse(lastFollowUp.metadata || "{}").day || "0", 10)
+      : 0;
+    const outreachAt = new Date(lastOutreach.createdAt);
+    const hoursSince = (Date.now() - outreachAt.getTime()) / (60 * 60 * 1000);
+    const daysSince = Math.floor(hoursSince / 24);
+
+    let sendDay: number | null = null;
+    if (daysSince >= 5 && lastFollowUpDay < 5) sendDay = 5;
+    else if (daysSince >= 3 && lastFollowUpDay < 3) sendDay = 3;
+    else if (daysSince >= 1 && lastFollowUpDay < 1) sendDay = 1;
+
+    if (!sendDay) continue;
+
+    const bookingUrl = `${appUrl}/book`;
+    const subject =
+      sendDay === 1
+        ? `Quick follow-up — ${c.position} at ${companyName}`
+        : sendDay === 3
+          ? `Re: ${c.position} — still interested?`
+          : `Last chance — ${c.position} opportunity`;
+    const body =
+      sendDay === 1
+        ? `Hi ${c.name},\n\nI wanted to follow up on my previous message about the ${c.position} position. We'd love to hear from you.\n\nIf you're still interested, you can pick a time that works for you here: ${bookingUrl}\n\nBest,\n${companyName}`
+        : sendDay === 3
+          ? `Hi ${c.name},\n\nI haven't heard back yet about the ${c.position} role. If you're still interested, please book a time here: ${bookingUrl}\n\nIf your situation has changed, no problem — just let us know.\n\nBest,\n${companyName}`
+          : `Hi ${c.name},\n\nThis is a final follow-up about the ${c.position} position. We'll be moving forward with other candidates soon. If you'd like to interview, please book here: ${bookingUrl}\n\nBest,\n${companyName}`;
+
+    const result = await sendEmail(c.email, subject, body);
+    if (result.success) {
+      await prisma.event.create({
+        data: {
+          type: followUpType,
+          candidateId: c.id,
+          channel: "email",
+          metadata: JSON.stringify({ day: sendDay }),
+        },
+      });
+      console.log(`[Cron] Sent Day ${sendDay} follow-up to ${c.email}`);
+    }
   }
 }

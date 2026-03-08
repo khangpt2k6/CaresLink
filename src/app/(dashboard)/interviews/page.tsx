@@ -14,6 +14,8 @@ interface Interview {
   location: string;
   reminderSent: boolean;
   confirmed: boolean;
+  noShow?: boolean;
+  completed?: boolean;
   calendarLink: string | null;
   meetLink: string | null;
   candidate: { name: string; email: string; phone: string | null };
@@ -25,9 +27,12 @@ export default function InterviewsPage() {
   const { data: session } = useSession();
   const isRecruiter = session?.user?.role === "EMPLOYER";
   const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [pastInterviews, setPastInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pastLoading, setPastLoading] = useState(false);
   const [reminderLoading, setReminderLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const [noShowLoading, setNoShowLoading] = useState<string | null>(null);
   const [showBooking, setShowBooking] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState("");
@@ -41,7 +46,14 @@ export default function InterviewsPage() {
     fetch("/api/interviews?upcoming=true").then((r) => r.json()).then(setInterviews).catch(console.error).finally(() => setLoading(false));
   };
 
+  const fetchPastInterviews = () => {
+    if (!isRecruiter) return;
+    setPastLoading(true);
+    fetch("/api/interviews?past=true&days=7").then((r) => r.json()).then(setPastInterviews).catch(console.error).finally(() => setPastLoading(false));
+  };
+
   useEffect(() => { fetchInterviews(); }, []);
+  useEffect(() => { if (isRecruiter) fetchPastInterviews(); }, [isRecruiter]);
 
   const handleOpenBooking = async () => { setShowBooking(true); const res = await fetch("/api/candidates"); setCandidates(await res.json()); };
 
@@ -63,7 +75,7 @@ export default function InterviewsPage() {
 
   const handleDelete = async (id: string) => {
     setDeleteLoading(id);
-    try { const res = await fetch(`/api/interviews?id=${id}`, { method: "DELETE" }); if (res.ok) fetchInterviews(); else { const d = await res.json(); alert(d.error || "Failed to cancel"); } }
+    try { const res = await fetch(`/api/interviews?id=${id}`, { method: "DELETE" }); if (res.ok) { fetchInterviews(); if (isRecruiter) fetchPastInterviews(); } else { const d = await res.json(); alert(d.error || "Failed to cancel"); } }
     catch { alert("Failed to cancel interview"); } finally { setDeleteLoading(null); }
   };
 
@@ -71,6 +83,17 @@ export default function InterviewsPage() {
     setReminderLoading(id);
     try { const res = await fetch("/api/interviews/reminder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ interviewId: id }) }); const data = await res.json(); if (data.success) fetchInterviews(); else alert(data.error || data.message || "Failed"); }
     catch { alert("Failed to send reminder"); } finally { setReminderLoading(null); }
+  };
+
+  const handleMarkNoShow = async (id: string) => {
+    setNoShowLoading(id);
+    try {
+      const res = await fetch(`/api/interviews/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ noShow: true }) });
+      const data = await res.json();
+      if (res.ok) { fetchInterviews(); fetchPastInterviews(); }
+      else alert(data.error || "Failed to mark no-show");
+    } catch { alert("Failed to mark no-show"); }
+    finally { setNoShowLoading(null); }
   };
 
   return (
@@ -152,17 +175,39 @@ export default function InterviewsPage() {
       {loading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-[#0090d9]" /></div>
       ) : (
-        <div className="space-y-2">
-          {interviews.map((i) => (
-            <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} reminderLoading={reminderLoading} deleteLoading={deleteLoading} showRecruiterActions={isRecruiter} />
-          ))}
-          {interviews.length === 0 && (
-            <div className="card py-16 text-center">
-              <Calendar className="mx-auto h-8 w-8 text-[#c4cdd8]" />
-              <p className="mt-3 text-sm font-medium text-[#1a2b3c]">No upcoming interviews</p>
-              <p className="mt-1 text-xs text-[#8a95a3]">
-                {isRecruiter ? 'Click "Book Interview" to schedule one' : 'You have no upcoming interviews scheduled.'}
-              </p>
+        <div className="space-y-6">
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-[#1a2b3c]">Upcoming</h2>
+            <div className="space-y-2">
+              {interviews.map((i) => (
+                <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} onMarkNoShow={isRecruiter ? handleMarkNoShow : undefined} reminderLoading={reminderLoading} deleteLoading={deleteLoading} noShowLoading={noShowLoading} showRecruiterActions={isRecruiter} />
+              ))}
+              {interviews.length === 0 && (
+                <div className="card py-16 text-center">
+                  <Calendar className="mx-auto h-8 w-8 text-[#c4cdd8]" />
+                  <p className="mt-3 text-sm font-medium text-[#1a2b3c]">No upcoming interviews</p>
+                  <p className="mt-1 text-xs text-[#8a95a3]">
+                    {isRecruiter ? 'Click "Book Interview" to schedule one' : 'You have no upcoming interviews scheduled.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {isRecruiter && (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-[#1a2b3c]">Past (last 7 days)</h2>
+              {pastLoading ? (
+                <div className="flex items-center justify-center py-8"><Loader2 className="h-4 w-4 animate-spin text-[#0090d9]" /></div>
+              ) : pastInterviews.length === 0 ? (
+                <p className="text-xs text-[#8a95a3]">No past interviews to mark as no-show.</p>
+              ) : (
+                <div className="space-y-2">
+                  {pastInterviews.map((i) => (
+                    <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} onMarkNoShow={handleMarkNoShow} reminderLoading={reminderLoading} deleteLoading={deleteLoading} noShowLoading={noShowLoading} showRecruiterActions={true} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

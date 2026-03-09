@@ -180,7 +180,7 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         }
 
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-        const bookingUrl = `${appUrl}/book`;
+        const bookingUrl = `${appUrl}/book?email=${encodeURIComponent(c.email)}`;
         const rawMessage = args.message ? String(args.message) : "";
         // Strip any leading greeting (e.g. "Hello Kevin,") from custom message to avoid duplication
         const customMessage = rawMessage.replace(/^(hi|hello|dear|hey)\s+[^,.\n]+[,.]?\s*/i, "").trim();

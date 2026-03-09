@@ -102,7 +102,7 @@ function CancelContent() {
             </p>
             <a
               href="/book"
-              className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#00BFFF] px-4 py-2 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors"
+              className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0077b6] transition-colors"
             >
               <Calendar className="h-4 w-4" />
               Reschedule a new time

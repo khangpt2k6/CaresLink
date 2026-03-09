@@ -179,12 +179,6 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
       const stale = await getStaleCandidates(minDays);
       return { staleCandidates: stale, count: stale.length };
     }
-    case "get_stale_candidates": {
-      const { getStaleCandidates } = await import("./insights");
-      const minDays = typeof args.min_days === "number" ? args.min_days : 5;
-      const stale = await getStaleCandidates(minDays);
-      return { staleCandidates: stale, count: stale.length };
-    }
     case "send_email": {
       const c = await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) } });
       if (!c) return { error: "Candidate not found" };
@@ -375,6 +369,52 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         count: interviews.length,
       };
     }
+    case "get_availability": {
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const schedule = await prisma.availability.findMany({ orderBy: { dayOfWeek: "asc" } });
+      return {
+        schedule: schedule.map((s) => ({
+          dayOfWeek: s.dayOfWeek,
+          day: dayNames[s.dayOfWeek],
+          startHour: s.startHour,
+          endHour: s.endHour,
+          enabled: s.enabled,
+          display: s.enabled
+            ? `${s.startHour % 1 === 0 ? Math.floor(s.startHour) : s.startHour}:00 - ${s.endHour % 1 === 0 ? Math.floor(s.endHour) : s.endHour}:00`
+            : "Unavailable",
+        })),
+      };
+    }
+    case "update_availability": {
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const days = args.days as any[];
+      if (!Array.isArray(days) || days.length === 0) {
+        return { error: "days array is required" };
+      }
+      const updated = [];
+      for (const day of days) {
+        const dayOfWeek = Number(day.dayOfWeek);
+        if (dayOfWeek < 0 || dayOfWeek > 6) continue;
+        const data: { startHour?: number; endHour?: number; enabled?: boolean } = {};
+        if (typeof day.startHour === "number") data.startHour = day.startHour;
+        if (typeof day.endHour === "number") data.endHour = day.endHour;
+        if (typeof day.enabled === "boolean") data.enabled = day.enabled;
+        await prisma.availability.upsert({
+          where: { dayOfWeek },
+          update: data,
+          create: { dayOfWeek, startHour: day.startHour ?? 9, endHour: day.endHour ?? 17, enabled: day.enabled ?? true },
+        });
+        updated.push({ day: dayNames[dayOfWeek], ...data });
+      }
+      // Bump schedule version so calendar UI refreshes
+      await prisma.settings.upsert({
+        where: { id: "default" },
+        update: { scheduleVersion: { increment: 1 } },
+        create: { id: "default", scheduleVersion: 1 },
+      });
+      return { success: true, updated };
+    }
     default:
       return { error: `Unknown function: ${name}` };
   }
@@ -407,6 +447,8 @@ The booking page lets candidates see available times (based on HR availability, 
 You can also use send_email independently for follow-ups, custom messages, or other communications.
 
 When a function returns already_scheduled: true, tell the employer directly: "This candidate already has an interview scheduled on [date]. Cancel it first to reschedule."
+
+You can also manage the recruiter's weekly availability schedule using get_availability and update_availability. When asked to change availability (e.g. "set Monday to Friday 9-5"), update all the relevant days at once.
 
 Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`,
   });

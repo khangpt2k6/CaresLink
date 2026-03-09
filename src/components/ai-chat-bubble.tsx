@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Bot,
   X,
@@ -12,6 +12,9 @@ import {
   Mail,
   Trash2,
   Settings,
+  Plus,
+  ChevronDown,
+  MessageSquare,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -23,38 +26,105 @@ const quickActions = [
   { icon: Settings, label: "Show my availability", prompt: "Show my current weekly availability schedule" },
 ];
 
+interface ChatMessage {
+  role: "user" | "ai";
+  text: string;
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  updatedAt: number;
+}
+
+const STORAGE_KEY = "careslink-chat-sessions";
+const ACTIVE_KEY = "careslink-chat-active-session";
+
+function loadSessions(): ChatSession[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSessions(sessions: ChatSession[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, 30)));
+}
+
+function getTitle(messages: ChatMessage[]): string {
+  const first = messages.find((m) => m.role === "user");
+  if (!first) return "New Chat";
+  const text = first.text.trim();
+  return text.length > 40 ? text.slice(0, 40) + "…" : text;
+}
+
+function timeAgo(ts: number): string {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
 export function AiChatBubble() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>(() => {
-    if (typeof window === "undefined") return [];
-    const stored = localStorage.getItem("careslink-chat-messages");
-    if (stored) {
-      try { return JSON.parse(stored); } catch { return []; }
-    }
-    return [];
+  const [sessions, setSessions] = useState<ChatSession[]>(loadSessions);
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(ACTIVE_KEY) || "";
   });
+  const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const sessionId = useRef<string>("");
-  if (!sessionId.current) {
-    const stored = typeof window !== "undefined" ? localStorage.getItem("careslink-chat-session") : null;
-    if (stored) {
-      sessionId.current = stored;
-    } else {
-      sessionId.current = crypto.randomUUID();
-      if (typeof window !== "undefined") localStorage.setItem("careslink-chat-session", sessionId.current);
-    }
-  }
+  const historyRef = useRef<HTMLDivElement>(null);
 
-  // Save messages to localStorage on every change
+  // Get current session
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
+  const messages = activeSession?.messages || [];
+
+  // Save sessions to localStorage
   useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem("careslink-chat-messages", JSON.stringify(messages.slice(-50)));
+    saveSessions(sessions);
+  }, [sessions]);
+
+  // Save active session id
+  useEffect(() => {
+    if (activeSessionId) {
+      localStorage.setItem(ACTIVE_KEY, activeSessionId);
     }
-  }, [messages]);
+  }, [activeSessionId]);
+
+  // Migrate old single-session storage
+  useEffect(() => {
+    if (sessions.length === 0) {
+      const oldMessages = localStorage.getItem("careslink-chat-messages");
+      const oldSession = localStorage.getItem("careslink-chat-session");
+      if (oldMessages && oldSession) {
+        try {
+          const msgs = JSON.parse(oldMessages) as ChatMessage[];
+          if (msgs.length > 0) {
+            const migrated: ChatSession = {
+              id: oldSession,
+              title: getTitle(msgs),
+              messages: msgs,
+              updatedAt: Date.now(),
+            };
+            setSessions([migrated]);
+            setActiveSessionId(oldSession);
+          }
+        } catch { /* ignore */ }
+        localStorage.removeItem("careslink-chat-messages");
+        localStorage.removeItem("careslink-chat-session");
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -68,24 +138,83 @@ export function AiChatBubble() {
     }
   }, [open]);
 
+  // Close history dropdown on outside click
+  useEffect(() => {
+    if (!showHistory) return;
+    const handler = (e: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setShowHistory(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showHistory]);
+
+  const createNewChat = useCallback(() => {
+    const id = crypto.randomUUID();
+    setActiveSessionId(id);
+    setShowHistory(false);
+    setInput("");
+  }, []);
+
+  const switchToSession = useCallback((id: string) => {
+    setActiveSessionId(id);
+    setShowHistory(false);
+    setInput("");
+  }, []);
+
+  const updateSession = useCallback((sessionId: string, newMessages: ChatMessage[]) => {
+    setSessions((prev) => {
+      const existing = prev.find((s) => s.id === sessionId);
+      if (existing) {
+        return prev.map((s) =>
+          s.id === sessionId
+            ? { ...s, messages: newMessages.slice(-50), title: getTitle(newMessages), updatedAt: Date.now() }
+            : s
+        );
+      }
+      return [
+        { id: sessionId, title: getTitle(newMessages), messages: newMessages.slice(-50), updatedAt: Date.now() },
+        ...prev,
+      ];
+    });
+  }, []);
+
+  const deleteSession = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    if (activeSessionId === id) {
+      setActiveSessionId("");
+    }
+  }, [activeSessionId]);
+
   const sendMessage = async (msg: string) => {
     if (!msg.trim() || loading) return;
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", text: msg.trim() }]);
+
+    // Ensure we have a session
+    let sid = activeSessionId;
+    if (!sid) {
+      sid = crypto.randomUUID();
+      setActiveSessionId(sid);
+    }
+
+    const newMessages = [...messages, { role: "user" as const, text: msg.trim() }];
+    updateSession(sid, newMessages);
     setLoading(true);
+
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg.trim(), sessionId: sessionId.current }),
+        body: JSON.stringify({ message: msg.trim(), sessionId: sid }),
       });
       const data = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        { role: "ai", text: data.response || data.error || "No response" },
-      ]);
+      const withReply = [...newMessages, { role: "ai" as const, text: data.response || data.error || "No response" }];
+      updateSession(sid, withReply);
     } catch {
-      setMessages((prev) => [...prev, { role: "ai", text: "Failed to reach AI agent." }]);
+      const withError = [...newMessages, { role: "ai" as const, text: "Failed to reach AI agent." }];
+      updateSession(sid, withError);
     } finally {
       setLoading(false);
     }
@@ -103,13 +232,9 @@ export function AiChatBubble() {
     }
   };
 
-  const clearChat = () => {
-    setMessages([]);
-    localStorage.removeItem("careslink-chat-messages");
-    localStorage.removeItem("careslink-chat-session");
-    sessionId.current = crypto.randomUUID();
-    localStorage.setItem("careslink-chat-session", sessionId.current);
-  };
+  const olderSessions = sessions
+    .filter((s) => s.id !== activeSessionId && s.messages.length > 0)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 
   return (
     <>
@@ -145,11 +270,11 @@ export function AiChatBubble() {
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={clearChat}
+                  onClick={createNewChat}
                   className="rounded-lg p-2 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
-                  title="Clear chat"
+                  title="New chat"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Plus className="h-4 w-4" />
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.1 }}
@@ -160,6 +285,98 @@ export function AiChatBubble() {
                   <X className="h-4 w-4" />
                 </motion.button>
               </div>
+            </div>
+
+            {/* Chat Switcher Bar */}
+            <div className="relative border-b border-[#e2e8f0] bg-[#fafbfc]" ref={historyRef}>
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="flex w-full items-center justify-between px-5 py-2.5 text-left transition-colors hover:bg-[#f0f4f8]"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[#0090d9]" />
+                  <span className="truncate text-sm font-medium text-[#1a2b3c]">
+                    {activeSession ? activeSession.title : "New Chat"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {olderSessions.length > 0 && (
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#0090d9]/10 px-1.5 text-[10px] font-semibold text-[#0090d9]">
+                      {olderSessions.length}
+                    </span>
+                  )}
+                  <ChevronDown className={`h-3.5 w-3.5 text-[#8a95a3] transition-transform ${showHistory ? "rotate-180" : ""}`} />
+                </div>
+              </button>
+
+              {/* History Dropdown */}
+              <AnimatePresence>
+                {showHistory && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute left-0 right-0 top-full z-10 max-h-[320px] overflow-y-auto border-b border-[#e2e8f0] bg-white shadow-lg"
+                  >
+                    {/* New Chat option */}
+                    <button
+                      onClick={createNewChat}
+                      className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-[#f0f7ff]"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd]">
+                        <Plus className="h-4 w-4 text-[#0090d9]" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[#0090d9]">New Chat</p>
+                        <p className="text-[11px] text-[#8a95a3]">Start a fresh conversation</p>
+                      </div>
+                    </button>
+
+                    {olderSessions.length > 0 && (
+                      <>
+                        <div className="px-5 py-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">Older</p>
+                        </div>
+                        {olderSessions.map((session) => (
+                          <div
+                            key={session.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => switchToSession(session.id)}
+                            onKeyDown={(e) => e.key === "Enter" && switchToSession(session.id)}
+                            className="group flex w-full cursor-pointer items-center gap-3 px-5 py-2.5 text-left transition-colors hover:bg-[#f5faff]"
+                          >
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f0f4f8]">
+                              <MessageSquare className="h-3.5 w-3.5 text-[#8a95a3]" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm text-[#1a2b3c]">{session.title}</p>
+                              <p className="text-[11px] text-[#b0bec8]">
+                                {session.messages.length} messages · {timeAgo(session.updatedAt)}
+                              </p>
+                            </div>
+                            <motion.button
+                              whileHover={{ scale: 1.15 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={(e) => deleteSession(session.id, e)}
+                              className="rounded p-1 text-[#b0bec8] opacity-0 transition-opacity hover:bg-red-50 hover:text-red-400 group-hover:opacity-100"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </motion.button>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {olderSessions.length === 0 && (
+                      <div className="px-5 py-4 text-center">
+                        <p className="text-xs text-[#8a95a3]">No older conversations</p>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Messages Area */}

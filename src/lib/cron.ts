@@ -200,7 +200,7 @@ async function runFollowUpSequence() {
 
     if (!sendDay) continue;
 
-    const bookingUrl = `${appUrl}/book`;
+    const bookingUrl = `${appUrl}/book?email=${encodeURIComponent(c.email)}`;
     const subject =
       sendDay === 1
         ? `Quick follow-up — ${c.position} at ${companyName}`

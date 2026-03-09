@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { format, startOfMonth } from "date-fns";
@@ -25,6 +26,8 @@ interface BookingResult {
 }
 
 export default function BookPage() {
+  const searchParams = useSearchParams();
+  const initialEmail = searchParams.get("email") || undefined;
   const [step, setStep] = useState<Step>("select");
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -263,14 +266,15 @@ export default function BookPage() {
                     </div>
                   </div>
                 </div>
-                {/* Right panel - Form (same flex-1 as calendar area) */}
-                <div className="flex flex-1 flex-col justify-center p-4 sm:p-5 lg:p-6">
+                {/* Right panel - Form aligned to top with sidebar */}
+                <div className="flex flex-1 flex-col justify-start p-4 sm:p-5 lg:p-6">
                   <BookingForm
                     selectedSlot={selectedSlot}
                     onSubmit={handleBooking}
                     submitting={submitting}
                     error={error}
                     hideTimeSummary
+                    initialEmail={initialEmail}
                   />
                 </div>
               </motion.div>

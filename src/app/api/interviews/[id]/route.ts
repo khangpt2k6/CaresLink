@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
-  if (!token?.sub) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (token.role !== "EMPLOYER") {
-    return NextResponse.json({ error: "Only recruiters can mark interviews." }, { status: 403 });
-  }
+  const result = await requireEmployer(request);
+  if (result.error) return result.error;
 
   try {
     const { id } = await params;

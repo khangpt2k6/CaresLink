@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useUser } from "@clerk/nextjs";
 import { MetricCard, MetricsSection } from "@/components/metrics-cards";
 import { CandidateDashboard } from "@/components/candidate-dashboard";
 import {
@@ -28,9 +28,17 @@ interface Metrics {
 }
 
 export default function DashboardPage() {
-  const { data: session } = useSession();
+  const { user } = useUser();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const isCandidate = session?.user?.role === "CANDIDATE";
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => d && setRole(d.role));
+  }, []);
+
+  const isCandidate = role === "CANDIDATE";
 
   useEffect(() => {
     if (isCandidate) return;

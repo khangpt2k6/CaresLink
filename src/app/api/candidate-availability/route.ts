@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { requireUser } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 
 // GET — fetch candidate's weekly availability
 export async function GET(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.AUTH_SECRET });
-  if (!token?.sub) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const result = await requireUser(req);
+  if (result.error) return result.error;
+  const { user } = result;
 
   try {
     const availability = await prisma.candidateAvailability.findMany({
-      where: { userId: token.sub },
+      where: { userId: user.id },
       orderBy: { dayOfWeek: "asc" },
     });
     return NextResponse.json(availability);
@@ -23,10 +22,9 @@ export async function GET(req: NextRequest) {
 
 // PUT — update candidate's weekly availability (bulk)
 export async function PUT(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.AUTH_SECRET });
-  if (!token?.sub) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const result = await requireUser(req);
+  if (result.error) return result.error;
+  const { user } = result;
 
   try {
     const body = await req.json();
@@ -50,14 +48,14 @@ export async function PUT(req: NextRequest) {
       }
 
       await prisma.candidateAvailability.upsert({
-        where: { userId_dayOfWeek: { userId: token.sub, dayOfWeek: day.dayOfWeek } },
+        where: { userId_dayOfWeek: { userId: user.id, dayOfWeek: day.dayOfWeek } },
         update: { startHour, endHour, enabled: day.enabled },
-        create: { userId: token.sub, dayOfWeek: day.dayOfWeek, startHour, endHour, enabled: day.enabled },
+        create: { userId: user.id, dayOfWeek: day.dayOfWeek, startHour, endHour, enabled: day.enabled },
       });
     }
 
     const updated = await prisma.candidateAvailability.findMany({
-      where: { userId: token.sub },
+      where: { userId: user.id },
       orderBy: { dayOfWeek: "asc" },
     });
     return NextResponse.json(updated);

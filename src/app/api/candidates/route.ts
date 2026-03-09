@@ -1,17 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
-
-async function requireEmployer(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.AUTH_SECRET });
-  if (!token?.sub) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-  if (token.role !== "EMPLOYER") {
-    return { error: NextResponse.json({ error: "Only recruiters can manage candidates." }, { status: 403 }) };
-  }
-  return { token };
-}
 
 export async function PUT(request: NextRequest) {
   const auth = await requireEmployer(request);

@@ -17,8 +17,8 @@ import {
   MessageSquare,
   ChevronsLeft,
   ChevronsRight,
-  Link2,
   Check,
+  Link2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAiChat } from "./ai-chat-context";
@@ -36,53 +36,28 @@ const integrations = [
     id: "google-calendar",
     name: "Google Calendar",
     description: "Sync interviews & availability",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-        <rect x="3" y="4" width="18" height="18" rx="2" stroke="#4285F4" strokeWidth="2" />
-        <path d="M3 9h18" stroke="#4285F4" strokeWidth="2" />
-        <path d="M9 4V2M15 4V2" stroke="#4285F4" strokeWidth="2" strokeLinecap="round" />
-        <rect x="7" y="12" width="3" height="3" rx="0.5" fill="#EA4335" />
-        <rect x="14" y="12" width="3" height="3" rx="0.5" fill="#34A853" />
-        <rect x="7" y="17" width="3" height="2" rx="0.5" fill="#FBBC05" />
-      </svg>
-    ),
+    logo: "/google-calendar.svg",
     connected: true,
   },
   {
     id: "gmail",
     name: "Gmail",
     description: "Send emails to candidates",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-        <rect x="2" y="4" width="20" height="16" rx="2" stroke="#EA4335" strokeWidth="1.5" />
-        <path d="M2 6l10 7 10-7" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
+    logo: "/gmail_logo.jpg",
     connected: true,
   },
   {
     id: "outlook",
     name: "Outlook",
     description: "Microsoft 365 calendar & email",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" stroke="#0078D4" strokeWidth="1.5" />
-        <path d="M3 8h18" stroke="#0078D4" strokeWidth="1.5" />
-        <ellipse cx="10" cy="14.5" rx="3.5" ry="3" stroke="#0078D4" strokeWidth="1.5" />
-      </svg>
-    ),
+    logo: "/outlook-icon.png",
     connected: false,
   },
   {
     id: "slack",
     name: "Slack",
     description: "Get notified on new applicants",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-        <path d="M6 15a2 2 0 01-2-2 2 2 0 012-2h2v2a2 2 0 01-2 2zM11 15a2 2 0 002-2V6a2 2 0 00-4 0v7a2 2 0 002 2z" fill="#E01E5A" />
-        <path d="M18 11a2 2 0 00-2-2 2 2 0 00-2 2v2h2a2 2 0 002-2zM18 16a2 2 0 00-2-2h-7a2 2 0 000 4h7a2 2 0 002-2z" fill="#36C5F0" />
-      </svg>
-    ),
+    logo: "/slack.png",
     connected: false,
   },
 ];
@@ -250,8 +225,7 @@ export function AiChatBubble() {
   const sendMessage = async (msg: string) => {
     if (!msg.trim() || loading) return;
     setInput("");
-    setShowIntegrations(false);
-
+    
     let sid = activeSessionId;
     if (!sid) {
       sid = crypto.randomUUID();
@@ -383,8 +357,8 @@ export function AiChatBubble() {
                           key={integration.id}
                           className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] bg-white px-3 py-2.5 transition-colors hover:border-[#0090d9]/20"
                         >
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f5f7fa]">
-                            {integration.icon}
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f5f7fa] overflow-hidden">
+                            <img src={integration.logo} alt={integration.name} className="h-5 w-5 object-contain" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-[#1a2b3c]">{integration.name}</p>

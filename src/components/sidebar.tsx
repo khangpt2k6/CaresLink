@@ -137,10 +137,10 @@ export function Sidebar() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[12px] font-medium text-[#1a2b3c] truncate">
-                  {user.fullName || user.primaryEmailAddress?.emailAddress}
+                  {user.firstName || "User"}
                 </div>
                 <div className="text-[10px] text-[#475569] truncate">
-                  {user.primaryEmailAddress?.emailAddress}
+                  {user.primaryEmailAddress?.emailAddress?.replace(/^(.{2}).*(@.*)$/, "$1***$2")}
                 </div>
               </div>
             </div>

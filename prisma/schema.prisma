@@ -169,6 +169,23 @@ model CandidateAvailability {
   @@unique([userId, dayOfWeek])
 }
 
+model AgentRun {
+  id          String   @id @default(cuid())
+  trigger     String   // "cron" | "manual"
+  report      String
+  startedAt   DateTime
+  completedAt DateTime
+  createdAt   DateTime @default(now())
+}
+
+model AgentMemory {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  history   Json     // Gemini Content[] format
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
 model Event {
   id          String     @id @default(cuid())
   type        String

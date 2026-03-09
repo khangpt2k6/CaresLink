@@ -28,14 +28,13 @@ interface Metrics {
   hiresCount: number;
 }
 
-const sectionVariants = {
-  hidden: { opacity: 0, y: 10 },
-  show: (delay: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay, duration: 0.35, ease: [0.16, 1, 0.3, 1] },
-  }),
-};
+function fadeUp(delay: number) {
+  return {
+    initial: { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 },
+    transition: { delay, duration: 0.35, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
+  };
+}
 
 export default function DashboardPage() {
   const { user } = useUser();
@@ -66,10 +65,7 @@ export default function DashboardPage() {
     <div className="p-6">
       {/* Header */}
       <motion.div
-        variants={sectionVariants}
-        initial="hidden"
-        animate="show"
-        custom={0}
+        {...fadeUp(0)}
         className="mb-5"
       >
         <h1 className="text-xl font-bold text-[#1a2b3c]">
@@ -80,10 +76,7 @@ export default function DashboardPage() {
 
       {/* Metric Cards */}
       <motion.div
-        variants={sectionVariants}
-        initial="hidden"
-        animate="show"
-        custom={0.06}
+        {...fadeUp(0.06)}
       >
         <MetricsSection>
           <MetricCard index={0} title="Candidates" value={metrics?.totalCandidates ?? "—"} subtitle="Last 30 days" icon={Users} />
@@ -95,10 +88,7 @@ export default function DashboardPage() {
 
       {/* Bottom Grid */}
       <motion.div
-        variants={sectionVariants}
-        initial="hidden"
-        animate="show"
-        custom={0.15}
+        {...fadeUp(0.15)}
         className="mt-4 grid gap-4 lg:grid-cols-2"
       >
         {/* Communications */}

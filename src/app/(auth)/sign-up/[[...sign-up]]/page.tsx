@@ -5,18 +5,24 @@ import { Home } from "lucide-react";
 
 export default function SignUpPage() {
   return (
-    <div className="flex min-h-screen">
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-[#eef6fb] p-12 relative overflow-hidden">
-        <img
-          src="/aniamted.gif"
-          alt="CaresLink"
-          className="max-w-full h-auto rounded-2xl"
-        />
+    <div className="relative flex min-h-screen">
+      {/* Full-page video background */}
+      <div className="fixed inset-0 z-0">
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+        >
+          <source src="/nursing.mp4" type="video/mp4" />
+        </video>
+        <div className="absolute inset-0 bg-black/30" />
       </div>
-      <div className="flex w-full lg:w-1/2 flex-col items-center justify-center p-8">
+      <div className="relative z-10 flex w-full flex-col items-center justify-center p-8">
         <Link
           href="/"
-          className="absolute top-8 left-8 inline-flex items-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          className="absolute top-8 left-8 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/90 px-4 py-2 text-sm text-gray-700 hover:bg-white transition-colors backdrop-blur-sm"
         >
           <Home className="h-4 w-4" />
           Back to Home

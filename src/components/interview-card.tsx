@@ -15,6 +15,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 
 interface Interview {
   id: string;
@@ -44,6 +45,7 @@ export function InterviewCard({
   candidateCancelLoading,
   candidateConfirmLoading,
   showRecruiterActions = true,
+  index = 0,
 }: {
   interview: Interview;
   onSendReminder: (id: string) => void;
@@ -57,12 +59,19 @@ export function InterviewCard({
   candidateCancelLoading?: string | null;
   candidateConfirmLoading?: string | null;
   showRecruiterActions?: boolean;
+  index?: number;
 }) {
   const scheduledDate = new Date(interview.scheduledAt);
   const isPast = scheduledDate < new Date();
 
   return (
-    <div className="card px-4 py-3.5">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      whileHover={{ y: -1, transition: { duration: 0.15 } }}
+      className="card px-4 py-3.5"
+    >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0090d9] text-xs font-medium text-white">
@@ -180,6 +189,6 @@ export function InterviewCard({
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

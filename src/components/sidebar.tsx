@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Users,
@@ -43,11 +44,23 @@ export function Sidebar() {
       .then((d) => d && setRole(d.role));
   }, []);
 
+  const navItems = role === "CANDIDATE" ? candidateNav : employerNav;
+
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-56 bg-[#e8ecf2]">
+    <motion.aside
+      initial={{ x: -12, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+      className="fixed left-0 top-0 z-40 h-screen w-56 bg-[#e8ecf2]"
+    >
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-14 items-center gap-2.5 px-4 border-b border-black/10">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.12, duration: 0.3 }}
+          className="flex h-14 items-center gap-2.5 px-4 border-b border-black/10"
+        >
           <Image
             src="/careslink.png"
             alt="CaresLink"
@@ -55,40 +68,71 @@ export function Sidebar() {
             height={28}
             className="rounded-md"
           />
-          <Link href="/" className="text-sm font-semibold text-[#1a2b3c]">
+          <Link
+            href="/"
+            className="text-sm font-semibold text-[#1a2b3c] hover:text-[#0090d9] transition-colors duration-150"
+          >
             CaresLink
           </Link>
-        </div>
+        </motion.div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          {(role === "CANDIDATE" ? candidateNav : employerNav).map((item) => {
+        <nav className="flex-1 space-y-0.5 px-3 py-4">
+          {navItems.map((item, index) => {
             const isActive =
               pathname === item.href ||
               (item.href !== "/" && pathname.startsWith(item.href));
+
             return (
-              <Link
+              <motion.div
                 key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors duration-100",
-                  isActive
-                    ? "nav-active"
-                    : "text-[#5a6b7c] hover:bg-black/5 hover:text-[#1a2b3c]"
-                )}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{
+                  delay: 0.1 + index * 0.045,
+                  duration: 0.28,
+                  ease: [0.16, 1, 0.3, 1],
+                }}
               >
-                <item.icon className="h-[16px] w-[16px] flex-shrink-0" />
-                {item.label}
-              </Link>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors duration-150",
+                    isActive
+                      ? "text-[#1a2b3c] font-semibold"
+                      : "text-[#5a6b7c] hover:bg-black/5 hover:text-[#1a2b3c]"
+                  )}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="nav-active-indicator"
+                      className="absolute inset-0 rounded-lg bg-black/[0.07]"
+                      transition={{ type: "spring", bounce: 0.12, duration: 0.4 }}
+                    />
+                  )}
+                  <item.icon
+                    className={cn(
+                      "relative h-[16px] w-[16px] flex-shrink-0 transition-colors duration-150",
+                      isActive ? "text-[#0090d9]" : "text-current"
+                    )}
+                  />
+                  <span className="relative">{item.label}</span>
+                </Link>
+              </motion.div>
             );
           })}
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-black/10 px-3 py-3 space-y-3">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.28, duration: 0.3 }}
+          className="border-t border-black/10 px-3 py-3 space-y-2"
+        >
           {user && (
-            <div className="flex items-center gap-2.5 px-1">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#0090d9] text-[11px] font-semibold text-white">
+            <div className="flex items-center gap-2.5 px-1 py-1">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#0090d9] text-[11px] font-semibold text-white ring-2 ring-white/50">
                 {user.firstName?.charAt(0).toUpperCase() || "U"}
               </div>
               <div className="flex-1 min-w-0">
@@ -103,13 +147,13 @@ export function Sidebar() {
           )}
           <button
             onClick={() => signOut({ redirectUrl: "/sign-in" })}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-[#5a6b7c] hover:bg-black/5 hover:text-[#1a2b3c] transition-colors"
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-[#5a6b7c] hover:bg-black/5 hover:text-[#dc2626] transition-all duration-150 group"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
             Sign out
           </button>
-        </div>
+        </motion.div>
       </div>
-    </aside>
+    </motion.aside>
   );
 }

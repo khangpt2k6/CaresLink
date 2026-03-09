@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { MetricCard, MetricsSection } from "@/components/metrics-cards";
 import { CandidateDashboard } from "@/components/candidate-dashboard";
+import { motion } from "framer-motion";
 import {
   Users,
   CalendarCheck,
@@ -26,6 +27,15 @@ interface Metrics {
   costPerHire: number;
   hiresCount: number;
 }
+
+const sectionVariants = {
+  hidden: { opacity: 0, y: 10 },
+  show: (delay: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay, duration: 0.35, ease: [0.16, 1, 0.3, 1] },
+  }),
+};
 
 export default function DashboardPage() {
   const { user } = useUser();
@@ -55,41 +65,42 @@ export default function DashboardPage() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-[#1a2b3c]">Dashboard</h1>
+      <motion.div
+        variants={sectionVariants}
+        initial="hidden"
+        animate="show"
+        custom={0}
+        className="mb-5"
+      >
+        <h1 className="text-xl font-bold text-[#1a2b3c]">
+          {user?.firstName ? `Welcome back, ${user.firstName}` : "Dashboard"}
+        </h1>
         <p className="text-sm text-[#5a6b7c]">Overview of your recruitment pipeline</p>
-      </div>
+      </motion.div>
 
       {/* Metric Cards */}
-      <MetricsSection>
-        <MetricCard
-          title="Candidates"
-          value={metrics?.totalCandidates ?? "—"}
-          subtitle="Last 30 days"
-          icon={Users}
-        />
-        <MetricCard
-          title="Interviews"
-          value={metrics?.interviewsScheduled ?? "—"}
-          subtitle="Last 30 days"
-          icon={CalendarCheck}
-        />
-        <MetricCard
-          title="No-Show Rate"
-          value={metrics ? `${(metrics.noShowRate * 100).toFixed(0)}%` : "—"}
-          subtitle={metrics?.noShowCount ? `${metrics.noShowCount} missed` : undefined}
-          icon={AlertCircle}
-        />
-        <MetricCard
-          title="Total Cost"
-          value={metrics ? `$${metrics.totalCost.toFixed(2)}` : "—"}
-          subtitle={metrics?.hiresCount ? `$${metrics.costPerHire.toFixed(0)}/hire` : undefined}
-          icon={DollarSign}
-        />
-      </MetricsSection>
+      <motion.div
+        variants={sectionVariants}
+        initial="hidden"
+        animate="show"
+        custom={0.06}
+      >
+        <MetricsSection>
+          <MetricCard index={0} title="Candidates" value={metrics?.totalCandidates ?? "—"} subtitle="Last 30 days" icon={Users} />
+          <MetricCard index={1} title="Interviews" value={metrics?.interviewsScheduled ?? "—"} subtitle="Last 30 days" icon={CalendarCheck} />
+          <MetricCard index={2} title="No-Show Rate" value={metrics ? `${(metrics.noShowRate * 100).toFixed(0)}%` : "—"} subtitle={metrics?.noShowCount ? `${metrics.noShowCount} missed` : undefined} icon={AlertCircle} />
+          <MetricCard index={3} title="Total Cost" value={metrics ? `$${metrics.totalCost.toFixed(2)}` : "—"} subtitle={metrics?.hiresCount ? `$${metrics.costPerHire.toFixed(0)}/hire` : undefined} icon={DollarSign} />
+        </MetricsSection>
+      </motion.div>
 
       {/* Bottom Grid */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <motion.div
+        variants={sectionVariants}
+        initial="hidden"
+        animate="show"
+        custom={0.15}
+        className="mt-4 grid gap-4 lg:grid-cols-2"
+      >
         {/* Communications */}
         <div className="card p-5">
           <h2 className="text-sm font-semibold text-[#1a2b3c]">Communications</h2>
@@ -98,9 +109,12 @@ export default function DashboardPage() {
             {[
               { icon: Mail, label: "Emails sent", val: metrics?.emailsSent },
               { icon: Mail, label: "Email response", val: metrics ? `${(metrics.responseRateEmail * 100).toFixed(0)}%` : null },
-            ].map((row) => (
-              <div
+            ].map((row, i) => (
+              <motion.div
                 key={row.label}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 + i * 0.06, duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
                 className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-[#f0f4f8] transition-colors"
               >
                 <dt className="flex items-center gap-2.5 text-sm text-[#5a6b7c]">
@@ -110,7 +124,7 @@ export default function DashboardPage() {
                 <dd className="text-sm font-semibold text-[#1a2b3c]">
                   {row.val ?? "—"}
                 </dd>
-              </div>
+              </motion.div>
             ))}
           </dl>
         </div>
@@ -125,19 +139,28 @@ export default function DashboardPage() {
               { href: "/candidates", label: "Contact via AI", icon: Bot },
               { href: "/interviews", label: "Book Interview", icon: CalendarCheck },
               { href: "/insights", label: "View Insights", icon: Lightbulb },
-            ].map((action) => (
-              <Link
+            ].map((action, i) => (
+              <motion.div
                 key={action.label}
-                href={action.href}
-                className="group flex flex-col items-center gap-2 rounded-lg border border-[#e2e8f0] px-3 py-4 text-center transition-colors hover:border-[#0090d9]/30 hover:bg-[#f8fafc]"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.22 + i * 0.05, duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                whileHover={{ y: -2, transition: { duration: 0.15 } }}
               >
-                <action.icon className="h-5 w-5 text-[#0090d9] transition-colors" />
-                <p className="text-xs font-medium text-[#1a2b3c]">{action.label}</p>
-              </Link>
+                <Link
+                  href={action.href}
+                  className="group flex flex-col items-center gap-2 rounded-xl border border-[#e2e8f0] px-3 py-4 text-center transition-all duration-200 hover:border-[#0090d9]/30 hover:bg-[#f0f7ff] hover:shadow-sm"
+                >
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#e8f4fd] group-hover:bg-[#d0ebf9] transition-colors duration-200">
+                    <action.icon className="h-4.5 w-4.5 text-[#0090d9]" style={{ width: 18, height: 18 }} />
+                  </div>
+                  <p className="text-xs font-medium text-[#1a2b3c]">{action.label}</p>
+                </Link>
+              </motion.div>
             ))}
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -1,3 +1,5 @@
+"use client";
+
 import { SignUp } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
@@ -7,13 +9,14 @@ export default function SignUpPage() {
   return (
     <div className="flex min-h-screen">
       {/* Left sidebar - video */}
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-[#eef6fb] p-12 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-[#eef6fb] p-8 relative overflow-hidden">
         <video
           autoPlay
           muted
           loop
           playsInline
-          className="max-w-full h-auto max-h-[80vh] rounded-2xl object-cover"
+          onLoadedMetadata={(e) => { e.currentTarget.playbackRate = 1.5; }}
+          className="max-w-full h-auto max-h-[92vh] rounded-2xl object-cover"
         >
           <source src="/nursing.mp4" type="video/mp4" />
         </video>

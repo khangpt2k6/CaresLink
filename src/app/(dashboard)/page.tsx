@@ -48,6 +48,7 @@ export default function DashboardPage() {
   }, []);
 
   const isCandidate = role === "CANDIDATE";
+  const isLoading = role === null;
 
   useEffect(() => {
     if (isCandidate) return;
@@ -56,6 +57,28 @@ export default function DashboardPage() {
       .then((d) => setMetrics(d.metrics))
       .catch(console.error);
   }, [isCandidate]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center p-6">
+        <div className="flex items-center gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <motion.span
+              key={i}
+              className="h-2 w-2 rounded-full bg-[#0090d9]"
+              animate={{ y: [0, -8, 0] }}
+              transition={{
+                duration: 0.6,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: i * 0.12,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (isCandidate) {
     return <CandidateDashboard />;

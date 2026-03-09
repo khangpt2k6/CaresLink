@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { format, startOfMonth } from "date-fns";
-import { Loader2, ArrowLeft, Calendar } from "lucide-react";
+import { Loader2, ArrowLeft, Calendar, Home } from "lucide-react";
 import { DatePicker } from "@/components/booking/date-picker";
 import { TimeSlots } from "@/components/booking/time-slots";
 import { BookingForm } from "@/components/booking/booking-form";
@@ -141,7 +142,14 @@ export default function BookPage() {
   const daySlots = selectedDateStr ? slotsByDate[selectedDateStr] || [] : [];
 
   return (
-    <div className="flex min-h-screen flex-col items-center px-4 py-8">
+    <div className="relative flex min-h-screen flex-col items-center px-4 py-8">
+      <Link
+        href="/"
+        className="absolute top-6 left-6 inline-flex items-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+      >
+        <Home className="h-4 w-4" />
+        Back to Home
+      </Link>
       {/* Header */}
       <div className="mb-8 flex flex-col items-center gap-3">
         <Image

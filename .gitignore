@@ -18,7 +18,6 @@
 # misc
 .DS_Store
 *.pem
-.env
 
 # debug
 npm-debug.log*
@@ -26,8 +25,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*.local
+# env files & secrets (keep .env.example as template)
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -40,5 +41,12 @@ next-env.d.ts
 prisma/*.db
 prisma/*.db-journal
 
+# secrets & API keys
+*credentials*
+*-credentials.json
+
 # clerk configuration (can include secrets)
 /.clerk/
+
+# Cursor MCP config (contains API keys)
+.cursor/mcp.json

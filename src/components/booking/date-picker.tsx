@@ -16,6 +16,7 @@ import {
   isBefore,
   startOfDay,
 } from "date-fns";
+import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -70,25 +71,29 @@ export function DatePicker({
     <div className="flex flex-col gap-3">
       {/* Month navigation */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-[#37352f]">
+        <h2 className="text-sm font-semibold text-[#1a2b3c]">
           {format(currentMonth, "MMMM yyyy")}
         </h2>
         <div className="flex gap-1">
-          <button
+          <motion.button
             type="button"
             onClick={() => onMonthChange(subMonths(currentMonth, 1))}
             disabled={!canGoPrev}
-            className="rounded-md p-1 text-[#9b9a97] hover:text-[#37352f] disabled:opacity-30"
+            className="rounded-lg p-1.5 text-[#5a6b7c] transition-colors hover:bg-[#e8f4fd] hover:text-[#0090d9] disabled:opacity-30"
+            whileHover={canGoPrev ? { scale: 1.05 } : {}}
+            whileTap={canGoPrev ? { scale: 0.95 } : {}}
           >
             <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button
+          </motion.button>
+          <motion.button
             type="button"
             onClick={() => onMonthChange(addMonths(currentMonth, 1))}
-            className="rounded-md p-1 text-[#9b9a97] hover:text-[#37352f]"
+            className="rounded-lg p-1.5 text-[#5a6b7c] transition-colors hover:bg-[#e8f4fd] hover:text-[#0090d9]"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
             <ChevronRight className="h-5 w-5" />
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -97,7 +102,7 @@ export function DatePicker({
         {WEEKDAYS.map((d) => (
           <div
             key={d}
-            className="py-1 text-[11px] font-medium text-[#9b9a97]"
+            className="py-1 text-[11px] font-medium text-[#5a6b7c]"
           >
             {d}
           </div>
@@ -116,30 +121,32 @@ export function DatePicker({
 
           return (
             <div key={i} className="flex flex-col items-center">
-              <button
+              <motion.button
                 type="button"
                 disabled={!isAvailable || isPast || !inMonth}
                 onClick={() => onSelectDate(day)}
                 className={cn(
                   "flex h-9 w-9 items-center justify-center rounded-full text-sm transition-colors",
-                  !inMonth && "text-[#d4d4d0]",
-                  inMonth && !isAvailable && "text-[#d4d4d0] cursor-default",
-                  isPast && inMonth && "text-[#d4d4d0] cursor-default",
+                  !inMonth && "text-[#c4cdd8]",
+                  inMonth && !isAvailable && "text-[#c4cdd8] cursor-default",
+                  isPast && inMonth && "text-[#c4cdd8] cursor-default",
                   isAvailable &&
                     !isPast &&
                     !isSelected &&
-                    "font-medium text-[#00BFFF] hover:bg-[#e6faff] cursor-pointer",
+                    "font-medium text-[#0090d9] hover:bg-[#e8f4fd] cursor-pointer",
                   isSelected &&
-                    "bg-[#00BFFF] text-white font-medium cursor-pointer hover:bg-[#00A8E0]"
+                    "bg-[#0090d9] text-white font-medium cursor-pointer hover:bg-[#0077b6] shadow-md shadow-[#0090d9]/25"
                 )}
+                whileHover={isAvailable && !isPast ? { scale: 1.1 } : {}}
+                whileTap={isAvailable && !isPast ? { scale: 0.95 } : {}}
               >
                 {day.getDate()}
-              </button>
+              </motion.button>
               {todayMark && inMonth && (
                 <div
                   className={cn(
                     "h-1 w-1 rounded-full mt-0.5",
-                    isSelected ? "bg-white" : "bg-[#00BFFF]"
+                    isSelected ? "bg-white" : "bg-[#0090d9]"
                   )}
                 />
               )}

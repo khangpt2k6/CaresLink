@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { format, startOfMonth } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ArrowLeft, Calendar, Home } from "lucide-react";
 import { DatePicker } from "@/components/booking/date-picker";
 import { TimeSlots } from "@/components/booking/time-slots";
@@ -142,136 +143,207 @@ export default function BookPage() {
   const daySlots = selectedDateStr ? slotsByDate[selectedDateStr] || [] : [];
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center px-4 py-8">
-      <Link
-        href="/"
-        className="absolute top-6 left-6 inline-flex items-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+    <div className="relative flex min-h-screen flex-col items-center overflow-hidden bg-gradient-to-br from-[#f5f7fa] via-white to-[#e8f4fd]/30 px-4 py-8">
+      {/* Decorative blob */}
+      <div className="pointer-events-none absolute -right-32 -top-32 h-64 w-64 rounded-full bg-[#0090d9]/5 blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 bottom-1/4 h-48 w-48 rounded-full bg-[#0090d9]/5 blur-3xl" />
+
+      <motion.div
+        initial={{ opacity: 0, x: -12 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="absolute top-6 left-6"
       >
-        <Home className="h-4 w-4" />
-        Back to Home
-      </Link>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 rounded-full border border-[#e2e8f0] bg-white/80 px-4 py-2 text-sm text-[#5a6b7c] shadow-sm backdrop-blur-sm transition-all hover:border-[#0090d9]/30 hover:bg-white hover:text-[#1a2b3c] hover:shadow-md"
+        >
+          <Home className="h-4 w-4" />
+          Back to Home
+        </Link>
+      </motion.div>
+
       {/* Header */}
-      <div className="mb-8 flex flex-col items-center gap-3">
-        <Image
-          src="/careslink.png"
-          alt="CaresLink"
-          width={48}
-          height={48}
-          className="rounded-full"
-        />
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+        className="mb-8 flex flex-col items-center gap-3"
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.12 }}
+        >
+          <Image
+            src="/careslink.png"
+            alt="CaresLink"
+            width={56}
+            height={56}
+            className="rounded-xl shadow-lg ring-2 ring-[#0090d9]/10"
+          />
+        </motion.div>
         <div className="text-center">
-          <h1 className="text-xl font-bold text-[#37352f]">CaresLink</h1>
-          <p className="text-sm text-[#9b9a97]">Book your interview</p>
+          <h1 className="text-2xl font-bold text-[#1a2b3c]">CaresLink</h1>
+          <p className="mt-1 text-sm text-[#5a6b7c]">Book your interview</p>
         </div>
-      </div>
+      </motion.div>
 
       {/* Main card */}
-      <div className="w-full max-w-2xl rounded-xl border border-[#e8e8e5] bg-white shadow-sm overflow-hidden">
-        {/* Confirmed step */}
-        {step === "confirmed" && result ? (
-          <div key="confirmed" className="p-6 animate-in">
-            <Confirmation
-              interview={result.interview}
-              candidate={result.candidate}
-            />
-          </div>
-        ) : step === "form" && selectedSlot ? (
-          /* Form step */
-          <div key="form" className="p-6 animate-slide-in">
-            <button
-              type="button"
-              onClick={() => {
-                setStep("select");
-                setError(null);
-              }}
-              className="mb-4 flex items-center gap-1.5 text-sm text-[#73726e] hover:text-[#37352f] transition-colors"
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-[#e2e8f0] bg-white shadow-xl shadow-[#0090d9]/5"
+      >
+        <AnimatePresence mode="wait">
+          {step === "confirmed" && result ? (
+            <motion.div
+              key="confirmed"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="p-6"
             >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </button>
-            <h2 className="mb-5 text-base font-semibold text-[#37352f]">
-              Your Details
-            </h2>
-            <BookingForm
-              selectedSlot={selectedSlot}
-              onSubmit={handleBooking}
-              submitting={submitting}
-              error={error}
-            />
-          </div>
-        ) : (
-          /* Select step */
-          <div key="select" className="p-6 animate-in">
-            <div className="mb-4 flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-[#9b9a97]" />
-              <h2 className="text-base font-semibold text-[#37352f]">
-                Select a Date & Time
+              <Confirmation
+                interview={result.interview}
+                candidate={result.candidate}
+              />
+            </motion.div>
+          ) : step === "form" && selectedSlot ? (
+            <motion.div
+              key="form"
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 16 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="p-6"
+            >
+              <motion.button
+                type="button"
+                onClick={() => {
+                  setStep("select");
+                  setError(null);
+                }}
+                className="mb-4 flex items-center gap-1.5 text-sm text-[#5a6b7c] transition-colors hover:text-[#0090d9]"
+                whileHover={{ x: -2 }}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </motion.button>
+              <h2 className="mb-5 text-lg font-semibold text-[#1a2b3c]">
+                Your Details
               </h2>
-            </div>
-            <p className="mb-5 text-xs text-[#9b9a97]">
-              {duration} min interview &middot; All times shown in {tzLabel}
-            </p>
-
-            {loading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-5 w-5 animate-spin text-[#9b9a97]" />
-              </div>
-            ) : (
-              <div className="grid gap-6 lg:grid-cols-[1fr_200px]">
-                {/* Calendar */}
-                <DatePicker
-                  currentMonth={currentMonth}
-                  onMonthChange={handleMonthChange}
-                  availableDates={availableDates}
-                  selectedDate={selectedDate}
-                  onSelectDate={handleDateSelect}
-                />
-
-                {/* Time slots */}
-                <div>
-                  {selectedDate ? (
-                    <>
-                      <p className="mb-2 text-xs font-medium text-[#73726e]">
-                        {format(selectedDate, "EEEE, MMM d")}
-                      </p>
-                      <div className="max-h-[280px] overflow-y-auto pr-1">
-                        <TimeSlots
-                          slots={daySlots}
-                          selectedSlot={selectedSlot}
-                          onSelectSlot={handleSlotSelect}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <p className="text-sm text-[#9b9a97]">Select a date</p>
-                    </div>
-                  )}
+              <BookingForm
+                selectedSlot={selectedSlot}
+                onSubmit={handleBooking}
+                submitting={submitting}
+                error={error}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="select"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="p-6"
+            >
+              <motion.div
+                className="mb-4 flex items-center gap-2"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.1 }}
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e8f4fd]">
+                  <Calendar className="h-4 w-4 text-[#0090d9]" />
                 </div>
-              </div>
-            )}
+                <h2 className="text-base font-semibold text-[#1a2b3c]">
+                  Select a Date & Time
+                </h2>
+              </motion.div>
+              <p className="mb-5 text-xs text-[#5a6b7c]">
+                {duration} min interview &middot; All times shown in {tzLabel}
+              </p>
 
-            {availableDates.length === 0 && !loading && (
-              <div className="py-8 text-center">
-                <Calendar className="mx-auto h-8 w-8 text-[#d4d4d0]" />
-                <p className="mt-3 text-sm font-medium text-[#37352f]">
-                  No availability this month
-                </p>
-                <p className="mt-1 text-xs text-[#9b9a97]">
-                  Try navigating to the next month
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+              {loading ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center justify-center gap-4 py-16"
+                >
+                  <Loader2 className="h-6 w-6 animate-spin text-[#0090d9]" />
+                  <p className="text-sm text-[#8a95a3]">Loading availability...</p>
+                </motion.div>
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.15 }}
+                  className="grid gap-6 lg:grid-cols-[1fr_200px]"
+                >
+                  <DatePicker
+                    currentMonth={currentMonth}
+                    onMonthChange={handleMonthChange}
+                    availableDates={availableDates}
+                    selectedDate={selectedDate}
+                    onSelectDate={handleDateSelect}
+                  />
+                  <div>
+                    {selectedDate ? (
+                      <>
+                        <p className="mb-2 text-xs font-medium text-[#5a6b7c]">
+                          {format(selectedDate, "EEEE, MMM d")}
+                        </p>
+                        <div className="max-h-[280px] overflow-y-auto pr-1">
+                          <TimeSlots
+                            slots={daySlots}
+                            selectedSlot={selectedSlot}
+                            onSelectSlot={handleSlotSelect}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex h-full min-h-[200px] items-center justify-center rounded-xl border-2 border-dashed border-[#e2e8f0] bg-[#f8fafc]/50"
+                      >
+                        <p className="text-sm text-[#8a95a3]">Select a date</p>
+                      </motion.div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {availableDates.length === 0 && !loading && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="py-8 text-center"
+                >
+                  <Calendar className="mx-auto h-10 w-10 text-[#c4cdd8]" />
+                  <p className="mt-3 text-sm font-medium text-[#1a2b3c]">
+                    No availability this month
+                  </p>
+                  <p className="mt-1 text-xs text-[#8a95a3]">
+                    Try navigating to the next month
+                  </p>
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Footer */}
-        <div className="border-t border-[#e8e8e5] px-6 py-3 text-center">
-          <span className="text-xs text-[#b4b4b0]">
+        <div className="border-t border-[#e2e8f0] px-6 py-3 text-center">
+          <span className="text-xs text-[#8a95a3]">
             Powered by CaresLink AI
           </span>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

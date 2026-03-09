@@ -148,7 +148,7 @@ function ConfirmContent() {
                 type="button"
                 onClick={handleConfirm}
                 disabled={confirming}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[#00BFFF] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors disabled:opacity-50"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0077b6] transition-colors disabled:opacity-50"
               >
                 {confirming ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Confirming...</>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
+import { motion } from "framer-motion";
 import { User, Mail, Phone, Briefcase, Calendar, Clock, Loader2 } from "lucide-react";
 
 interface BookingFormProps {
@@ -17,7 +18,16 @@ interface BookingFormProps {
 }
 
 const inputClass =
-  "w-full rounded-md border border-[#e8e8e5] bg-white px-3 py-2.5 text-sm text-[#37352f] placeholder:text-[#b4b4b0] focus:border-[#00BFFF] focus:outline-none focus:ring-1 focus:ring-[#00BFFF]/20";
+  "w-full rounded-lg border border-[#e2e8f0] bg-white px-3.5 py-2.5 text-sm text-[#1a2b3c] placeholder:text-[#8a95a3] transition-all duration-200 focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20";
+
+const fieldVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.05, duration: 0.35, ease: [0.16, 1, 0.3, 1] },
+  }),
+};
 
 export function BookingForm({
   selectedSlot,
@@ -45,88 +55,68 @@ export function BookingForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       {/* Selected time summary */}
-      <div className="flex items-center gap-4 rounded-md bg-[#f7f7f5] px-4 py-3 text-sm text-[#37352f]">
-        <span className="flex items-center gap-1.5">
-          <Calendar className="h-3.5 w-3.5 text-[#9b9a97]" />
+      <motion.div
+        custom={0}
+        variants={fieldVariants}
+        initial="hidden"
+        animate="visible"
+        className="flex items-center gap-4 rounded-xl border border-[#e2e8f0] bg-[#e8f4fd]/50 px-4 py-3.5 text-sm text-[#1a2b3c]"
+      >
+        <span className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-[#0090d9]" />
           {format(d, "EEEE, MMMM d, yyyy")}
         </span>
-        <span className="flex items-center gap-1.5">
-          <Clock className="h-3.5 w-3.5 text-[#9b9a97]" />
+        <span className="flex items-center gap-2">
+          <Clock className="h-4 w-4 text-[#0090d9]" />
           {format(d, "h:mm a")} EST
         </span>
-      </div>
+      </motion.div>
 
-      {/* Name */}
-      <div className="flex flex-col gap-1.5">
-        <label className="flex items-center gap-1.5 text-xs font-medium text-[#73726e]">
-          <User className="h-3.5 w-3.5" /> Name <span className="text-[#9b9a97]">*</span>
-        </label>
-        <input
-          type="text"
-          required
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className={inputClass}
-          placeholder="Your full name"
-        />
-      </div>
+      {[
+        { key: "name", icon: User, label: "Name", required: true, placeholder: "Your full name", type: "text" as const, value: form.name, set: (v: string) => setForm((f) => ({ ...f, name: v })), index: 1 },
+        { key: "email", icon: Mail, label: "Email", required: true, placeholder: "you@example.com", type: "email" as const, value: form.email, set: (v: string) => setForm((f) => ({ ...f, email: v })), index: 2 },
+        { key: "phone", icon: Phone, label: "Phone", required: false, placeholder: "+1 (555) 000-0000", type: "tel" as const, value: form.phone, set: (v: string) => setForm((f) => ({ ...f, phone: v })), index: 3 },
+        { key: "position", icon: Briefcase, label: "Position", required: true, placeholder: "e.g. Software Engineer", type: "text" as const, value: form.position, set: (v: string) => setForm((f) => ({ ...f, position: v })), index: 4 },
+      ].map(({ key, icon: Icon, label, required, placeholder, type, value, set, index }) => (
+        <motion.div
+          key={key}
+          custom={index}
+          variants={fieldVariants}
+          initial="hidden"
+          animate="visible"
+          className="flex flex-col gap-1.5"
+        >
+          <label className="flex items-center gap-1.5 text-xs font-medium text-[#5a6b7c]">
+            <Icon className="h-3.5 w-3.5 text-[#0090d9]" /> {label}
+            {required && <span className="text-[#ef4444]">*</span>}
+          </label>
+          <input
+            type={type}
+            required={required}
+            value={value}
+            onChange={(e) => set(e.target.value)}
+            className={inputClass}
+            placeholder={placeholder}
+          />
+        </motion.div>
+      ))}
 
-      {/* Email */}
-      <div className="flex flex-col gap-1.5">
-        <label className="flex items-center gap-1.5 text-xs font-medium text-[#73726e]">
-          <Mail className="h-3.5 w-3.5" /> Email <span className="text-[#9b9a97]">*</span>
-        </label>
-        <input
-          type="email"
-          required
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-          className={inputClass}
-          placeholder="you@example.com"
-        />
-      </div>
-
-      {/* Phone */}
-      <div className="flex flex-col gap-1.5">
-        <label className="flex items-center gap-1.5 text-xs font-medium text-[#73726e]">
-          <Phone className="h-3.5 w-3.5" /> Phone
-        </label>
-        <input
-          type="tel"
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          className={inputClass}
-          placeholder="+1 (555) 000-0000"
-        />
-      </div>
-
-      {/* Position */}
-      <div className="flex flex-col gap-1.5">
-        <label className="flex items-center gap-1.5 text-xs font-medium text-[#73726e]">
-          <Briefcase className="h-3.5 w-3.5" /> Position <span className="text-[#9b9a97]">*</span>
-        </label>
-        <input
-          type="text"
-          required
-          value={form.position}
-          onChange={(e) => setForm({ ...form, position: e.target.value })}
-          className={inputClass}
-          placeholder="e.g. Software Engineer"
-        />
-      </div>
-
-      {/* Error */}
       {error && (
-        <p className="rounded-md bg-[#ffe2dd] px-3 py-2 text-sm text-[#93392e]">
+        <motion.p
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-3.5 py-2.5 text-sm text-[#dc2626]"
+        >
           {error}
-        </p>
+        </motion.p>
       )}
 
-      {/* Submit */}
-      <button
+      <motion.button
         type="submit"
         disabled={!isValid || submitting}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#00BFFF] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#00A8E0] transition-colors disabled:opacity-50"
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0090d9] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#0090d9]/25 transition-all duration-200 hover:bg-[#0077b6] hover:shadow-xl hover:shadow-[#0090d9]/30 disabled:opacity-50 disabled:shadow-none"
+        whileHover={!submitting && isValid ? { scale: 1.02 } : {}}
+        whileTap={!submitting && isValid ? { scale: 0.98 } : {}}
       >
         {submitting ? (
           <>
@@ -135,7 +125,7 @@ export function BookingForm({
         ) : (
           "Confirm Interview"
         )}
-      </button>
+      </motion.button>
     </form>
   );
 }

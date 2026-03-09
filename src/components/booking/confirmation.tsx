@@ -50,7 +50,7 @@ export function Confirmation({ interview, candidate }: ConfirmationProps) {
   };
 
   return (
-    <div className="flex flex-col items-center text-center">
+    <div className="flex min-w-0 flex-col items-center text-center">
       {/* Success icon */}
       <motion.div
         initial={{ scale: 0, opacity: 0 }}
@@ -89,7 +89,7 @@ export function Confirmation({ interview, candidate }: ConfirmationProps) {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.35, duration: 0.4 }}
-        className="mt-6 w-full overflow-hidden rounded-xl border border-[#e2e8f0] bg-[#f8fafc] text-left shadow-inner"
+        className="mt-6 w-full min-w-0 overflow-hidden rounded-xl border border-[#e2e8f0] bg-[#f8fafc] text-left shadow-inner"
       >
         <div className="border-b border-[#e2e8f0] px-5 py-3.5">
           <div className="flex items-center gap-2 text-sm text-[#5a6b7c]">

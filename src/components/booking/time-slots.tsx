@@ -21,7 +21,7 @@ export function TimeSlots({ slots, selectedSlot, onSelectSlot }: TimeSlotsProps)
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex min-w-0 flex-col gap-1.5 sm:gap-2">
       {slots.map((slot, i) => {
         const d = new Date(slot);
         const isSelected = selectedSlot === slot;
@@ -34,7 +34,7 @@ export function TimeSlots({ slots, selectedSlot, onSelectSlot }: TimeSlotsProps)
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.03, duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              "flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm transition-all text-left",
+              "flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all text-left sm:gap-2.5 sm:px-3.5 sm:py-2.5",
               isSelected
                 ? "border-[#0090d9] bg-[#e8f4fd] text-[#1a2b3c] font-semibold shadow-sm shadow-[#0090d9]/10"
                 : "border-[#e2e8f0] text-[#5a6b7c] hover:border-[#0090d9]/40 hover:bg-[#e8f4fd]/50"

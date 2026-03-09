@@ -68,13 +68,13 @@ export function DatePicker({
   const canGoPrev = !isBefore(startOfMonth(currentMonth), startOfMonth(new Date()));
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       {/* Month navigation */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-[#1a2b3c]">
+        <h2 className="truncate text-sm font-semibold text-[#1a2b3c] sm:text-base">
           {format(currentMonth, "MMMM yyyy")}
         </h2>
-        <div className="flex gap-1">
+        <div className="flex shrink-0 gap-0.5 sm:gap-1">
           <motion.button
             type="button"
             onClick={() => onMonthChange(subMonths(currentMonth, 1))}
@@ -98,19 +98,19 @@ export function DatePicker({
       </div>
 
       {/* Weekday headers */}
-      <div className="grid grid-cols-7 text-center">
+      <div className="grid grid-cols-7 gap-x-0 text-center">
         {WEEKDAYS.map((d) => (
           <div
             key={d}
-            className="py-1 text-[11px] font-medium text-[#5a6b7c]"
+            className="py-1 text-[10px] font-medium text-[#5a6b7c] sm:text-[11px]"
           >
             {d}
           </div>
         ))}
       </div>
 
-      {/* Day grid */}
-      <div className="grid grid-cols-7 gap-y-1 text-center">
+      {/* Day grid - responsive cell sizes */}
+      <div className="grid grid-cols-7 gap-y-0.5 gap-x-0 text-center sm:gap-y-1">
         {days.map((day, i) => {
           const dateStr = format(day, "yyyy-MM-dd");
           const inMonth = isSameMonth(day, currentMonth);
@@ -126,7 +126,7 @@ export function DatePicker({
                 disabled={!isAvailable || isPast || !inMonth}
                 onClick={() => onSelectDate(day)}
                 className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-full text-sm transition-colors",
+                  "flex h-8 w-8 items-center justify-center rounded-full text-xs transition-colors sm:h-9 sm:w-9 sm:text-sm",
                   !inMonth && "text-[#c4cdd8]",
                   inMonth && !isAvailable && "text-[#c4cdd8] cursor-default",
                   isPast && inMonth && "text-[#c4cdd8] cursor-default",

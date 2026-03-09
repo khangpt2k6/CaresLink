@@ -15,6 +15,7 @@ interface BookingFormProps {
   }) => void;
   submitting: boolean;
   error: string | null;
+  hideTimeSummary?: boolean;
 }
 
 const inputClass =
@@ -34,6 +35,7 @@ export function BookingForm({
   onSubmit,
   submitting,
   error,
+  hideTimeSummary,
 }: BookingFormProps) {
   const [form, setForm] = useState({
     name: "",
@@ -53,24 +55,25 @@ export function BookingForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-      {/* Selected time summary */}
-      <motion.div
-        custom={0}
-        variants={fieldVariants}
-        initial="hidden"
-        animate="visible"
-        className="flex items-center gap-4 rounded-xl border border-[#e2e8f0] bg-[#e8f4fd]/50 px-4 py-3.5 text-sm text-[#1a2b3c]"
-      >
-        <span className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-[#0090d9]" />
-          {format(d, "EEEE, MMMM d, yyyy")}
-        </span>
-        <span className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-[#0090d9]" />
-          {format(d, "h:mm a")} EST
-        </span>
-      </motion.div>
+    <form onSubmit={handleSubmit} className="flex min-w-0 flex-col gap-4 sm:gap-5">
+      {!hideTimeSummary && (
+        <motion.div
+          custom={0}
+          variants={fieldVariants}
+          initial="hidden"
+          animate="visible"
+          className="flex flex-wrap items-center gap-4 rounded-xl border border-[#e2e8f0] bg-[#e8f4fd]/50 px-4 py-3.5 text-sm text-[#1a2b3c]"
+        >
+          <span className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-[#0090d9]" />
+            {format(d, "EEEE, MMMM d, yyyy")}
+          </span>
+          <span className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-[#0090d9]" />
+            {format(d, "h:mm a")}
+          </span>
+        </motion.div>
+      )}
 
       {[
         { key: "name", icon: User, label: "Name", required: true, placeholder: "Your full name", type: "text" as const, value: form.name, set: (v: string) => setForm((f) => ({ ...f, name: v })), index: 1 },
@@ -123,7 +126,7 @@ export function BookingForm({
             <Loader2 className="h-4 w-4 animate-spin" /> Scheduling...
           </>
         ) : (
-          "Confirm Interview"
+          "Schedule Interview"
         )}
       </motion.button>
     </form>

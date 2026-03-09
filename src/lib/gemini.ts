@@ -110,6 +110,39 @@ const functionDeclarations: FunctionDeclaration[] = [
       required: [],
     },
   },
+  {
+    name: "get_availability",
+    description: "Get the current recruiter weekly availability schedule. Shows which days are enabled and the start/end hours for each day.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "update_availability",
+    description: "Update the recruiter's weekly availability schedule. Can set hours and enable/disable specific days. dayOfWeek: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        days: {
+          type: SchemaType.ARRAY,
+          description: "Array of day configurations to update",
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              dayOfWeek: { type: SchemaType.NUMBER, description: "0=Sunday, 1=Monday, ..., 6=Saturday" },
+              startHour: { type: SchemaType.NUMBER, description: "Start hour (e.g. 9 for 9 AM, 9.5 for 9:30 AM)" },
+              endHour: { type: SchemaType.NUMBER, description: "End hour (e.g. 17 for 5 PM)" },
+              enabled: { type: SchemaType.BOOLEAN, description: "Whether this day is available" },
+            },
+            required: ["dayOfWeek"],
+          },
+        },
+      },
+      required: ["days"],
+    },
+  },
 ];
 
 async function executeFunction(name: string, args: Record<string, unknown>): Promise<object> {

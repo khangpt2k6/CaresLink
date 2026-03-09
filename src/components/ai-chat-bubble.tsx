@@ -12,7 +12,16 @@ export function AiChatBubble() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const sessionId = useRef<string>(crypto.randomUUID());
+  const sessionId = useRef<string>("");
+  if (!sessionId.current) {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("careslink-chat-session") : null;
+    if (stored) {
+      sessionId.current = stored;
+    } else {
+      sessionId.current = crypto.randomUUID();
+      if (typeof window !== "undefined") localStorage.setItem("careslink-chat-session", sessionId.current);
+    }
+  }
   const pathname = usePathname();
   const isCalendarPage = pathname === "/calendar" || pathname === "/availability";
 

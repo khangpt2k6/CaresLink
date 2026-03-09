@@ -13,9 +13,9 @@ export async function POST(request: NextRequest) {
     const { name, email, phone, position, scheduledAt } = body;
     const duration = body.duration || await getDefaultDuration();
 
-    if (!name || !email || !position || !scheduledAt) {
+    if (!name || !email || !scheduledAt) {
       return NextResponse.json(
-        { error: "name, email, position, and scheduledAt are required" },
+        { error: "name, email, and scheduledAt are required" },
         { status: 400 }
       );
     }
@@ -32,11 +32,12 @@ export async function POST(request: NextRequest) {
     let candidate = await prisma.candidate.findFirst({ where: { email } });
 
     if (candidate) {
+      // Use existing phone/position from DB; only update if explicitly provided
       candidate = await prisma.candidate.update({
         where: { id: candidate.id },
         data: {
-          position,
-          phone: phone || candidate.phone,
+          position: position ?? candidate.position,
+          phone: phone ?? candidate.phone,
           name: name || candidate.name,
         },
       });
@@ -73,8 +74,14 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
+      // New candidate: use provided phone/position or defaults
       candidate = await prisma.candidate.create({
-        data: { name, email, phone: phone || null, position },
+        data: {
+          name,
+          email,
+          phone: phone || null,
+          position: position || "General",
+        },
       });
     }
 

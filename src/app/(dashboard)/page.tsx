@@ -13,8 +13,18 @@ import {
   Mail,
   Bot,
   Lightbulb,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
+
+interface AgentRun {
+  id: string;
+  trigger: string;
+  report: string;
+  startedAt: string;
+  completedAt: string;
+  createdAt: string;
+}
 
 interface Metrics {
   totalCandidates: number;
@@ -40,6 +50,7 @@ export default function DashboardPage() {
   const { user } = useUser();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -55,6 +66,10 @@ export default function DashboardPage() {
     fetch("/api/analytics?days=30")
       .then((r) => r.json())
       .then((d) => setMetrics(d.metrics))
+      .catch(console.error);
+    fetch("/api/agent/runs")
+      .then((r) => r.json())
+      .then((d) => setAgentRuns(d.runs ?? []))
       .catch(console.error);
   }, [isCandidate]);
 
@@ -172,6 +187,70 @@ export default function DashboardPage() {
               </motion.div>
             ))}
           </div>
+        </div>
+      </motion.div>
+
+      {/* Agent Activity Log */}
+      <motion.div {...fadeUp(0.22)} className="mt-4">
+        <div className="card p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[#1a2b3c]">Agent Activity</h2>
+              <p className="text-xs text-[#8a95a3]">What the AI did autonomously</p>
+            </div>
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#e8f4fd]">
+              <Bot className="h-3.5 w-3.5 text-[#0090d9]" />
+            </div>
+          </div>
+
+          {agentRuns.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Clock className="mb-2 h-8 w-8 text-[#d0dbe6]" />
+              <p className="text-sm text-[#8a95a3]">No agent runs yet</p>
+              <p className="mt-0.5 text-xs text-[#b0bec8]">The agent runs every weekday at 9 AM automatically</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {agentRuns.map((run, i) => {
+                const isError = run.report.startsWith("ERROR:");
+                const date = new Date(run.createdAt);
+                const timeAgo = (() => {
+                  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+                  if (diff < 60) return "just now";
+                  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                  return `${Math.floor(diff / 86400)}d ago`;
+                })();
+                const durationSec = Math.round(
+                  (new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000
+                );
+
+                return (
+                  <motion.div
+                    key={run.id}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.25 + i * 0.05, duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                    className={`rounded-lg border px-3.5 py-2.5 ${
+                      isError
+                        ? "border-red-100 bg-red-50"
+                        : "border-[#e8f4fd] bg-[#f5faff]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className={`text-xs leading-relaxed ${isError ? "text-red-600" : "text-[#1a2b3c]"}`}>
+                        {run.report}
+                      </p>
+                      <div className="flex shrink-0 flex-col items-end gap-0.5">
+                        <span className="text-[10px] text-[#8a95a3]">{timeAgo}</span>
+                        <span className="text-[10px] text-[#b0bec8]">{durationSec}s</span>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </motion.div>
     </div>

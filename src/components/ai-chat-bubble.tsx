@@ -12,6 +12,7 @@ export function AiChatBubble() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sessionId = useRef<string>(crypto.randomUUID());
   const pathname = usePathname();
   const isCalendarPage = pathname === "/calendar" || pathname === "/availability";
 
@@ -38,7 +39,7 @@ export function AiChatBubble() {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg }),
+        body: JSON.stringify({ message: msg, sessionId: sessionId.current }),
       });
       const data = await res.json();
       setMessages((prev) => [

@@ -5,6 +5,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const message = body.message ?? body.prompt ?? "";
+    const sessionId: string | undefined = typeof body.sessionId === "string" ? body.sessionId : undefined;
     if (!message || typeof message !== "string") {
       return NextResponse.json(
         { error: "message or prompt is required" },
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await runAgent(message);
+    const response = await runAgent(message, sessionId);
     return NextResponse.json({ response });
   } catch (e) {
     console.error(e);

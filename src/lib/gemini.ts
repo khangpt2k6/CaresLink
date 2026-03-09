@@ -98,6 +98,18 @@ const functionDeclarations: FunctionDeclaration[] = [
       required: [],
     },
   },
+  {
+    name: "list_upcoming_interviews",
+    description: "List scheduled interviews happening within the next N hours. Use to find interviews that need reminders sent.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        hours_ahead: { type: SchemaType.NUMBER, description: "How many hours ahead to look (default 24)", nullable: true },
+        reminder_not_sent: { type: SchemaType.BOOLEAN, description: "If true, only return interviews where reminder hasn't been sent yet", nullable: true },
+      },
+      required: [],
+    },
+  },
 ];
 
 async function executeFunction(name: string, args: Record<string, unknown>): Promise<object> {
@@ -302,12 +314,40 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         return { error: e instanceof Error ? e.message : "Failed to send reminder" };
       }
     }
+    case "list_upcoming_interviews": {
+      const hoursAhead = typeof args.hours_ahead === "number" ? args.hours_ahead : 24;
+      const reminderNotSent = args.reminder_not_sent === true;
+      const now = new Date();
+      const cutoff = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
+      const interviews = await prisma.interview.findMany({
+        where: {
+          scheduledAt: { gte: now, lte: cutoff },
+          cancelled: false,
+          completed: false,
+          noShow: false,
+          ...(reminderNotSent ? { reminderSent: false } : {}),
+        },
+        include: { candidate: { select: { name: true, email: true, position: true } } },
+        orderBy: { scheduledAt: "asc" },
+      });
+      return {
+        interviews: interviews.map((i) => ({
+          id: i.id,
+          candidateName: i.candidate.name,
+          candidateEmail: i.candidate.email,
+          position: i.candidate.position,
+          scheduledAt: i.scheduledAt.toISOString(),
+          reminderSent: i.reminderSent,
+        })),
+        count: interviews.length,
+      };
+    }
     default:
       return { error: `Unknown function: ${name}` };
   }
 }
 
-export async function runAgent(userMessage: string): Promise<string> {
+export async function runAgent(userMessage: string, sessionId?: string): Promise<string> {
   if (!genAI || !apiKey) {
     return "AI agent is not configured. Set GOOGLE_GEMINI_API_KEY in .env.local";
   }
@@ -338,19 +378,43 @@ When a function returns already_scheduled: true, tell the employer directly: "Th
 Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`,
   });
 
-  const chat = model.startChat({
-    history: [],
-  });
+  // Load conversation history from DB
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let history: any[] = [];
+  if (sessionId) {
+    const memory = await prisma.agentMemory.findUnique({ where: { sessionId } });
+    if (memory?.history) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      history = memory.history as any[];
+    }
+  }
+
+  const chat = model.startChat({ history });
 
   try {
     let lastResponse = await chat.sendMessage(userMessage);
     const maxTurns = 10;
     let turns = 0;
 
+    const saveHistory = async () => {
+      if (!sessionId) return;
+      const updatedHistory = await chat.getHistory();
+      // Keep last 60 entries to avoid DB bloat
+      const trimmed = updatedHistory.slice(-60);
+      await prisma.agentMemory.upsert({
+        where: { sessionId },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        update: { history: trimmed as any },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        create: { sessionId, history: trimmed as any },
+      });
+    };
+
     while (turns < maxTurns) {
       const functionCalls = lastResponse.response.functionCalls?.() ?? [];
       if (functionCalls.length === 0) {
         const text = lastResponse.response.text?.() ?? "";
+        await saveHistory();
         return text || "Done.";
       }
 
@@ -365,6 +429,7 @@ Be concise and direct. Act first, then confirm. Never ask "would you like me to.
       turns++;
     }
 
+    await saveHistory();
     return lastResponse.response.text?.() ?? "Completed actions.";
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

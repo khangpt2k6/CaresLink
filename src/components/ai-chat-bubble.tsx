@@ -15,8 +15,13 @@ import {
   Plus,
   ChevronDown,
   MessageSquare,
+  ChevronsLeft,
+  ChevronsRight,
+  Link2,
+  Check,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAiChat } from "./ai-chat-context";
 
 const quickActions = [
   { icon: Users, label: "List all candidates", prompt: "List all candidates" },
@@ -24,6 +29,62 @@ const quickActions = [
   { icon: CalendarCheck, label: "Show upcoming interviews", prompt: "List all upcoming interviews in the next 48 hours" },
   { icon: Clock, label: "Send reminders", prompt: "Send reminders for all interviews in the next 24 hours that haven't been reminded yet" },
   { icon: Settings, label: "Show my availability", prompt: "Show my current weekly availability schedule" },
+];
+
+const integrations = [
+  {
+    id: "google-calendar",
+    name: "Google Calendar",
+    description: "Sync interviews & availability",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+        <rect x="3" y="4" width="18" height="18" rx="2" stroke="#4285F4" strokeWidth="2" />
+        <path d="M3 9h18" stroke="#4285F4" strokeWidth="2" />
+        <path d="M9 4V2M15 4V2" stroke="#4285F4" strokeWidth="2" strokeLinecap="round" />
+        <rect x="7" y="12" width="3" height="3" rx="0.5" fill="#EA4335" />
+        <rect x="14" y="12" width="3" height="3" rx="0.5" fill="#34A853" />
+        <rect x="7" y="17" width="3" height="2" rx="0.5" fill="#FBBC05" />
+      </svg>
+    ),
+    connected: true,
+  },
+  {
+    id: "gmail",
+    name: "Gmail",
+    description: "Send emails to candidates",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+        <rect x="2" y="4" width="20" height="16" rx="2" stroke="#EA4335" strokeWidth="1.5" />
+        <path d="M2 6l10 7 10-7" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    connected: true,
+  },
+  {
+    id: "outlook",
+    name: "Outlook",
+    description: "Microsoft 365 calendar & email",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="2" stroke="#0078D4" strokeWidth="1.5" />
+        <path d="M3 8h18" stroke="#0078D4" strokeWidth="1.5" />
+        <ellipse cx="10" cy="14.5" rx="3.5" ry="3" stroke="#0078D4" strokeWidth="1.5" />
+      </svg>
+    ),
+    connected: false,
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    description: "Get notified on new applicants",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+        <path d="M6 15a2 2 0 01-2-2 2 2 0 012-2h2v2a2 2 0 01-2 2zM11 15a2 2 0 002-2V6a2 2 0 00-4 0v7a2 2 0 002 2z" fill="#E01E5A" />
+        <path d="M18 11a2 2 0 00-2-2 2 2 0 00-2 2v2h2a2 2 0 002-2zM18 16a2 2 0 00-2-2h-7a2 2 0 000 4h7a2 2 0 002-2z" fill="#36C5F0" />
+      </svg>
+    ),
+    connected: false,
+  },
 ];
 
 interface ChatMessage {
@@ -59,7 +120,7 @@ function getTitle(messages: ChatMessage[]): string {
   const first = messages.find((m) => m.role === "user");
   if (!first) return "New Chat";
   const text = first.text.trim();
-  return text.length > 40 ? text.slice(0, 40) + "…" : text;
+  return text.length > 40 ? text.slice(0, 40) + "..." : text;
 }
 
 function timeAgo(ts: number): string {
@@ -72,7 +133,7 @@ function timeAgo(ts: number): string {
 }
 
 export function AiChatBubble() {
-  const [open, setOpen] = useState(false);
+  const { open, expanded, setOpen, toggle, toggleExpand, panelWidth } = useAiChat();
   const [input, setInput] = useState("");
   const [sessions, setSessions] = useState<ChatSession[]>(loadSessions);
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
@@ -80,21 +141,19 @@ export function AiChatBubble() {
     return localStorage.getItem(ACTIVE_KEY) || "";
   });
   const [showHistory, setShowHistory] = useState(false);
+  const [showIntegrations, setShowIntegrations] = useState(false);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
 
-  // Get current session
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
   const messages = activeSession?.messages || [];
 
-  // Save sessions to localStorage
   useEffect(() => {
     saveSessions(sessions);
   }, [sessions]);
 
-  // Save active session id
   useEffect(() => {
     if (activeSessionId) {
       localStorage.setItem(ACTIVE_KEY, activeSessionId);
@@ -138,7 +197,6 @@ export function AiChatBubble() {
     }
   }, [open]);
 
-  // Close history dropdown on outside click
   useEffect(() => {
     if (!showHistory) return;
     const handler = (e: MouseEvent) => {
@@ -154,6 +212,7 @@ export function AiChatBubble() {
     const id = crypto.randomUUID();
     setActiveSessionId(id);
     setShowHistory(false);
+    setShowIntegrations(false);
     setInput("");
   }, []);
 
@@ -191,8 +250,8 @@ export function AiChatBubble() {
   const sendMessage = async (msg: string) => {
     if (!msg.trim() || loading) return;
     setInput("");
+    setShowIntegrations(false);
 
-    // Ensure we have a session
     let sid = activeSessionId;
     if (!sid) {
       sid = crypto.randomUUID();
@@ -242,36 +301,51 @@ export function AiChatBubble() {
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, x: 20, scale: 0.97 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 20, scale: 0.97 }}
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: panelWidth, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 right-0 z-50 flex h-full w-[460px] flex-col border-l border-[#e2e8f0] bg-white shadow-2xl"
+            className="fixed bottom-0 right-0 top-0 z-40 flex flex-col border-l border-[#e2e8f0] bg-white shadow-xl overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-[#0090d9] to-[#0077b6] px-5 py-4">
-              <div className="flex items-center gap-3">
-                <motion.div
-                  animate={{ rotate: [0, -10, 10, -5, 5, 0] }}
-                  transition={{ delay: 0.3, duration: 0.6, ease: "easeInOut" }}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20"
+            <div className="flex items-center justify-between bg-gradient-to-r from-[#0090d9] to-[#0077b6] px-4 py-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {/* Expand/Shrink toggle */}
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={toggleExpand}
+                  className="rounded-lg p-1.5 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
+                  title={expanded ? "Shrink panel" : "Expand panel"}
                 >
-                  <Bot className="h-5 w-5 text-white" />
-                </motion.div>
-                <div>
-                  <p className="text-[15px] font-semibold text-white">CaresLink AI</p>
+                  {expanded ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+                </motion.button>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                  <Bot className="h-4.5 w-4.5 text-white" style={{ width: 18, height: 18 }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">CaresLink AI</p>
                   <div className="flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-green-300 animate-pulse" />
-                    <p className="text-[11px] text-white/70">Recruitment Assistant</p>
+                    <p className="text-[10px] text-white/70">Recruitment Assistant</p>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => { setShowIntegrations(!showIntegrations); setShowHistory(false); }}
+                  className={`rounded-lg p-1.5 transition-colors ${showIntegrations ? "bg-white/25 text-white" : "text-white/60 hover:bg-white/15 hover:text-white"}`}
+                  title="Integrations"
+                >
+                  <Link2 className="h-4 w-4" />
+                </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={createNewChat}
-                  className="rounded-lg p-2 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
+                  className="rounded-lg p-1.5 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
                   title="New chat"
                 >
                   <Plus className="h-4 w-4" />
@@ -280,18 +354,64 @@ export function AiChatBubble() {
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setOpen(false)}
-                  className="rounded-lg p-2 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
+                  className="rounded-lg p-1.5 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
+                  title="Close panel"
                 >
                   <X className="h-4 w-4" />
                 </motion.button>
               </div>
             </div>
 
+            {/* Integrations Panel */}
+            <AnimatePresence>
+              {showIntegrations && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden border-b border-[#e2e8f0] bg-[#fafbfc]"
+                >
+                  <div className="p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-[#1a2b3c]">Connected Tools</p>
+                      <span className="text-[10px] text-[#8a95a3]">{integrations.filter((i) => i.connected).length}/{integrations.length} active</span>
+                    </div>
+                    <div className="space-y-2">
+                      {integrations.map((integration) => (
+                        <div
+                          key={integration.id}
+                          className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] bg-white px-3 py-2.5 transition-colors hover:border-[#0090d9]/20"
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f5f7fa]">
+                            {integration.icon}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-[#1a2b3c]">{integration.name}</p>
+                            <p className="text-[11px] text-[#8a95a3]">{integration.description}</p>
+                          </div>
+                          {integration.connected ? (
+                            <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-600">
+                              <Check className="h-3 w-3" /> Connected
+                            </span>
+                          ) : (
+                            <button className="rounded-lg bg-[#0090d9] px-3 py-1 text-[11px] font-medium text-white hover:bg-[#0077b6] transition-colors">
+                              Connect
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Chat Switcher Bar */}
             <div className="relative border-b border-[#e2e8f0] bg-[#fafbfc]" ref={historyRef}>
               <button
-                onClick={() => setShowHistory(!showHistory)}
-                className="flex w-full items-center justify-between px-5 py-2.5 text-left transition-colors hover:bg-[#f0f4f8]"
+                onClick={() => { setShowHistory(!showHistory); setShowIntegrations(false); }}
+                className="flex w-full items-center justify-between px-4 py-2 text-left transition-colors hover:bg-[#f0f4f8]"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[#0090d9]" />
@@ -319,10 +439,9 @@ export function AiChatBubble() {
                     transition={{ duration: 0.15 }}
                     className="absolute left-0 right-0 top-full z-10 max-h-[320px] overflow-y-auto border-b border-[#e2e8f0] bg-white shadow-lg"
                   >
-                    {/* New Chat option */}
                     <button
                       onClick={createNewChat}
-                      className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-[#f0f7ff]"
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#f0f7ff]"
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd]">
                         <Plus className="h-4 w-4 text-[#0090d9]" />
@@ -335,7 +454,7 @@ export function AiChatBubble() {
 
                     {olderSessions.length > 0 && (
                       <>
-                        <div className="px-5 py-1.5">
+                        <div className="px-4 py-1.5">
                           <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">Older</p>
                         </div>
                         {olderSessions.map((session) => (
@@ -345,7 +464,7 @@ export function AiChatBubble() {
                             tabIndex={0}
                             onClick={() => switchToSession(session.id)}
                             onKeyDown={(e) => e.key === "Enter" && switchToSession(session.id)}
-                            className="group flex w-full cursor-pointer items-center gap-3 px-5 py-2.5 text-left transition-colors hover:bg-[#f5faff]"
+                            className="group flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-[#f5faff]"
                           >
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f0f4f8]">
                               <MessageSquare className="h-3.5 w-3.5 text-[#8a95a3]" />
@@ -370,7 +489,7 @@ export function AiChatBubble() {
                     )}
 
                     {olderSessions.length === 0 && (
-                      <div className="px-5 py-4 text-center">
+                      <div className="px-4 py-4 text-center">
                         <p className="text-xs text-[#8a95a3]">No older conversations</p>
                       </div>
                     )}
@@ -382,10 +501,10 @@ export function AiChatBubble() {
             {/* Messages Area */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
+              className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
             >
               <AnimatePresence initial={false}>
-                {messages.length === 0 && (
+                {messages.length === 0 && !showIntegrations && (
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -505,28 +624,18 @@ export function AiChatBubble() {
         )}
       </AnimatePresence>
 
-      {/* Floating Button */}
-      <motion.button
-        onClick={() => setOpen(!open)}
-        whileHover={{ scale: 1.06 }}
-        whileTap={{ scale: 0.94 }}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#0090d9] text-white shadow-lg hover:bg-[#0077b6] transition-colors"
-        style={{
-          boxShadow: "0 4px 14px rgba(0, 144, 217, 0.45)",
-        }}
-      >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={open ? "close" : "open"}
-            initial={{ opacity: 0, rotate: -30, scale: 0.7 }}
-            animate={{ opacity: 1, rotate: 0, scale: 1 }}
-            exit={{ opacity: 0, rotate: 30, scale: 0.7 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-          >
-            {open ? <X className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
-          </motion.div>
-        </AnimatePresence>
-      </motion.button>
+      {/* Floating Button - hidden when panel is open */}
+      {!open && (
+        <motion.button
+          onClick={toggle}
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.94 }}
+          className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#0090d9] text-white shadow-lg hover:bg-[#0077b6] transition-colors"
+          style={{ boxShadow: "0 4px 14px rgba(0, 144, 217, 0.45)" }}
+        >
+          <Bot className="h-5 w-5" />
+        </motion.button>
+      )}
     </>
   );
 }

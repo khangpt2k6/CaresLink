@@ -1,23 +1,9 @@
-"use client";
-
 import { Sidebar } from "@/components/sidebar";
 import { AiChatBubble } from "@/components/ai-chat-bubble";
 import { RoleGate } from "@/components/role-gate";
 import { PageWrapper } from "@/components/page-wrapper";
-import { AiChatProvider, useAiChat } from "@/components/ai-chat-context";
-
-function DashboardContent({ children }: { children: React.ReactNode }) {
-  const { panelWidth } = useAiChat();
-
-  return (
-    <main
-      className="min-h-screen bg-[#f5f7fa] pl-56 transition-[padding] duration-300 ease-in-out"
-      style={{ paddingRight: panelWidth }}
-    >
-      <PageWrapper>{children}</PageWrapper>
-    </main>
-  );
-}
+import { AiChatProvider } from "@/components/ai-chat-context";
+import { DashboardContent } from "@/components/dashboard-content";
 
 export default function DashboardLayout({
   children,
@@ -28,7 +14,9 @@ export default function DashboardLayout({
     <AiChatProvider>
       <RoleGate>
         <Sidebar />
-        <DashboardContent>{children}</DashboardContent>
+        <DashboardContent>
+          <PageWrapper>{children}</PageWrapper>
+        </DashboardContent>
         <AiChatBubble />
       </RoleGate>
     </AiChatProvider>

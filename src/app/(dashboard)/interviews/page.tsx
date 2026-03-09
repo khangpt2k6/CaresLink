@@ -24,6 +24,8 @@ interface Interview {
 interface Candidate { id: string; name: string; email: string; position: string; }
 
 export default function InterviewsPage() {
+  const { user } = useUser();
+  const userEmail = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress ?? null;
   const [role, setRole] = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/auth/me").then((r) => r.ok ? r.json() : null).then((d) => d && setRole(d.role));
@@ -32,6 +34,7 @@ export default function InterviewsPage() {
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [pastInterviews, setPastInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [pastLoading, setPastLoading] = useState(false);
   const [reminderLoading, setReminderLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
@@ -48,13 +51,37 @@ export default function InterviewsPage() {
 
   const fetchInterviews = () => {
     setLoading(true);
-    fetch("/api/interviews?upcoming=true").then((r) => r.json()).then(setInterviews).catch(console.error).finally(() => setLoading(false));
+    setFetchError(null);
+    fetch("/api/interviews?upcoming=true", { credentials: "include" })
+      .then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text();
+          let msg = `Failed to load interviews (${r.status})`;
+          try {
+            const json = JSON.parse(text);
+            if (json?.error) msg = json.error;
+          } catch {}
+          throw new Error(msg);
+        }
+        return r.json();
+      })
+      .then(setInterviews)
+      .catch((err) => {
+        console.error(err);
+        setFetchError(err?.message || "Failed to fetch. Check your connection and try again.");
+        setInterviews([]);
+      })
+      .finally(() => setLoading(false));
   };
 
   const fetchPastInterviews = () => {
     if (!isRecruiter) return;
     setPastLoading(true);
-    fetch("/api/interviews?past=true&days=7").then((r) => r.json()).then(setPastInterviews).catch(console.error).finally(() => setPastLoading(false));
+    fetch("/api/interviews?past=true&days=7", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setPastInterviews)
+      .catch(console.error)
+      .finally(() => setPastLoading(false));
   };
 
   useEffect(() => { fetchInterviews(); }, []);
@@ -91,13 +118,13 @@ export default function InterviewsPage() {
   };
 
   const handleCandidateCancel = async (id: string) => {
-    if (!session?.user?.email) return;
+    if (!userEmail) return;
     setCandidateCancelLoading(id);
     try {
       const res = await fetch("/api/booking/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interviewId: id, email: session.user.email }),
+        body: JSON.stringify({ interviewId: id, email: userEmail }),
       });
       const data = await res.json();
       if (data.success) fetchInterviews();
@@ -107,13 +134,13 @@ export default function InterviewsPage() {
   };
 
   const handleCandidateConfirm = async (id: string) => {
-    if (!session?.user?.email) return;
+    if (!userEmail) return;
     setCandidateConfirmLoading(id);
     try {
       const res = await fetch("/api/booking/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interviewId: id, email: session.user.email }),
+        body: JSON.stringify({ interviewId: id, email: userEmail }),
       });
       const data = await res.json();
       if (data.success) fetchInterviews();
@@ -209,7 +236,15 @@ export default function InterviewsPage() {
         </div>
       )}
 
-      {loading ? (
+      {fetchError ? (
+        <div className="card py-12 text-center">
+          <p className="text-sm font-medium text-red-600">{fetchError}</p>
+          <p className="mt-2 text-xs text-[#8a95a3]">Make sure the dev server is running and you&apos;re signed in.</p>
+          <button onClick={() => fetchInterviews()} className="mt-4 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0077b6]">
+            Retry
+          </button>
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-[#0090d9]" /></div>
       ) : (
         <div className="space-y-6">

@@ -439,7 +439,7 @@ export async function runAgent(userMessage: string, sessionId?: string): Promise
   if (sessionId) {
     const memory = await prisma.agentMemory.findUnique({ where: { sessionId } });
     if (memory?.history && Array.isArray(memory.history)) {
-      const stored = memory.history as MessageParam[];
+      const stored = memory.history as unknown as MessageParam[];
       if (stored.length > 0) {
         messages = [...stored, { role: "user", content: userMessage }];
       }

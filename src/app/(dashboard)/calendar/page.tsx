@@ -9,6 +9,7 @@ import {
 import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronsLeft, ChevronsRight,
   Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink,
+  Plus, Copy, Clock,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,33 @@ const SLOT_HEIGHT = HOUR_HEIGHT / 2;
 
 const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon first for schedule
 const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+// Calendly-style day config
+const CALENDLY_DAYS = [
+  { dayOfWeek: 0, label: "S", fullLabel: "Sunday", color: "bg-[#f59e0b]" },
+  { dayOfWeek: 1, label: "M", fullLabel: "Monday", color: "bg-[#3b82f6]" },
+  { dayOfWeek: 2, label: "T", fullLabel: "Tuesday", color: "bg-[#3b82f6]" },
+  { dayOfWeek: 3, label: "W", fullLabel: "Wednesday", color: "bg-[#3b82f6]" },
+  { dayOfWeek: 4, label: "T", fullLabel: "Thursday", color: "bg-[#3b82f6]" },
+  { dayOfWeek: 5, label: "F", fullLabel: "Friday", color: "bg-[#3b82f6]" },
+  { dayOfWeek: 6, label: "S", fullLabel: "Saturday", color: "bg-[#f59e0b]" },
+];
+
+// Generate time options at 30-minute intervals (0:00 to 23:30)
+function generateTimeOptions(): { value: number; label: string }[] {
+  const options: { value: number; label: string }[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const value = h + m / 60;
+      const ampm = h < 12 ? "am" : "pm";
+      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      const mStr = m === 0 ? ":00" : `:${m}`;
+      options.push({ value, label: `${h12}${mStr}${ampm}` });
+    }
+  }
+  return options;
+}
+const TIME_OPTIONS = generateTimeOptions();
 
 const TIMEZONES = [
   { value: "America/New_York", label: "Eastern Time (ET)", short: "EST" },
@@ -474,6 +502,79 @@ export default function CalendarPage() {
     } finally {
       setMscalLoading(false);
     }
+  };
+
+  // Calendly-style: update a day's hours
+  const handleDayTimeChange = (dayOfWeek: number, field: "startHour" | "endHour", value: number) => {
+    const dIdx = DAYS_ORDER.indexOf(dayOfWeek);
+    if (dIdx === -1) return;
+    const daySchedule = schedule.find((s) => s.dayOfWeek === dayOfWeek);
+    if (!daySchedule) return;
+
+    const newStart = field === "startHour" ? value : daySchedule.startHour;
+    const newEnd = field === "endHour" ? value : daySchedule.endHour;
+
+    // Update slotGrid
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      for (let s = 0; s < TOTAL_SLOTS; s++) {
+        const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+        g[dIdx][s] = slotHour >= newStart && slotHour < newEnd;
+      }
+      return g;
+    });
+
+    setSchedule((prev) =>
+      prev.map((d) =>
+        d.dayOfWeek === dayOfWeek ? { ...d, startHour: newStart, endHour: newEnd, enabled: true } : d
+      )
+    );
+  };
+
+  const handleDayToggle = (dayOfWeek: number) => {
+    const dIdx = DAYS_ORDER.indexOf(dayOfWeek);
+    if (dIdx === -1) return;
+    const daySchedule = schedule.find((s) => s.dayOfWeek === dayOfWeek);
+    if (!daySchedule) return;
+    const newEnabled = !daySchedule.enabled;
+
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      if (!newEnabled) {
+        g[dIdx] = Array(TOTAL_SLOTS).fill(false);
+      } else {
+        for (let s = 0; s < TOTAL_SLOTS; s++) {
+          const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+          g[dIdx][s] = slotHour >= daySchedule.startHour && slotHour < daySchedule.endHour;
+        }
+      }
+      return g;
+    });
+
+    setSchedule((prev) =>
+      prev.map((d) =>
+        d.dayOfWeek === dayOfWeek ? { ...d, enabled: newEnabled } : d
+      )
+    );
+  };
+
+  const handleCopyToAll = (sourceDayOfWeek: number) => {
+    const source = schedule.find((s) => s.dayOfWeek === sourceDayOfWeek);
+    if (!source || !source.enabled) return;
+
+    setSchedule((prev) =>
+      prev.map((d) => ({ ...d, startHour: source.startHour, endHour: source.endHour, enabled: true }))
+    );
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      for (let dIdx = 0; dIdx < 7; dIdx++) {
+        for (let s = 0; s < TOTAL_SLOTS; s++) {
+          const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+          g[dIdx][s] = slotHour >= source.startHour && slotHour < source.endHour;
+        }
+      }
+      return g;
+    });
   };
 
   // Date override
@@ -998,7 +1099,7 @@ export default function CalendarPage() {
         {/* Right sidebar - shares same card */}
         <div className={cn(
           "flex-shrink-0 border-l border-[#e5e7eb] bg-white transition-all duration-200 overflow-hidden",
-          sidebarOpen ? "w-[260px]" : "w-10"
+          sidebarOpen ? "w-[340px]" : "w-10"
         )}>
           {/* Sidebar header - height matches calendar header */}
           <div className={cn(
@@ -1026,8 +1127,14 @@ export default function CalendarPage() {
 
           {sidebarOpen && (
             <div className="p-3 space-y-4 overflow-y-auto" style={{ maxHeight: "calc(100% - 40px)" }}>
-              {/* Mini Calendar */}
+              {/* Date-specific hours */}
               <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h3 className="text-xs font-semibold text-[#374151]">Date-specific hours</h3>
+                    <p className="text-[10px] text-[#9ca3af]">Adjust hours for specific days</p>
+                  </div>
+                </div>
                 <div className="flex items-center justify-between mb-2">
                   <button
                     onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
@@ -1035,6 +1142,7 @@ export default function CalendarPage() {
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
+                  <span className="text-[11px] font-medium text-[#374151]">{format(currentMonth, "MMMM yyyy")}</span>
                   <button
                     onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
                     className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
@@ -1131,45 +1239,76 @@ export default function CalendarPage() {
                 </div>
               )}
 
-              {/* Schedule Summary */}
+              {/* Calendly-style Weekly Hours Editor */}
               <div className="border-t border-[#f3f4f6] pt-3">
-                <h3 className="text-xs font-semibold text-[#374151] mb-2">Schedule Summary</h3>
-                <div className="space-y-1.5">
-                  {DAY_LABELS.map((d, dIdx) => {
-                    const slots = slotGrid[dIdx];
-                    const activeCount = slots?.filter(Boolean).length ?? 0;
-                    const first = slots?.findIndex(Boolean) ?? -1;
-                    const reversedFirst = slots ? [...slots].reverse().findIndex(Boolean) : -1;
-                    const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
+                <div className="flex items-center gap-2 mb-3">
+                  <Clock className="h-3.5 w-3.5 text-[#6b7280]" />
+                  <h3 className="text-xs font-semibold text-[#374151]">Weekly hours</h3>
+                </div>
+                <p className="text-[10px] text-[#9ca3af] mb-3">Set when you are typically available for meetings</p>
+                <div className="space-y-2">
+                  {CALENDLY_DAYS.map((day) => {
+                    const daySchedule = schedule.find((s) => s.dayOfWeek === day.dayOfWeek);
+                    const isEnabled = daySchedule?.enabled ?? false;
                     return (
-                      <div key={d} className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-[10px] font-semibold w-7",
-                          activeCount > 0 ? "text-[#374151]" : "text-[#d1d5db]"
-                        )}>
-                          {d}
-                        </span>
-                        <div className="flex-1 h-1.5 rounded-full bg-[#f3f4f6] overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-[#0090d9] transition-all duration-300"
-                            style={{ width: `${(activeCount / TOTAL_SLOTS) * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-[#9ca3af] w-20 text-right">
-                          {activeCount > 0 ? (
-                            <>{formatSlotTime(first)} - {formatSlotTime(last + 1)}</>
-                          ) : (
-                            <span className="text-[#d1d5db]">Unavailable</span>
+                      <div key={day.dayOfWeek} className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleDayToggle(day.dayOfWeek)}
+                          className={cn(
+                            "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white transition-all",
+                            isEnabled ? day.color : "bg-[#d1d5db]"
                           )}
-                        </span>
+                          title={`${isEnabled ? "Disable" : "Enable"} ${day.fullLabel}`}
+                        >
+                          {day.label}
+                        </button>
+                        {isEnabled ? (
+                          <div className="flex flex-1 items-center gap-1">
+                            <select
+                              value={daySchedule?.startHour ?? 9}
+                              onChange={(e) => handleDayTimeChange(day.dayOfWeek, "startHour", Number(e.target.value))}
+                              className="w-[80px] rounded-md border border-[#e5e7eb] bg-white px-1.5 py-1 text-[11px] text-[#374151] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            >
+                              {TIME_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            <span className="text-[10px] text-[#9ca3af]">-</span>
+                            <select
+                              value={daySchedule?.endHour ?? 17}
+                              onChange={(e) => handleDayTimeChange(day.dayOfWeek, "endHour", Number(e.target.value))}
+                              className="w-[80px] rounded-md border border-[#e5e7eb] bg-white px-1.5 py-1 text-[11px] text-[#374151] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            >
+                              {TIME_OPTIONS.filter((opt) => opt.value > (daySchedule?.startHour ?? 9)).map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => handleDayToggle(day.dayOfWeek)}
+                              className="rounded p-1 text-[#9ca3af] hover:bg-red-50 hover:text-red-400 transition-colors"
+                              title="Remove"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() => handleCopyToAll(day.dayOfWeek)}
+                              className="rounded p-1 text-[#9ca3af] hover:bg-blue-50 hover:text-blue-500 transition-colors"
+                              title="Copy to all days"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-[#d1d5db]">Unavailable</span>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-                <div className="mt-2 pt-2 border-t border-[#f3f4f6]">
+                <div className="mt-3 pt-2 border-t border-[#f3f4f6]">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-[#9ca3af]">Total weekly hours</span>
-                    <span className="text-sm font-semibold text-[#0090d9]">
+                    <span className="text-xs font-semibold text-[#0090d9]">
                       {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
                     </span>
                   </div>

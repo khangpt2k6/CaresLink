@@ -7,7 +7,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const result = await requireEmployer(request);
-  if (result.error) return result.error;
+  if ("error" in result) return result.error;
 
   try {
     const { id } = await params;

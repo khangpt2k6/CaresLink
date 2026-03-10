@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { Tool } from "@anthropic-ai/sdk/resources/messages";
+import type { MessageParam, Tool } from "@anthropic-ai/sdk/resources/messages";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
 import { sendReminder, scheduleInterview, findMutualAvailableSlots } from "./scheduling";
@@ -434,13 +434,12 @@ export async function runAgent(userMessage: string, sessionId?: string): Promise
     return "AI agent is not configured. Set ANTHROPIC_API_KEY in .env.local";
   }
 
-  type Message = { role: "user" | "assistant"; content: string | unknown[] };
-  let messages: Message[] = [{ role: "user", content: userMessage }];
+  let messages: MessageParam[] = [{ role: "user", content: userMessage }];
 
   if (sessionId) {
     const memory = await prisma.agentMemory.findUnique({ where: { sessionId } });
     if (memory?.history && Array.isArray(memory.history)) {
-      const stored = memory.history as Message[];
+      const stored = memory.history as unknown as MessageParam[];
       if (stored.length > 0) {
         messages = [...stored, { role: "user", content: userMessage }];
       }
@@ -451,7 +450,7 @@ export async function runAgent(userMessage: string, sessionId?: string): Promise
   let turns = 0;
   let lastText = "";
 
-  const saveHistory = async (history: Message[]) => {
+  const saveHistory = async (history: MessageParam[]) => {
     if (!sessionId) return;
     const trimmed = history.slice(-20);
     await prisma.agentMemory.upsert({
@@ -486,7 +485,7 @@ export async function runAgent(userMessage: string, sessionId?: string): Promise
         return lastText || "Done.";
       }
 
-      const assistantMsg: Message = { role: "assistant", content: response.content };
+      const assistantMsg: MessageParam = { role: "assistant", content: response.content };
       const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
 
       for (const block of toolUseBlocks) {

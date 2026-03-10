@@ -6,7 +6,7 @@ import { format } from "date-fns";
 
 export async function POST(request: NextRequest) {
   const result = await requireEmployer(request);
-  if (result.error) return result.error;
+  if ("error" in result) return result.error;
 
   try {
     const body = await request.json();

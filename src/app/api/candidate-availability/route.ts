@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 // GET — fetch candidate's weekly availability
 export async function GET(req: NextRequest) {
   const result = await requireUser(req);
-  if (result.error) return result.error;
+  if ("error" in result) return result.error;
   const { user } = result;
 
   try {
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 // PUT — update candidate's weekly availability (bulk)
 export async function PUT(req: NextRequest) {
   const result = await requireUser(req);
-  if (result.error) return result.error;
+  if ("error" in result) return result.error;
   const { user } = result;
 
   try {

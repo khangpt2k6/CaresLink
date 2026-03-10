@@ -8,7 +8,7 @@ import { getTimezone, getTimezoneAbbr, formatInTimezone } from "@/lib/timezone";
 
 export async function DELETE(request: NextRequest) {
   const result = await requireEmployer(request);
-  if (result.error) return result.error;
+  if ("error" in result) return result.error;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -103,7 +103,7 @@ export async function DELETE(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const result = await requireUser(request);
-  if (result.error) return result.error;
+  if ("error" in result) return result.error;
   const { user } = result;
 
   try {
@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const result = await requireEmployer(request);
-  if (result.error) return result.error;
+  if ("error" in result) return result.error;
 
   try {
     const body = await request.json();

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 
 export async function PUT(request: NextRequest) {
   const auth = await requireEmployer(request);
-  if (auth.error) return auth.error;
+  if ("error" in auth) return auth.error;
 
   try {
     const body = await request.json();
@@ -32,7 +32,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const auth = await requireEmployer(request);
-  if (auth.error) return auth.error;
+  if ("error" in auth) return auth.error;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -54,7 +54,7 @@ export async function DELETE(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const auth = await requireEmployer(request);
-  if (auth.error) return auth.error;
+  if ("error" in auth) return auth.error;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const auth = await requireEmployer(request);
-  if (auth.error) return auth.error;
+  if ("error" in auth) return auth.error;
 
   try {
     const body = await request.json();

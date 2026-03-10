@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -25,7 +25,7 @@ interface BookingResult {
   candidate: { id: string; name: string; email: string };
 }
 
-export default function BookPage() {
+function BookPageContent() {
   const searchParams = useSearchParams();
   const initialEmail = searchParams.get("email") || undefined;
   const [step, setStep] = useState<Step>("select");
@@ -431,5 +431,17 @@ export default function BookPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+export default function BookPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#0090d9]" />
+      </div>
+    }>
+      <BookPageContent />
+    </Suspense>
   );
 }

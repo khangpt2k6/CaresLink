@@ -118,7 +118,6 @@ export async function GET(request: NextRequest) {
       cutoff.setDate(cutoff.getDate() - pastDays);
       baseWhere = {
         completed: false,
-        noShow: false,
         cancelled: false,
         scheduledAt: { gte: cutoff, lt: new Date() },
       };

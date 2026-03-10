@@ -66,6 +66,18 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model Job {
+  id          String   @id @default(cuid())
+  title       String
+  department  String?
+  location    String   @default("Remote")
+  type        String   @default("Full-time") // Full-time, Part-time, Contract
+  description String?
+  status      String   @default("open") // open, closed, paused
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Candidate {
   id        String   @id @default(cuid())
   name      String

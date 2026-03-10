@@ -1085,12 +1085,13 @@ export default function CalendarPage() {
                   {CALENDLY_DAYS.map((day) => {
                     const daySchedule = schedule.find((s) => s.dayOfWeek === day.dayOfWeek);
                     const isEnabled = daySchedule?.enabled ?? false;
+                    const dayExtras = extraSlots[day.dayOfWeek] || [];
                     return (
-                      <div key={day.dayOfWeek} className="flex items-center gap-3">
+                      <div key={day.dayOfWeek} className="flex gap-3">
                         <button
                           onClick={() => handleDayToggle(day.dayOfWeek)}
                           className={cn(
-                            "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white transition-all",
+                            "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white transition-all mt-1",
                             isEnabled ? day.color : "bg-[#d1d5db]"
                           )}
                           title={`${isEnabled ? "Disable" : "Enable"} ${day.fullLabel}`}
@@ -1098,50 +1099,93 @@ export default function CalendarPage() {
                           {day.label}
                         </button>
                         {isEnabled ? (
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={daySchedule?.startHour ?? 9}
-                              onChange={(e) => handleDayTimeChange(day.dayOfWeek, "startHour", Number(e.target.value))}
-                              className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
-                            >
-                              {TIME_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                              ))}
-                            </select>
-                            <span className="text-sm text-[#9ca3af]">-</span>
-                            <select
-                              value={daySchedule?.endHour ?? 17}
-                              onChange={(e) => handleDayTimeChange(day.dayOfWeek, "endHour", Number(e.target.value))}
-                              className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
-                            >
-                              {TIME_OPTIONS.filter((opt) => opt.value > (daySchedule?.startHour ?? 9)).map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                              ))}
-                            </select>
+                          <div className="flex flex-col gap-2">
+                            {/* Primary time slot */}
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={daySchedule?.startHour ?? 9}
+                                onChange={(e) => handleDayTimeChange(day.dayOfWeek, "startHour", Number(e.target.value))}
+                                className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                              >
+                                {TIME_OPTIONS.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                              <span className="text-sm text-[#9ca3af]">-</span>
+                              <select
+                                value={daySchedule?.endHour ?? 17}
+                                onChange={(e) => handleDayTimeChange(day.dayOfWeek, "endHour", Number(e.target.value))}
+                                className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                              >
+                                {TIME_OPTIONS.filter((opt) => opt.value > (daySchedule?.startHour ?? 9)).map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={() => handleDayToggle(day.dayOfWeek)}
+                                className="rounded-md p-1.5 text-[#9ca3af] hover:bg-red-50 hover:text-red-400 transition-colors"
+                                title="Remove"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleAddSlot(day.dayOfWeek)}
+                                className="rounded-md p-1.5 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
+                                title="Add time slot"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleCopyToAll(day.dayOfWeek)}
+                                className="rounded-md p-1.5 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
+                                title="Copy to all days"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {/* Extra time slots */}
+                            {dayExtras.map((slot, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <select
+                                  value={slot.startHour}
+                                  onChange={(e) => handleExtraSlotTimeChange(day.dayOfWeek, idx, "startHour", Number(e.target.value))}
+                                  className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                                >
+                                  {TIME_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                                <span className="text-sm text-[#9ca3af]">-</span>
+                                <select
+                                  value={slot.endHour}
+                                  onChange={(e) => handleExtraSlotTimeChange(day.dayOfWeek, idx, "endHour", Number(e.target.value))}
+                                  className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                                >
+                                  {TIME_OPTIONS.filter((opt) => opt.value > slot.startHour).map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => handleRemoveExtraSlot(day.dayOfWeek, idx)}
+                                  className="rounded-md p-1.5 text-[#9ca3af] hover:bg-red-50 hover:text-red-400 transition-colors"
+                                  title="Remove time slot"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-sm text-[#d1d5db]">Unavailable</span>
                             <button
-                              onClick={() => handleDayToggle(day.dayOfWeek)}
-                              className="rounded-md p-1.5 text-[#9ca3af] hover:bg-red-50 hover:text-red-400 transition-colors"
-                              title="Remove"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleAddHour(day.dayOfWeek)}
-                              className="rounded-md p-1.5 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
-                              title="Extend by 1 hour"
+                              onClick={() => handleAddSlot(day.dayOfWeek)}
+                              className="rounded-md p-1 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
+                              title="Add time slot"
                             >
                               <Plus className="h-4 w-4" />
                             </button>
-                            <button
-                              onClick={() => handleCopyToAll(day.dayOfWeek)}
-                              className="rounded-md p-1.5 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
-                              title="Copy to all days"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </button>
                           </div>
-                        ) : (
-                          <span className="text-sm text-[#d1d5db]">Unavailable</span>
                         )}
                       </div>
                     );

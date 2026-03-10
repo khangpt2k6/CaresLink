@@ -13,6 +13,8 @@ import {
   UserX,
   XCircle,
   RefreshCw,
+  Ban,
+  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -29,6 +31,7 @@ interface Interview {
   completed?: boolean;
   calendarLink: string | null;
   meetLink: string | null;
+  candidateId: string;
   candidate: { name: string; email: string; phone: string | null };
 }
 
@@ -51,11 +54,15 @@ export function InterviewCard({
   onSendReminder: (id: string) => void;
   onDelete: (id: string) => void;
   onMarkNoShow?: (id: string) => void;
+  onRejectCandidate?: (interviewId: string, candidateId: string) => void;
+  onFollowUpCandidate?: (interviewId: string, candidateId: string) => void;
   onCandidateCancel?: (id: string) => void;
   onCandidateConfirm?: (id: string) => void;
   reminderLoading: string | null;
   deleteLoading: string | null;
   noShowLoading?: string | null;
+  rejectLoading?: string | null;
+  followUpLoading?: string | null;
   candidateCancelLoading?: string | null;
   candidateConfirmLoading?: string | null;
   showRecruiterActions?: boolean;
@@ -136,6 +143,26 @@ export function InterviewCard({
                   {noShowLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
                   Mark no-show
                 </button>
+              )}
+              {interview.noShow && onRejectCandidate && onFollowUpCandidate && (
+                <>
+                  <button
+                    onClick={() => onRejectCandidate(interview.id, interview.candidateId)}
+                    disabled={rejectLoading === interview.id}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#dc2626] hover:bg-[#fef2f2] transition-colors disabled:opacity-40"
+                  >
+                    {rejectLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+                    Rejected
+                  </button>
+                  <button
+                    onClick={() => onFollowUpCandidate(interview.id, interview.candidateId)}
+                    disabled={followUpLoading === interview.id}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[#0090d9] hover:bg-[#e8f4fd] transition-colors disabled:opacity-40"
+                  >
+                    {followUpLoading === interview.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquare className="h-3 w-3" />}
+                    Continue to follow up
+                  </button>
+                </>
               )}
               {!interview.reminderSent && !isPast ? (
                 <button onClick={() => onSendReminder(interview.id)} disabled={reminderLoading === interview.id}

@@ -18,6 +18,7 @@ interface Interview {
   completed?: boolean;
   calendarLink: string | null;
   meetLink: string | null;
+  candidateId: string;
   candidate: { name: string; email: string; phone: string | null };
 }
 
@@ -48,6 +49,8 @@ export default function InterviewsPage() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [candidateCancelLoading, setCandidateCancelLoading] = useState<string | null>(null);
   const [candidateConfirmLoading, setCandidateConfirmLoading] = useState<string | null>(null);
+  const [rejectLoading, setRejectLoading] = useState<string | null>(null);
+  const [followUpLoading, setFollowUpLoading] = useState<string | null>(null);
 
   const fetchInterviews = () => {
     setLoading(true);
@@ -158,6 +161,28 @@ export default function InterviewsPage() {
       else alert(data.error || "Failed to mark no-show");
     } catch { alert("Failed to mark no-show"); }
     finally { setNoShowLoading(null); }
+  };
+
+  const handleRejectCandidate = async (interviewId: string, candidateId: string) => {
+    setRejectLoading(interviewId);
+    try {
+      const res = await fetch("/api/candidates", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: candidateId, status: "rejected" }) });
+      const data = await res.json();
+      if (res.ok) { fetchPastInterviews(); }
+      else alert(data.error || "Failed to reject candidate");
+    } catch { alert("Failed to reject candidate"); }
+    finally { setRejectLoading(null); }
+  };
+
+  const handleFollowUpCandidate = async (interviewId: string, candidateId: string) => {
+    setFollowUpLoading(interviewId);
+    try {
+      const res = await fetch("/api/candidates", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: candidateId, status: "contacted" }) });
+      const data = await res.json();
+      if (res.ok) { fetchPastInterviews(); }
+      else alert(data.error || "Failed to update candidate");
+    } catch { alert("Failed to update candidate"); }
+    finally { setFollowUpLoading(null); }
   };
 
   return (
@@ -276,7 +301,7 @@ export default function InterviewsPage() {
               ) : (
                 <div className="space-y-2">
                   {pastInterviews.map((i) => (
-                    <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} onMarkNoShow={handleMarkNoShow} reminderLoading={reminderLoading} deleteLoading={deleteLoading} noShowLoading={noShowLoading} showRecruiterActions={true} />
+                    <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} onMarkNoShow={handleMarkNoShow} onRejectCandidate={handleRejectCandidate} onFollowUpCandidate={handleFollowUpCandidate} reminderLoading={reminderLoading} deleteLoading={deleteLoading} noShowLoading={noShowLoading} rejectLoading={rejectLoading} followUpLoading={followUpLoading} showRecruiterActions={true} />
                   ))}
                 </div>
               )}

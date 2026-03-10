@@ -9,7 +9,7 @@ import {
 import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronsLeft, ChevronsRight,
   Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink,
-  Plus, Copy, Clock,
+  Copy, Clock, List, CalendarDays, Plus,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -200,6 +200,7 @@ export default function CalendarPage() {
   const [mscalLoading, setMscalLoading] = useState(false);
   const [mscalOauthAvailable, setMscalOauthAvailable] = useState(false);
 
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const videoDropdownRef = useRef<HTMLDivElement>(null);
@@ -852,6 +853,30 @@ export default function CalendarPage() {
             </div>
           )}
 
+          {/* List / Calendar toggle */}
+          <div className="flex items-center rounded-lg border border-[#e5e7eb] bg-white overflow-hidden">
+            <button
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                viewMode === "list" ? "bg-gray-100 text-[#374151]" : "text-[#6b7280] hover:bg-gray-50"
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              List
+            </button>
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                viewMode === "calendar" ? "bg-gray-100 text-[#374151]" : "text-[#6b7280] hover:bg-gray-50"
+              )}
+            >
+              <CalendarDays className="h-3.5 w-3.5" />
+              Calendar
+            </button>
+          </div>
+
           <button
             onClick={handleSave}
             disabled={saving}
@@ -909,7 +934,260 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Main calendar area */}
+      {/* LIST VIEW */}
+      {viewMode === "list" && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="rounded-lg border border-[#e5e7eb] bg-white">
+            {/* Schedule header */}
+            <div className="border-b border-[#e5e7eb] px-6 py-5">
+              <p className="text-[11px] font-medium text-[#6b7280] uppercase tracking-wider">Schedule</p>
+              <h2 className="text-lg font-semibold text-[#1a2b3c]">Working hours (default)</h2>
+            </div>
+
+            {/* Main content: Weekly hours + Date-specific hours */}
+            <div className="flex divide-x divide-[#e5e7eb]">
+              {/* Weekly hours - left side */}
+              <div className="flex-1 px-6 py-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock className="h-4 w-4 text-[#374151]" />
+                  <h3 className="text-sm font-semibold text-[#374151]">Weekly hours</h3>
+                </div>
+                <p className="text-xs text-[#9ca3af] mb-5">Set when you are typically available for meetings</p>
+
+                <div className="space-y-3">
+                  {CALENDLY_DAYS.map((day) => {
+                    const daySchedule = schedule.find((s) => s.dayOfWeek === day.dayOfWeek);
+                    const isEnabled = daySchedule?.enabled ?? false;
+                    return (
+                      <div key={day.dayOfWeek} className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleDayToggle(day.dayOfWeek)}
+                          className={cn(
+                            "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white transition-all",
+                            isEnabled ? day.color : "bg-[#d1d5db]"
+                          )}
+                          title={`${isEnabled ? "Disable" : "Enable"} ${day.fullLabel}`}
+                        >
+                          {day.label}
+                        </button>
+                        {isEnabled ? (
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={daySchedule?.startHour ?? 9}
+                              onChange={(e) => handleDayTimeChange(day.dayOfWeek, "startHour", Number(e.target.value))}
+                              className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            >
+                              {TIME_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            <span className="text-sm text-[#9ca3af]">-</span>
+                            <select
+                              value={daySchedule?.endHour ?? 17}
+                              onChange={(e) => handleDayTimeChange(day.dayOfWeek, "endHour", Number(e.target.value))}
+                              className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            >
+                              {TIME_OPTIONS.filter((opt) => opt.value > (daySchedule?.startHour ?? 9)).map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => handleDayToggle(day.dayOfWeek)}
+                              className="rounded-md p-1.5 text-[#9ca3af] hover:bg-red-50 hover:text-red-400 transition-colors"
+                              title="Remove"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => {}}
+                              className="rounded-md p-1.5 text-[#9ca3af] hover:bg-blue-50 hover:text-blue-500 transition-colors"
+                              title="Add time slot"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleCopyToAll(day.dayOfWeek)}
+                              className="rounded-md p-1.5 text-[#9ca3af] hover:bg-blue-50 hover:text-blue-500 transition-colors"
+                              title="Copy to all days"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-[#d1d5db]">Unavailable</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Timezone */}
+                <div className="mt-5 pt-4 border-t border-[#f3f4f6]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-[#9ca3af]">Total weekly hours</span>
+                    <span className="text-sm font-semibold text-[#0090d9]">
+                      {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-1.5 text-xs text-blue-600">
+                    <Globe className="h-3.5 w-3.5" />
+                    <span>{TIMEZONES.find((tz) => tz.value === timezone)?.label || timezone}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Date-specific hours - right side */}
+              <div className="w-[360px] flex-shrink-0 px-6 py-5">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-[#374151]" />
+                    <h3 className="text-sm font-semibold text-[#374151]">Date-specific hours</h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedDate(new Date())}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-xs font-medium text-[#374151] hover:bg-gray-50 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Hours
+                  </button>
+                </div>
+                <p className="text-xs text-[#9ca3af] mb-4">Adjust hours for specific days</p>
+
+                {/* Mini Calendar */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <button
+                      onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                      className="rounded p-1 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <span className="text-sm font-medium text-[#374151]">{format(currentMonth, "MMMM yyyy")}</span>
+                    <button
+                      onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                      className="rounded p-1 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-7 mb-1">
+                    {["SU", "MO", "TU", "WE", "TH", "FR", "SA"].map((d) => (
+                      <span key={d} className="py-1.5 text-center text-[11px] font-medium text-[#9ca3af]">{d}</span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-y-1">
+                    {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
+                    {days.map((date) => {
+                      const today = isToday(date);
+                      const override = getOverride(date);
+                      const isSelected = selectedDate && isSameDay(date, selectedDate);
+                      return (
+                        <button
+                          key={date.toISOString()}
+                          onClick={() => setSelectedDate(isSelected ? null : date)}
+                          className={cn(
+                            "flex h-8 w-full items-center justify-center text-xs transition-all relative rounded-md",
+                            today ? "font-bold" : "font-normal",
+                            today && !isSelected ? "text-white" : "text-[#374151] hover:bg-gray-50",
+                            isSelected && "ring-1 ring-blue-500 bg-blue-50",
+                            override && !override.available && "text-red-400",
+                          )}
+                        >
+                          {today && !isSelected && (
+                            <span className="absolute inset-0 flex items-center justify-center">
+                              <span className="w-7 h-7 rounded-full bg-blue-600" />
+                            </span>
+                          )}
+                          <span className="relative z-10">{format(date, "d")}</span>
+                          {override && (
+                            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Date override panel */}
+                {selectedDate && isSameMonth(selectedDate, currentMonth) && (
+                  <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-semibold text-[#374151]">
+                        {format(selectedDate, "EEE, MMM d")}
+                      </span>
+                      <button onClick={() => setSelectedDate(null)} className="rounded p-1 hover:bg-gray-100">
+                        <X className="h-3.5 w-3.5 text-[#9ca3af]" />
+                      </button>
+                    </div>
+                    {getOverride(selectedDate) ? (
+                      <div>
+                        <p className="mb-3 text-xs text-[#6b7280]">
+                          Blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
+                        </p>
+                        <button
+                          onClick={() => toggleDateOverride(selectedDate)}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600 transition-colors"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Unblock
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <input
+                          type="text"
+                          value={overrideReason}
+                          onChange={(e) => setOverrideReason(e.target.value)}
+                          placeholder="Reason (optional)"
+                          className="mb-3 w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                        <button
+                          onClick={() => toggleDateOverride(selectedDate)}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white hover:bg-red-600 transition-colors"
+                        >
+                          <Ban className="h-3.5 w-3.5" />
+                          Block Date
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Active overrides list */}
+                {overrides.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
+                    <p className="text-[11px] font-medium text-[#9ca3af] mb-2">Blocked dates</p>
+                    <div className="space-y-1.5">
+                      {overrides.filter((o) => !o.available).map((o) => (
+                        <div key={o.id} className="flex items-center justify-between rounded-md bg-red-50 px-3 py-1.5">
+                          <span className="text-xs text-red-600">
+                            {format(new Date(o.date), "MMM d")}
+                            {o.reason ? ` — ${o.reason}` : ""}
+                          </span>
+                          <button
+                            onClick={async () => {
+                              await fetch(`/api/availability/overrides?id=${o.id}`, { method: "DELETE" });
+                              setOverrides((prev) => prev.filter((x) => x.id !== o.id));
+                            }}
+                            className="rounded p-0.5 text-red-400 hover:text-red-600"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CALENDAR VIEW */}
+      {viewMode === "calendar" && (
       <div className="flex-1 flex min-h-0 border border-[#e5e7eb] rounded-lg bg-white overflow-hidden">
         {/* Week calendar */}
         <div className="flex-1 flex flex-col min-h-0">
@@ -1099,7 +1377,7 @@ export default function CalendarPage() {
         {/* Right sidebar - shares same card */}
         <div className={cn(
           "flex-shrink-0 border-l border-[#e5e7eb] bg-white transition-all duration-200 overflow-hidden",
-          sidebarOpen ? "w-[340px]" : "w-10"
+          sidebarOpen ? "w-[260px]" : "w-10"
         )}>
           {/* Sidebar header - height matches calendar header */}
           <div className={cn(
@@ -1239,76 +1517,45 @@ export default function CalendarPage() {
                 </div>
               )}
 
-              {/* Calendly-style Weekly Hours Editor */}
+              {/* Schedule Summary */}
               <div className="border-t border-[#f3f4f6] pt-3">
-                <div className="flex items-center gap-2 mb-3">
-                  <Clock className="h-3.5 w-3.5 text-[#6b7280]" />
-                  <h3 className="text-xs font-semibold text-[#374151]">Weekly hours</h3>
-                </div>
-                <p className="text-[10px] text-[#9ca3af] mb-3">Set when you are typically available for meetings</p>
-                <div className="space-y-2">
-                  {CALENDLY_DAYS.map((day) => {
-                    const daySchedule = schedule.find((s) => s.dayOfWeek === day.dayOfWeek);
-                    const isEnabled = daySchedule?.enabled ?? false;
+                <h3 className="text-xs font-semibold text-[#374151] mb-2">Schedule Summary</h3>
+                <div className="space-y-1.5">
+                  {DAY_LABELS.map((d, dIdx) => {
+                    const slots = slotGrid[dIdx];
+                    const activeCount = slots?.filter(Boolean).length ?? 0;
+                    const first = slots?.findIndex(Boolean) ?? -1;
+                    const reversedFirst = slots ? [...slots].reverse().findIndex(Boolean) : -1;
+                    const last = reversedFirst === -1 ? -1 : TOTAL_SLOTS - 1 - reversedFirst;
                     return (
-                      <div key={day.dayOfWeek} className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleDayToggle(day.dayOfWeek)}
-                          className={cn(
-                            "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white transition-all",
-                            isEnabled ? day.color : "bg-[#d1d5db]"
+                      <div key={d} className="flex items-center gap-2">
+                        <span className={cn(
+                          "text-[10px] font-semibold w-7",
+                          activeCount > 0 ? "text-[#374151]" : "text-[#d1d5db]"
+                        )}>
+                          {d}
+                        </span>
+                        <div className="flex-1 h-1.5 rounded-full bg-[#f3f4f6] overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-[#0090d9] transition-all duration-300"
+                            style={{ width: `${(activeCount / TOTAL_SLOTS) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-[#9ca3af] w-20 text-right">
+                          {activeCount > 0 ? (
+                            <>{formatSlotTime(first)} - {formatSlotTime(last + 1)}</>
+                          ) : (
+                            <span className="text-[#d1d5db]">Unavailable</span>
                           )}
-                          title={`${isEnabled ? "Disable" : "Enable"} ${day.fullLabel}`}
-                        >
-                          {day.label}
-                        </button>
-                        {isEnabled ? (
-                          <div className="flex flex-1 items-center gap-1">
-                            <select
-                              value={daySchedule?.startHour ?? 9}
-                              onChange={(e) => handleDayTimeChange(day.dayOfWeek, "startHour", Number(e.target.value))}
-                              className="w-[80px] rounded-md border border-[#e5e7eb] bg-white px-1.5 py-1 text-[11px] text-[#374151] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            >
-                              {TIME_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                              ))}
-                            </select>
-                            <span className="text-[10px] text-[#9ca3af]">-</span>
-                            <select
-                              value={daySchedule?.endHour ?? 17}
-                              onChange={(e) => handleDayTimeChange(day.dayOfWeek, "endHour", Number(e.target.value))}
-                              className="w-[80px] rounded-md border border-[#e5e7eb] bg-white px-1.5 py-1 text-[11px] text-[#374151] focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            >
-                              {TIME_OPTIONS.filter((opt) => opt.value > (daySchedule?.startHour ?? 9)).map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                              ))}
-                            </select>
-                            <button
-                              onClick={() => handleDayToggle(day.dayOfWeek)}
-                              className="rounded p-1 text-[#9ca3af] hover:bg-red-50 hover:text-red-400 transition-colors"
-                              title="Remove"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => handleCopyToAll(day.dayOfWeek)}
-                              className="rounded p-1 text-[#9ca3af] hover:bg-blue-50 hover:text-blue-500 transition-colors"
-                              title="Copy to all days"
-                            >
-                              <Copy className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-[#d1d5db]">Unavailable</span>
-                        )}
+                        </span>
                       </div>
                     );
                   })}
                 </div>
-                <div className="mt-3 pt-2 border-t border-[#f3f4f6]">
+                <div className="mt-2 pt-2 border-t border-[#f3f4f6]">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-[#9ca3af]">Total weekly hours</span>
-                    <span className="text-xs font-semibold text-[#0090d9]">
+                    <span className="text-sm font-semibold text-[#0090d9]">
                       {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
                     </span>
                   </div>
@@ -1318,6 +1565,7 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

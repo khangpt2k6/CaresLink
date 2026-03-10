@@ -4,7 +4,7 @@ import { findNextAvailableSlots } from "@/lib/scheduling";
 
 export async function GET(request: NextRequest) {
   const result = await requireEmployer(request);
-  if (result.error) return result.error;
+  if ("error" in result) return result.error;
 
   try {
     const { searchParams } = new URL(request.url);

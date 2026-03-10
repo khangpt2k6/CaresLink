@@ -4,7 +4,7 @@ Full-stack AI recruitment agent powered by Google Gemini, with real Twilio SMS, 
 
 ## Features
 
-- **AI Agent** — Google Gemini with function calling for natural language recruitment tasks
+- **AI Agent** — Anthropic Claude with tool use for natural language recruitment tasks
 - **Real APIs** — Twilio (SMS), SendGrid (Email)
 - **Dashboard** — Metrics, candidates, interviews, insights
 - **Data-driven insights** — Recommendations for no-show rate, channel effectiveness, cost optimization
@@ -39,7 +39,7 @@ Full-stack AI recruitment agent powered by Google Gemini, with real Twilio SMS, 
 
 | Service | Where to get |
 |---------|--------------|
-| Google Gemini | [AI Studio](https://aistudio.google.com/apikey) |
+| Anthropic Claude | [Console](https://console.anthropic.com/) |
 | Twilio | [Twilio Console](https://www.twilio.com/console) |
 | SendGrid | [SendGrid](https://app.sendgrid.com/) |
 

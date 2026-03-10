@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runAgent } from "@/lib/gemini";
+import { runAgent } from "@/lib/agent";
 
 export async function POST(request: NextRequest) {
   try {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runAgent } from "@/lib/gemini";
+import { runAgent } from "@/lib/agent";
 import { prisma } from "@/lib/db";
 
 const CRON_SECRET = process.env.CRON_SECRET;

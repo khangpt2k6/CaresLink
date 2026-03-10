@@ -1,29 +1,43 @@
-import {
-  GoogleGenerativeAI,
-  FunctionCallingMode,
-  type FunctionDeclaration,
-  type FunctionDeclarationsTool,
-  SchemaType,
-} from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
+import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
 import { sendReminder, scheduleInterview, findMutualAvailableSlots } from "./scheduling";
 
-const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
+const apiKey = process.env.ANTHROPIC_API_KEY;
 if (!apiKey) {
-  console.warn("GOOGLE_GEMINI_API_KEY not set - AI agent disabled");
+  console.warn("ANTHROPIC_API_KEY not set - AI agent disabled");
 }
 
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 
-const functionDeclarations: FunctionDeclaration[] = [
+const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant. You help employers contact candidates and manage the interview process.
+
+IMPORTANT: You do NOT schedule interviews directly. Candidates choose their own interview time.
+
+CRITICAL: When asked to contact a candidate, DO NOT ask for confirmation. Just do it immediately:
+1. Call get_candidate_info to get their details
+2. Call send_booking_link to send them the booking page link right away
+3. Confirm what you did
+
+The booking page lets candidates see available times (based on HR availability, Google Calendar, and conflicts) and pick their own slot. Once they book, the system automatically creates a calendar event, generates a video call link, and sends a confirmation email.
+
+You can also use send_email independently for follow-ups, custom messages, or other communications.
+
+When a function returns already_scheduled: true, tell the employer directly: "This candidate already has an interview scheduled on [date]. Cancel it first to reschedule."
+
+You can also manage the recruiter's weekly availability schedule using get_availability and update_availability. When asked to change availability (e.g. "set Monday to Friday 9-5"), update all the relevant days at once.
+
+Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`;
+
+const TOOLS: Tool[] = [
   {
     name: "get_candidate_info",
     description: "Get details about a candidate by ID",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object" as const,
       properties: {
-        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
+        candidate_id: { type: "string" as const, description: "The candidate ID" },
       },
       required: ["candidate_id"],
     },
@@ -31,11 +45,11 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "list_candidates",
     description: "List all candidates, optionally filtered by position or status",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object" as const,
       properties: {
-        position: { type: SchemaType.STRING, description: "Filter by position" },
-        status: { type: SchemaType.STRING, description: "Filter by status (applied, contacted, scheduled, etc)" },
+        position: { type: "string" as const, description: "Filter by position" },
+        status: { type: "string" as const, description: "Filter by status (applied, contacted, scheduled, etc)" },
       },
       required: [],
     },
@@ -43,24 +57,25 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "send_email",
     description: "Send an email to a candidate",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object" as const,
       properties: {
-        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
-        subject: { type: SchemaType.STRING, description: "Email subject" },
-        body: { type: SchemaType.STRING, description: "Email body" },
+        candidate_id: { type: "string" as const, description: "The candidate ID" },
+        subject: { type: "string" as const, description: "Email subject" },
+        body: { type: "string" as const, description: "Email body" },
       },
       required: ["candidate_id", "subject", "body"],
     },
   },
   {
     name: "send_booking_link",
-    description: "Send the self-service booking link to a candidate so they can choose their own interview time. This is the preferred way to schedule interviews — let candidates pick a time that works for them.",
-    parameters: {
-      type: SchemaType.OBJECT,
+    description:
+      "Send the self-service booking link to a candidate so they can choose their own interview time. This is the preferred way to schedule interviews — let candidates pick a time that works for them.",
+    input_schema: {
+      type: "object" as const,
       properties: {
-        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
-        message: { type: SchemaType.STRING, description: "Optional custom message to include in the email (e.g. greeting, context about the role)", nullable: true },
+        candidate_id: { type: "string" as const, description: "The candidate ID" },
+        message: { type: "string" as const, description: "Optional custom message to include in the email (e.g. greeting, context about the role)" },
       },
       required: ["candidate_id"],
     },
@@ -68,21 +83,22 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "send_reminder",
     description: "Send an interview reminder via email to the candidate",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object" as const,
       properties: {
-        interview_id: { type: SchemaType.STRING, description: "The interview ID" },
+        interview_id: { type: "string" as const, description: "The interview ID" },
       },
       required: ["interview_id"],
     },
   },
   {
     name: "auto_book_interview",
-    description: "Find a time that works for BOTH the recruiter and the candidate (using their availability), then automatically schedule the interview and send the confirmation email. Use when the recruiter wants to auto-book instead of sending a booking link.",
-    parameters: {
-      type: SchemaType.OBJECT,
+    description:
+      "Find a time that works for BOTH the recruiter and the candidate (using their availability), then automatically schedule the interview and send the confirmation email. Use when the recruiter wants to auto-book instead of sending a booking link.",
+    input_schema: {
+      type: "object" as const,
       properties: {
-        candidate_id: { type: SchemaType.STRING, description: "The candidate ID" },
+        candidate_id: { type: "string" as const, description: "The candidate ID" },
       },
       required: ["candidate_id"],
     },
@@ -90,10 +106,10 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "get_stale_candidates",
     description: "Get candidates who haven't replied in 5+ days after outreach (email or booking link). Use to proactively suggest follow-ups.",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object" as const,
       properties: {
-        min_days: { type: SchemaType.NUMBER, description: "Minimum days since last outreach (default 5)", nullable: true },
+        min_days: { type: "number" as const, description: "Minimum days since last outreach (default 5)" },
       },
       required: [],
     },
@@ -101,11 +117,11 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "list_upcoming_interviews",
     description: "List scheduled interviews happening within the next N hours. Use to find interviews that need reminders sent.",
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: "object" as const,
       properties: {
-        hours_ahead: { type: SchemaType.NUMBER, description: "How many hours ahead to look (default 24)", nullable: true },
-        reminder_not_sent: { type: SchemaType.BOOLEAN, description: "If true, only return interviews where reminder hasn't been sent yet", nullable: true },
+        hours_ahead: { type: "number" as const, description: "How many hours ahead to look (default 24)" },
+        reminder_not_sent: { type: "boolean" as const, description: "If true, only return interviews where reminder hasn't been sent yet" },
       },
       required: [],
     },
@@ -113,28 +129,25 @@ const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "get_availability",
     description: "Get the current recruiter weekly availability schedule. Shows which days are enabled and the start/end hours for each day.",
-    parameters: {
-      type: SchemaType.OBJECT,
-      properties: {},
-      required: [],
-    },
+    input_schema: { type: "object" as const, properties: {}, required: [] },
   },
   {
     name: "update_availability",
-    description: "Update the recruiter's weekly availability schedule. Can set hours and enable/disable specific days. dayOfWeek: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday.",
-    parameters: {
-      type: SchemaType.OBJECT,
+    description:
+      "Update the recruiter's weekly availability schedule. Can set hours and enable/disable specific days. dayOfWeek: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday.",
+    input_schema: {
+      type: "object" as const,
       properties: {
         days: {
-          type: SchemaType.ARRAY,
+          type: "array" as const,
           description: "Array of day configurations to update",
           items: {
-            type: SchemaType.OBJECT,
+            type: "object" as const,
             properties: {
-              dayOfWeek: { type: SchemaType.NUMBER, description: "0=Sunday, 1=Monday, ..., 6=Saturday" },
-              startHour: { type: SchemaType.NUMBER, description: "Start hour (e.g. 9 for 9 AM, 9.5 for 9:30 AM)" },
-              endHour: { type: SchemaType.NUMBER, description: "End hour (e.g. 17 for 5 PM)" },
-              enabled: { type: SchemaType.BOOLEAN, description: "Whether this day is available" },
+              dayOfWeek: { type: "number" as const, description: "0=Sunday, 1=Monday, ..., 6=Saturday" },
+              startHour: { type: "number" as const, description: "Start hour (e.g. 9 for 9 AM, 9.5 for 9:30 AM)" },
+              endHour: { type: "number" as const, description: "End hour (e.g. 17 for 5 PM)" },
+              enabled: { type: "boolean" as const, description: "Whether this day is available" },
             },
             required: ["dayOfWeek"],
           },
@@ -221,7 +234,6 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         const bookingUrl = `${appUrl}/book?email=${encodeURIComponent(c.email)}`;
         const rawMessage = args.message ? String(args.message) : "";
-        // Strip any leading greeting (e.g. "Hello Kevin,") from custom message to avoid duplication
         const customMessage = rawMessage.replace(/^(hi|hello|dear|hey)\s+[^,.\n]+[,.]?\s*/i, "").trim();
         const greeting = customMessage || `Your job application for the ${c.position} position at CaresLink has been shortlisted by our recruiting team.`;
 
@@ -315,11 +327,10 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
           interview: { id: string; position: string; scheduledAt: Date };
           candidate: { id: string; email: string; name: string };
         };
-        const msg = `Reminder: Your ${interview.position} interview is scheduled. Please confirm you can attend.`;
         const result = await sendEmail(
           candidate.email,
           `Interview Reminder — ${interview.position}`,
-          msg
+          `Reminder: Your ${interview.position} interview is scheduled. Please confirm you can attend.`
         );
         if (result.success) {
           await prisma.interview.update({
@@ -387,8 +398,7 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
     }
     case "update_availability": {
       const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const days = args.days as any[];
+      const days = args.days as { dayOfWeek: number; startHour?: number; endHour?: number; enabled?: boolean }[];
       if (!Array.isArray(days) || days.length === 0) {
         return { error: "days array is required" };
       }
@@ -407,7 +417,6 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         });
         updated.push({ day: dayNames[dayOfWeek], ...data });
       }
-      // Bump schedule version so calendar UI refreshes
       await prisma.settings.upsert({
         where: { id: "default" },
         update: { scheduleVersion: { increment: 1 } },
@@ -421,98 +430,93 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
 }
 
 export async function runAgent(userMessage: string, sessionId?: string): Promise<string> {
-  if (!genAI || !apiKey) {
-    return "AI agent is not configured. Set GOOGLE_GEMINI_API_KEY in .env.local";
+  if (!anthropic || !apiKey) {
+    return "AI agent is not configured. Set ANTHROPIC_API_KEY in .env.local";
   }
 
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash-lite",
-    tools: [{ functionDeclarations } as FunctionDeclarationsTool],
-    toolConfig: {
-      functionCallingConfig: {
-        mode: FunctionCallingMode.AUTO,
-      },
-    },
-    systemInstruction: `You are CaresLink, an AI recruitment assistant. You help employers contact candidates and manage the interview process.
+  type Message = { role: "user" | "assistant"; content: string | unknown[] };
+  let messages: Message[] = [{ role: "user", content: userMessage }];
 
-IMPORTANT: You do NOT schedule interviews directly. Candidates choose their own interview time.
-
-CRITICAL: When asked to contact a candidate, DO NOT ask for confirmation. Just do it immediately:
-1. Call get_candidate_info to get their details
-2. Call send_booking_link to send them the booking page link right away
-3. Confirm what you did
-
-The booking page lets candidates see available times (based on HR availability, Google Calendar, and conflicts) and pick their own slot. Once they book, the system automatically creates a calendar event, generates a video call link, and sends a confirmation email.
-
-You can also use send_email independently for follow-ups, custom messages, or other communications.
-
-When a function returns already_scheduled: true, tell the employer directly: "This candidate already has an interview scheduled on [date]. Cancel it first to reschedule."
-
-You can also manage the recruiter's weekly availability schedule using get_availability and update_availability. When asked to change availability (e.g. "set Monday to Friday 9-5"), update all the relevant days at once.
-
-Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`,
-  });
-
-  // Load conversation history from DB
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let history: any[] = [];
   if (sessionId) {
     const memory = await prisma.agentMemory.findUnique({ where: { sessionId } });
-    if (memory?.history) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      history = memory.history as any[];
+    if (memory?.history && Array.isArray(memory.history)) {
+      const stored = memory.history as Message[];
+      if (stored.length > 0) {
+        messages = [...stored, { role: "user", content: userMessage }];
+      }
     }
   }
 
-  const chat = model.startChat({ history });
+  const maxTurns = 10;
+  let turns = 0;
+  let lastText = "";
+
+  const saveHistory = async (history: Message[]) => {
+    if (!sessionId) return;
+    const trimmed = history.slice(-20);
+    await prisma.agentMemory.upsert({
+      where: { sessionId },
+      update: { history: trimmed as object },
+      create: { sessionId, history: trimmed as object },
+    });
+  };
 
   try {
-    let lastResponse = await chat.sendMessage(userMessage);
-    const maxTurns = 10;
-    let turns = 0;
-
-    const saveHistory = async () => {
-      if (!sessionId) return;
-      const updatedHistory = await chat.getHistory();
-      // Keep last 60 entries to avoid DB bloat
-      const trimmed = updatedHistory.slice(-60);
-      await prisma.agentMemory.upsert({
-        where: { sessionId },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        update: { history: trimmed as any },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        create: { sessionId, history: trimmed as any },
-      });
-    };
-
     while (turns < maxTurns) {
-      const functionCalls = lastResponse.response.functionCalls?.() ?? [];
-      if (functionCalls.length === 0) {
-        const text = lastResponse.response.text?.() ?? "";
-        await saveHistory();
-        return text || "Done.";
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        tools: TOOLS,
+        messages,
+      });
+
+      const textBlocks = response.content.filter((b) => b.type === "text");
+      const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
+
+      if (textBlocks.length > 0) {
+        lastText = (textBlocks[0] as { type: "text"; text: string }).text;
       }
 
-      const functionResponses = await Promise.all(
-        functionCalls.map(async (fc) => {
-          const result = await executeFunction(fc.name, (fc.args || {}) as Record<string, unknown>);
-          return { functionResponse: { name: fc.name, response: result } };
-        })
-      );
+      if (toolUseBlocks.length === 0) {
+        await saveHistory([
+          ...messages,
+          { role: "assistant", content: response.content },
+        ]);
+        return lastText || "Done.";
+      }
 
-      lastResponse = await chat.sendMessage(functionResponses);
+      const assistantMsg: Message = { role: "assistant", content: response.content };
+      const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
+
+      for (const block of toolUseBlocks) {
+        if (block.type !== "tool_use") continue;
+        const result = await executeFunction(block.name, (block.input ?? {}) as Record<string, unknown>);
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: JSON.stringify(result),
+        });
+      }
+
+      messages = [
+        ...messages,
+        assistantMsg,
+        { role: "user", content: toolResults },
+      ];
+
       turns++;
     }
 
-    await saveHistory();
-    return lastResponse.response.text?.() ?? "Completed actions.";
+    await saveHistory(messages);
+    return lastText || "Completed actions.";
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("429") || msg.includes("quota")) {
-      return "Gemini API quota exceeded. Please wait a moment and try again, or check your plan at https://ai.google.dev.";
+    if (msg.includes("429") || msg.includes("overloaded") || msg.includes("rate")) {
+      return "Anthropic API rate limit exceeded. Please wait a moment and try again.";
     }
-    if (msg.includes("403") || msg.includes("leaked") || msg.includes("API key")) {
-      return "Gemini API key is invalid or has been revoked. Please generate a new key at https://aistudio.google.com/apikey and update your .env file.";
+    if (msg.includes("401") || msg.includes("invalid_api_key") || msg.includes("authentication")) {
+      return "Anthropic API key is invalid. Please check ANTHROPIC_API_KEY in your .env file.";
     }
     throw err;
   }

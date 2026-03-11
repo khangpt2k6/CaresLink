@@ -28,6 +28,78 @@ model User {
   accounts              Account[]
   sessions              Session[]
   candidateAvailability CandidateAvailability[]
+  profile               CandidateProfile?
+}
+
+// Candidate profile (LinkedIn-style)
+model CandidateProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline      String?  // e.g. "Executive Leadership"
+  summary       String?  // About / bio
+  phone         String?
+  city          String?
+  state         String?
+  country       String?  @default("United States")
+  referralCode  String?  @unique @default(cuid())
+  resumeUrl     String?  // link to uploaded resume
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  experiences    Experience[]
+  educations     Education[]
+  skills         Skill[]
+  certifications Certification[]
+}
+
+model Experience {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  title       String            // e.g. "LPN"
+  company     String            // e.g. "Moffitt"
+  description String?
+  startDate   DateTime
+  endDate     DateTime?         // null = "Present"
+  current     Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model Education {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  school      String
+  degree      String?           // e.g. "Bachelor of Science"
+  field       String?           // e.g. "Nursing"
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model Skill {
+  id        String            @id @default(cuid())
+  profileId String
+  profile   CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime          @default(now())
+
+  @@unique([profileId, name])
+}
+
+model Certification {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name        String            // e.g. "Registered Nurse (RN)"
+  issuer      String?           // e.g. "Florida Board of Nursing"
+  issueDate   DateTime?
+  expiryDate  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 }
 
 model Account {

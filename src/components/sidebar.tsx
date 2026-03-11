@@ -15,6 +15,7 @@ import {
   Lightbulb,
   Briefcase,
   LogOut,
+  UserCircle,
 } from "lucide-react";
 import { useUser, useClerk } from "@clerk/nextjs";
 
@@ -29,6 +30,7 @@ const employerNav = [
 
 const candidateNav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/profile", label: "My Profile", icon: UserCircle },
   { href: "/interviews", label: "My Interviews", icon: Calendar },
   { href: "/availability", label: "My Availability", icon: Clock },
   { href: "/book", label: "Book Interview", icon: CalendarClock },

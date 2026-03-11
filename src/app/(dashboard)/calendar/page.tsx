@@ -173,6 +173,11 @@ export default function CalendarPage() {
   // Multi-slot support: additional time ranges per day (beyond the primary one)
   const [extraSlots, setExtraSlots] = useState<Record<number, { startHour: number; endHour: number }[]>>({});
 
+  // Copy-to popover state
+  const [copyFromDay, setCopyFromDay] = useState<number | null>(null);
+  const [copyTargets, setCopyTargets] = useState<Set<number>>(new Set());
+  const copyRef = useRef<HTMLDivElement>(null);
+
   const [overrides, setOverrides] = useState<DateOverride[]>([]);
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
@@ -686,24 +691,90 @@ export default function CalendarPage() {
     });
   };
 
-  const handleCopyToAll = (sourceDayOfWeek: number) => {
-    const source = schedule.find((s) => s.dayOfWeek === sourceDayOfWeek);
-    if (!source || !source.enabled) return;
+  // Open copy popover for a specific day
+  const handleOpenCopy = (sourceDayOfWeek: number) => {
+    if (copyFromDay === sourceDayOfWeek) {
+      setCopyFromDay(null);
+      setCopyTargets(new Set());
+      return;
+    }
+    setCopyFromDay(sourceDayOfWeek);
+    setCopyTargets(new Set([sourceDayOfWeek])); // pre-check the source day
+  };
 
-    setSchedule((prev) =>
-      prev.map((d) => ({ ...d, startHour: source.startHour, endHour: source.endHour, enabled: true }))
-    );
-    setSlotGrid((prev) => {
-      const g = prev.map((row) => [...row]);
-      for (let dIdx = 0; dIdx < 7; dIdx++) {
-        for (let s = 0; s < TOTAL_SLOTS; s++) {
-          const slotHour = GRID_START + s / SLOTS_PER_HOUR;
-          g[dIdx][s] = slotHour >= source.startHour && slotHour < source.endHour;
-        }
-      }
-      return g;
+  // Toggle a target day in the copy checklist
+  const handleToggleCopyTarget = (dayOfWeek: number) => {
+    setCopyTargets((prev) => {
+      const next = new Set(prev);
+      if (next.has(dayOfWeek)) next.delete(dayOfWeek);
+      else next.add(dayOfWeek);
+      return next;
     });
   };
+
+  // Apply the copy to selected days
+  const handleApplyCopy = () => {
+    if (copyFromDay === null) return;
+    const source = schedule.find((s) => s.dayOfWeek === copyFromDay);
+    if (!source || !source.enabled) return;
+    const sourceExtras = extraSlots[copyFromDay] || [];
+
+    for (const targetDay of copyTargets) {
+      if (targetDay === copyFromDay) continue;
+      const tIdx = DAYS_ORDER.indexOf(targetDay);
+      if (tIdx === -1) continue;
+
+      // Copy primary slot
+      setSchedule((prev) =>
+        prev.map((d) =>
+          d.dayOfWeek === targetDay
+            ? { ...d, startHour: source.startHour, endHour: source.endHour, enabled: true }
+            : d
+        )
+      );
+
+      // Copy extra slots
+      setExtraSlots((prev) => ({
+        ...prev,
+        [targetDay]: sourceExtras.map((s) => ({ ...s })),
+      }));
+
+      // Update grid
+      setSlotGrid((prev) => {
+        const g = prev.map((row) => [...row]);
+        for (let s = 0; s < TOTAL_SLOTS; s++) {
+          const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+          let active = slotHour >= source.startHour && slotHour < source.endHour;
+          if (!active) {
+            for (const extra of sourceExtras) {
+              if (slotHour >= extra.startHour && slotHour < extra.endHour) {
+                active = true;
+                break;
+              }
+            }
+          }
+          g[tIdx][s] = active;
+        }
+        return g;
+      });
+    }
+
+    setCopyFromDay(null);
+    setCopyTargets(new Set());
+  };
+
+  // Close copy popover on outside click
+  useEffect(() => {
+    if (copyFromDay === null) return;
+    const handleClick = (e: MouseEvent) => {
+      if (copyRef.current && !copyRef.current.contains(e.target as Node)) {
+        setCopyFromDay(null);
+        setCopyTargets(new Set());
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [copyFromDay]);
 
   // Date override
   const toggleDateOverride = async (date: Date) => {
@@ -1135,13 +1206,51 @@ export default function CalendarPage() {
                               >
                                 <Plus className="h-4 w-4" />
                               </button>
-                              <button
-                                onClick={() => handleCopyToAll(day.dayOfWeek)}
-                                className="rounded-md p-1.5 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
-                                title="Copy to all days"
-                              >
-                                <Copy className="h-4 w-4" />
-                              </button>
+                              <div className="relative">
+                                <button
+                                  onClick={() => handleOpenCopy(day.dayOfWeek)}
+                                  className={cn(
+                                    "rounded-md p-1.5 transition-colors",
+                                    copyFromDay === day.dayOfWeek
+                                      ? "bg-[#e0f2fe] text-[#0090d9]"
+                                      : "text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9]"
+                                  )}
+                                  title="Copy times to..."
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </button>
+                                {copyFromDay === day.dayOfWeek && (
+                                  <div
+                                    ref={copyRef}
+                                    className="absolute left-0 top-full mt-2 z-50 w-52 rounded-lg border border-[#e5e7eb] bg-white shadow-lg py-3 px-4"
+                                  >
+                                    <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-2">Copy times to...</p>
+                                    <div className="space-y-1.5">
+                                      {CALENDLY_DAYS.map((d) => (
+                                        <label
+                                          key={d.dayOfWeek}
+                                          className="flex items-center justify-between cursor-pointer py-1 px-1 rounded hover:bg-[#f9fafb] transition-colors"
+                                        >
+                                          <span className="text-sm text-[#374151]">{d.fullLabel}</span>
+                                          <input
+                                            type="checkbox"
+                                            checked={copyTargets.has(d.dayOfWeek)}
+                                            onChange={() => handleToggleCopyTarget(d.dayOfWeek)}
+                                            disabled={d.dayOfWeek === day.dayOfWeek}
+                                            className="h-4 w-4 rounded border-[#d1d5db] text-[#0090d9] focus:ring-[#0090d9]/30 accent-[#0090d9]"
+                                          />
+                                        </label>
+                                      ))}
+                                    </div>
+                                    <button
+                                      onClick={handleApplyCopy}
+                                      className="mt-3 w-full rounded-lg bg-[#0090d9] py-2 text-sm font-medium text-white hover:bg-[#007bc0] transition-colors"
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             {/* Extra time slots */}
                             {dayExtras.map((slot, idx) => (

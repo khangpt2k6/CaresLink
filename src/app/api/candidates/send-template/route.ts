@@ -3,23 +3,12 @@ import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/sendgrid";
 
-export type FitStatus = "linkedin" | "not_a_fit" | "good_fit" | "waitlist";
+export type FitStatus = "not_a_fit" | "good_fit" | "waitlist";
 
 const DEFAULT_TEMPLATES: Record<
   FitStatus,
   { subject: string; body: string }
 > = {
-  linkedin: {
-    subject: "Thanks for connecting — next steps",
-    body: `Hi {{name}},
-
-Thanks for connecting on LinkedIn regarding the {{position}} role. We'd like to learn more about your background.
-
-Could you share your resume and availability for a brief call this week?
-
-Best regards,
-CaresLink Recruiting Team`,
-  },
   not_a_fit: {
     subject: "Update on your application — {{position}}",
     body: `Hi {{name}},
@@ -76,10 +65,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const valid: FitStatus[] = ["linkedin", "not_a_fit", "good_fit", "waitlist"];
+    const valid: FitStatus[] = ["not_a_fit", "good_fit", "waitlist"];
     if (!valid.includes(fitStatus)) {
       return NextResponse.json(
-        { error: "fitStatus must be: linkedin, not_a_fit, good_fit, waitlist" },
+        { error: "fitStatus must be: not_a_fit, good_fit, waitlist" },
         { status: 400 }
       );
     }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Bot, Loader2, Pencil, Trash2, Check, X, Mail } from "lucide-react";
 
-export type FitStatus = "linkedin" | "not_a_fit" | "good_fit" | "waitlist" | null;
+export type FitStatus = "not_a_fit" | "good_fit" | "waitlist" | null;
 
 interface Candidate {
   id: string;
@@ -28,14 +28,12 @@ const statusStyles: Record<string, string> = {
 };
 
 const fitStatusLabels: Record<NonNullable<FitStatus>, string> = {
-  linkedin: "LinkedIn",
   not_a_fit: "Not a fit",
   good_fit: "Good fit",
   waitlist: "Waitlist",
 };
 
 const fitStatusStyles: Record<NonNullable<FitStatus>, string> = {
-  linkedin: "bg-[#e0f2fe] text-[#0369a1]",
   not_a_fit: "bg-[#fef2f2] text-[#dc2626]",
   good_fit: "bg-[#ecfdf5] text-[#059669]",
   waitlist: "bg-[#fffbeb] text-[#b45309]",
@@ -50,6 +48,7 @@ export function CandidateTable({
   onEdit,
   onDelete,
   aiLoading,
+  bookingLinkLoading,
   deleteLoading,
   templateLoading,
   onCancelAi,
@@ -151,12 +150,11 @@ export function CandidateTable({
                       className="rounded border border-[#e2e8f0] bg-white px-2 py-1 text-xs text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none"
                     >
                       <option value="">—</option>
-                      <option value="linkedin">LinkedIn</option>
                       <option value="not_a_fit">Not a fit</option>
                       <option value="good_fit">Good fit</option>
                       <option value="waitlist">Waitlist</option>
                     </select>
-                    {c.fitStatus && onSendTemplate && (
+                    {c.fitStatus && fitStatusLabels[c.fitStatus as keyof typeof fitStatusLabels] && onSendTemplate && (
                       <button
                         onClick={() => onSendTemplate(c, c.fitStatus!)}
                         disabled={templateLoading === c.id}
@@ -168,8 +166,8 @@ export function CandidateTable({
                     )}
                   </div>
                 ) : c.fitStatus ? (
-                  <span className={cn("inline-block rounded-sm px-2 py-0.5 text-xs font-medium", fitStatusStyles[c.fitStatus])}>
-                    {fitStatusLabels[c.fitStatus]}
+                  <span className={cn("inline-block rounded-sm px-2 py-0.5 text-xs font-medium", fitStatusStyles[c.fitStatus as keyof typeof fitStatusStyles] ?? "bg-[#f1f1ef] text-[#73726e]")}>
+                    {fitStatusLabels[c.fitStatus as keyof typeof fitStatusLabels] ?? c.fitStatus}
                   </span>
                 ) : (
                   <span className="text-xs text-[#8a95a3]">—</span>

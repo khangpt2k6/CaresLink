@@ -615,7 +615,7 @@ export default function ProfilePage() {
         title={editingExperience === "new" ? "Add Experience" : "Edit Experience"}
       >
         <ExperienceForm
-          initial={typeof editingExperience === "object" ? editingExperience : undefined}
+          initial={typeof editingExperience === "object" ? editingExperience ?? undefined : undefined}
           saving={saving}
           onSave={saveExperience}
           onCancel={() => setEditingExperience(null)}
@@ -629,7 +629,7 @@ export default function ProfilePage() {
         title={editingEducation === "new" ? "Add Education" : "Edit Education"}
       >
         <EducationForm
-          initial={typeof editingEducation === "object" ? editingEducation : undefined}
+          initial={typeof editingEducation === "object" ? editingEducation ?? undefined : undefined}
           saving={saving}
           onSave={saveEducation}
           onCancel={() => setEditingEducation(null)}
@@ -643,7 +643,7 @@ export default function ProfilePage() {
         title={editingCert === "new" ? "Add Certification" : "Edit Certification"}
       >
         <CertificationForm
-          initial={typeof editingCert === "object" ? editingCert : undefined}
+          initial={typeof editingCert === "object" ? editingCert ?? undefined : undefined}
           saving={saving}
           onSave={saveCert}
           onCancel={() => setEditingCert(null)}

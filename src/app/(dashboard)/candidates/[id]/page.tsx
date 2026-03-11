@@ -2,7 +2,57 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Mail, Phone, Briefcase, Calendar, Clock, MapPin, Video, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import {
+  ArrowLeft, Mail, Phone, Briefcase, Calendar, Clock, MapPin, Video,
+  CheckCircle2, XCircle, AlertCircle, GraduationCap, Award, Wrench,
+  Building2, User,
+} from "lucide-react";
+
+interface Experience {
+  id: string;
+  title: string;
+  company: string;
+  description: string | null;
+  startDate: string;
+  endDate: string | null;
+  current: boolean;
+}
+
+interface Education {
+  id: string;
+  school: string;
+  degree: string | null;
+  field: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+interface Skill {
+  id: string;
+  name: string;
+}
+
+interface Certification {
+  id: string;
+  name: string;
+  issuer: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+}
+
+interface Profile {
+  headline: string | null;
+  summary: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  resumeUrl: string | null;
+  experiences: Experience[];
+  educations: Education[];
+  skills: Skill[];
+  certifications: Certification[];
+}
 
 interface Interview {
   id: string;
@@ -34,34 +84,30 @@ interface CandidateDetail {
   appliedAt: string;
   interviews: Interview[];
   events: Event[];
+  profile: Profile | null;
 }
 
 const statusLabels: Record<string, string> = {
-  applied: "Applied",
-  contacted: "Contacted",
-  scheduled: "Scheduled",
-  interviewed: "Interviewed",
-  offered: "Offered",
-  hired: "Hired",
-  rejected: "Rejected",
-  no_show: "No-show",
+  applied: "Applied", contacted: "Contacted", scheduled: "Scheduled",
+  interviewed: "Interviewed", offered: "Offered", hired: "Hired",
+  rejected: "Rejected", no_show: "No-show",
 };
 
 const fitLabels: Record<string, string> = {
-  good_fit: "Good Fit",
-  waitlist: "Waitlist",
-  not_a_fit: "Not a Fit",
+  good_fit: "Good Fit", waitlist: "Waitlist", not_a_fit: "Not a Fit",
 };
 
 const eventLabels: Record<string, string> = {
-  email_sent: "Email Sent",
-  booking_link_sent: "Booking Link Sent",
-  interview_scheduled: "Interview Scheduled",
-  interview_completed: "Interview Completed",
-  interview_cancelled: "Interview Cancelled",
-  status_change: "Status Changed",
+  email_sent: "Email Sent", booking_link_sent: "Booking Link Sent",
+  interview_scheduled: "Interview Scheduled", interview_completed: "Interview Completed",
+  interview_cancelled: "Interview Cancelled", status_change: "Status Changed",
   fit_status_change: "Fit Status Changed",
 };
+
+function formatDate(d: string | null) {
+  if (!d) return "";
+  return new Date(d).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
 
 export default function CandidateProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -72,10 +118,7 @@ export default function CandidateProfilePage() {
 
   useEffect(() => {
     fetch(`/api/candidates/${id}`)
-      .then((r) => {
-        if (!r.ok) throw new Error("Not found");
-        return r.json();
-      })
+      .then((r) => { if (!r.ok) throw new Error("Not found"); return r.json(); })
       .then(setCandidate)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -101,12 +144,13 @@ export default function CandidateProfilePage() {
     );
   }
 
+  const p = candidate.profile;
   const upcoming = candidate.interviews.filter((i) => !i.completed && !i.cancelled && !i.noShow && new Date(i.scheduledAt) > new Date());
   const past = candidate.interviews.filter((i) => i.completed || i.cancelled || i.noShow || new Date(i.scheduledAt) <= new Date());
 
   return (
     <div className="space-y-6">
-      {/* Back button */}
+      {/* Back */}
       <button
         onClick={() => router.push("/candidates")}
         className="inline-flex items-center gap-1.5 text-sm text-[#64748b] hover:text-[#0090d9] transition-colors"
@@ -115,29 +159,38 @@ export default function CandidateProfilePage() {
         Back to candidates
       </button>
 
-      {/* Profile header */}
+      {/* Profile header card */}
       <div className="card p-6">
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-[#0090d9] text-lg font-semibold text-white">
+          <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-[#0090d9] text-xl font-semibold text-white">
             {candidate.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-semibold text-[#1a2b3c]">{candidate.name}</h1>
-            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#64748b]">
+            {p?.headline && (
+              <p className="text-sm text-[#64748b] mt-0.5">{p.headline}</p>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#64748b]">
               <span className="inline-flex items-center gap-1.5">
                 <Mail className="h-3.5 w-3.5" />
                 {candidate.email}
               </span>
-              {candidate.phone && (
+              {(candidate.phone || p?.phone) && (
                 <span className="inline-flex items-center gap-1.5">
                   <Phone className="h-3.5 w-3.5" />
-                  {candidate.phone}
+                  {candidate.phone || p?.phone}
                 </span>
               )}
               <span className="inline-flex items-center gap-1.5">
                 <Briefcase className="h-3.5 w-3.5" />
                 {candidate.position}
               </span>
+              {(p?.city || p?.state || p?.country) && (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {[p.city, p.state, p.country].filter(Boolean).join(", ")}
+                </span>
+              )}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center rounded-full bg-[#f1f5f9] px-2.5 py-1 text-xs font-medium text-[#475569]">
@@ -156,11 +209,136 @@ export default function CandidateProfilePage() {
         </div>
       </div>
 
+      {/* Profile content */}
+      {p ? (
+        <div className="space-y-6">
+          {/* About */}
+          {p.summary && (
+            <div className="card p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1a2b3c] mb-3">
+                <User className="h-4 w-4 text-[#94a3b8]" />
+                About
+              </h2>
+              <p className="text-sm text-[#475569] leading-relaxed whitespace-pre-line">{p.summary}</p>
+            </div>
+          )}
+
+          {/* Experience */}
+          {p.experiences.length > 0 && (
+            <div className="card p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1a2b3c] mb-4">
+                <Building2 className="h-4 w-4 text-[#94a3b8]" />
+                Experience
+              </h2>
+              <div className="space-y-5">
+                {p.experiences.map((exp, i) => (
+                  <div key={exp.id} className={i > 0 ? "border-t border-[#f1f5f9] pt-5" : ""}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-medium text-[#1a2b3c]">{exp.title}</h3>
+                        <p className="text-sm text-[#64748b]">{exp.company}</p>
+                      </div>
+                      <span className="flex-shrink-0 text-xs text-[#94a3b8]">
+                        {formatDate(exp.startDate)} — {exp.current ? "Present" : formatDate(exp.endDate)}
+                      </span>
+                    </div>
+                    {exp.description && (
+                      <p className="mt-2 text-sm text-[#475569] leading-relaxed">{exp.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Education */}
+          {p.educations.length > 0 && (
+            <div className="card p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1a2b3c] mb-4">
+                <GraduationCap className="h-4 w-4 text-[#94a3b8]" />
+                Education
+              </h2>
+              <div className="space-y-5">
+                {p.educations.map((edu, i) => (
+                  <div key={edu.id} className={i > 0 ? "border-t border-[#f1f5f9] pt-5" : ""}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-medium text-[#1a2b3c]">{edu.school}</h3>
+                        {(edu.degree || edu.field) && (
+                          <p className="text-sm text-[#64748b]">
+                            {[edu.degree, edu.field].filter(Boolean).join(" in ")}
+                          </p>
+                        )}
+                      </div>
+                      {(edu.startDate || edu.endDate) && (
+                        <span className="flex-shrink-0 text-xs text-[#94a3b8]">
+                          {formatDate(edu.startDate)} {edu.endDate ? `— ${formatDate(edu.endDate)}` : ""}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Skills */}
+          {p.skills.length > 0 && (
+            <div className="card p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1a2b3c] mb-3">
+                <Wrench className="h-4 w-4 text-[#94a3b8]" />
+                Skills
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {p.skills.map((s) => (
+                  <span key={s.id} className="inline-flex items-center rounded-full bg-[#f1f5f9] px-3 py-1 text-xs font-medium text-[#475569]">
+                    {s.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Certifications */}
+          {p.certifications.length > 0 && (
+            <div className="card p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1a2b3c] mb-4">
+                <Award className="h-4 w-4 text-[#94a3b8]" />
+                Certifications
+              </h2>
+              <div className="space-y-4">
+                {p.certifications.map((cert, i) => (
+                  <div key={cert.id} className={i > 0 ? "border-t border-[#f1f5f9] pt-4" : ""}>
+                    <h3 className="text-sm font-medium text-[#1a2b3c]">{cert.name}</h3>
+                    {cert.issuer && <p className="text-xs text-[#64748b]">{cert.issuer}</p>}
+                    {cert.issueDate && (
+                      <p className="text-xs text-[#94a3b8] mt-0.5">
+                        Issued {formatDate(cert.issueDate)}
+                        {cert.expiryDate ? ` — Expires ${formatDate(cert.expiryDate)}` : ""}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="card p-10 text-center">
+          <User className="mx-auto h-8 w-8 text-[#94a3b8]" />
+          <p className="mt-2 text-sm font-medium text-[#334155]">No profile available</p>
+          <p className="mt-1 text-xs text-[#94a3b8]">This candidate hasn&apos;t created a profile yet</p>
+        </div>
+      )}
+
+      {/* Interviews & Activity */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Interviews */}
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-[#1a2b3c] mb-4">Interviews</h2>
-
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1a2b3c] mb-4">
+            <Calendar className="h-4 w-4 text-[#94a3b8]" />
+            Interviews
+          </h2>
           {candidate.interviews.length === 0 ? (
             <p className="text-sm text-[#94a3b8]">No interviews scheduled</p>
           ) : (
@@ -169,9 +347,7 @@ export default function CandidateProfilePage() {
                 <div>
                   <p className="text-xs font-medium text-[#94a3b8] uppercase tracking-wider mb-2">Upcoming</p>
                   <div className="space-y-2">
-                    {upcoming.map((i) => (
-                      <InterviewCard key={i.id} interview={i} />
-                    ))}
+                    {upcoming.map((i) => <InterviewCard key={i.id} interview={i} />)}
                   </div>
                 </div>
               )}
@@ -179,9 +355,7 @@ export default function CandidateProfilePage() {
                 <div>
                   <p className="text-xs font-medium text-[#94a3b8] uppercase tracking-wider mb-2">Past</p>
                   <div className="space-y-2">
-                    {past.map((i) => (
-                      <InterviewCard key={i.id} interview={i} />
-                    ))}
+                    {past.map((i) => <InterviewCard key={i.id} interview={i} />)}
                   </div>
                 </div>
               )}
@@ -189,27 +363,23 @@ export default function CandidateProfilePage() {
           )}
         </div>
 
-        {/* Activity timeline */}
+        {/* Activity */}
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-[#1a2b3c] mb-4">Activity</h2>
-
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1a2b3c] mb-4">
+            <Clock className="h-4 w-4 text-[#94a3b8]" />
+            Activity
+          </h2>
           {candidate.events.length === 0 ? (
             <p className="text-sm text-[#94a3b8]">No activity yet</p>
           ) : (
             <div className="relative space-y-0">
-              {/* Timeline line */}
               <div className="absolute left-[7px] top-2 bottom-2 w-px bg-[#e2e8f0]" />
-
               {candidate.events.map((event) => (
                 <div key={event.id} className="relative flex items-start gap-3 py-2.5">
                   <div className="relative z-10 mt-0.5 h-[15px] w-[15px] flex-shrink-0 rounded-full border-2 border-[#e2e8f0] bg-white" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-[#334155]">
-                      {eventLabels[event.type] || event.type}
-                    </p>
-                    {event.metadata && (
-                      <p className="text-xs text-[#94a3b8] truncate">{event.metadata}</p>
-                    )}
+                    <p className="text-sm text-[#334155]">{eventLabels[event.type] || event.type}</p>
+                    {event.metadata && <p className="text-xs text-[#94a3b8] truncate">{event.metadata}</p>}
                     <p className="text-[11px] text-[#94a3b8] mt-0.5">
                       {new Date(event.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
                     </p>
@@ -249,10 +419,7 @@ function InterviewCard({ interview }: { interview: Interview }) {
           <Clock className="h-3 w-3" />
           {date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} at {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
         </span>
-        <span className="inline-flex items-center gap-1">
-          <Clock className="h-3 w-3" />
-          {interview.duration}min
-        </span>
+        <span>{interview.duration}min</span>
         <span className="inline-flex items-center gap-1">
           {interview.location.toLowerCase().includes("video") ? <Video className="h-3 w-3" /> : <MapPin className="h-3 w-3" />}
           {interview.location}

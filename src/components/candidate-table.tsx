@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Bot, Loader2, Pencil, Trash2, Check, X, Send } from "lucide-react";
+import { Bot, Loader2, Pencil, Trash2, Check, X, Send, Eye } from "lucide-react";
 
 export type FitStatus = "not_a_fit" | "good_fit" | "waitlist" | null;
 
@@ -93,6 +93,7 @@ export function CandidateTable({
             <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Position</th>
             <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Fit</th>
             <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Send</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Profile</th>
             <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Status</th>
             <th className="px-5 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Actions</th>
           </tr>
@@ -120,12 +121,7 @@ export function CandidateTable({
                         {c.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <div
-                          className="text-sm font-medium text-[#1a2b3c] truncate cursor-pointer hover:text-[#0090d9] transition-colors"
-                          onClick={() => router.push(`/candidates/${c.id}`)}
-                        >
-                          {c.name}
-                        </div>
+                        <div className="text-sm font-medium text-[#1a2b3c] truncate">{c.name}</div>
                         <div className="text-xs text-[#64748b] truncate">{c.email}</div>
                         {c.phone && <div className="text-[11px] text-[#94a3b8]">{c.phone}</div>}
                       </div>
@@ -187,6 +183,15 @@ export function CandidateTable({
                       Send
                     </button>
                   )}
+                </td>
+                <td className="px-5 py-3 align-middle text-center">
+                  <button
+                    onClick={() => router.push(`/candidates/${c.id}`)}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-[#f1f5f9] text-[#475569] hover:bg-[#e2e8f0] transition-colors"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    View Profile
+                  </button>
                 </td>
                 <td className="px-5 py-3 align-middle">
                   <span className={cn(

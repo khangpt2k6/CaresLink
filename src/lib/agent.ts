@@ -11,7 +11,7 @@ if (!apiKey) {
 
 const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 
-const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant. You help employers manage candidates and schedule interviews.
+const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant for healthcare. You help employers manage candidates, schedule interviews, and verify nursing licenses.
 
 You specialize in auto-booking: finding a mutual time for recruiter and candidate, then scheduling the interview automatically. Use auto_book_interview when asked to schedule/contact a candidate — do NOT use send_email for booking links. Booking links are sent via the app UI (no AI).
 
@@ -21,9 +21,153 @@ When a function returns already_scheduled: true, tell the employer: "This candid
 
 You can manage the recruiter's weekly availability with get_availability and update_availability. When asked to change availability (e.g. "set Monday to Friday 9-5"), update all relevant days at once.
 
+You can verify nursing licenses by searching the Florida Department of Health (FL DOH) public database. Use verify_nursing_license when asked to verify, check, or look up a candidate's nursing license. You can search by name or license number. Present the results clearly: license type, status (Active/Inactive), expiration date, and city.
+
 Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`;
 
+async function scrapeFLMQA(args: { first_name?: string; last_name?: string; license_number?: string }): Promise<object> {
+  const baseUrl = "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders";
+
+  try {
+    // Build form data for the search
+    const formData = new URLSearchParams();
+    formData.append("Board", "BOARD OF NURSING");
+    formData.append("Profession", "");
+    formData.append("LicenseNumber", args.license_number || "");
+    formData.append("BusinessName", "");
+    formData.append("LastName", args.last_name || "");
+    formData.append("FirstName", args.first_name || "");
+    formData.append("City", "");
+    formData.append("County", "");
+    formData.append("ZipCode", "");
+    formData.append("LicenseStatus", "");
+
+    const resp = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+      body: formData.toString(),
+    });
+
+    if (!resp.ok) {
+      return { error: `FL MQA returned status ${resp.status}`, source: "FL DOH MQA" };
+    }
+
+    const html = await resp.text();
+
+    // Parse the results table from HTML
+    const results: {
+      name: string;
+      licenseType: string;
+      licenseNumber: string;
+      status: string;
+      expiration: string;
+      city: string;
+    }[] = [];
+
+    // Match table rows from the results
+    const rowRegex = /<tr[^>]*class="[^"]*SearchResultsRow[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi;
+    let rowMatch;
+    while ((rowMatch = rowRegex.exec(html)) !== null) {
+      const cells: string[] = [];
+      const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let cellMatch;
+      while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+        cells.push(cellMatch[1].replace(/<[^>]+>/g, "").trim());
+      }
+      if (cells.length >= 5) {
+        results.push({
+          name: cells[0] || "",
+          licenseType: cells[1] || "",
+          licenseNumber: cells[2] || "",
+          status: cells[3] || "",
+          expiration: cells[4] || "",
+          city: cells[5] || "",
+        });
+      }
+    }
+
+    // Fallback: try alternative table parsing if no rows found
+    if (results.length === 0) {
+      // Check for "no results" message
+      if (html.includes("No results found") || html.includes("0 results")) {
+        return {
+          source: "FL DOH MQA (Board of Nursing)",
+          url: baseUrl,
+          found: false,
+          message: `No nursing license found for ${args.first_name || ""} ${args.last_name || ""} ${args.license_number ? `(License: ${args.license_number})` : ""}`.trim(),
+        };
+      }
+
+      // Try simpler row parsing
+      const simpleRowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+      let simpleMatch;
+      let rowCount = 0;
+      while ((simpleMatch = simpleRowRegex.exec(html)) !== null) {
+        rowCount++;
+        if (rowCount <= 1) continue; // skip header
+        const cells: string[] = [];
+        const cellRegex2 = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+        let cellMatch2;
+        while ((cellMatch2 = cellRegex2.exec(simpleMatch[1])) !== null) {
+          cells.push(cellMatch2[1].replace(/<[^>]+>/g, "").trim());
+        }
+        if (cells.length >= 4) {
+          results.push({
+            name: cells[0] || "",
+            licenseType: cells[1] || "",
+            licenseNumber: cells[2] || "",
+            status: cells[3] || "",
+            expiration: cells[4] || "",
+            city: cells[5] || "",
+          });
+        }
+        if (results.length >= 5) break;
+      }
+    }
+
+    if (results.length === 0) {
+      return {
+        source: "FL DOH MQA (Board of Nursing)",
+        url: baseUrl,
+        found: false,
+        message: `No results found. Try checking the spelling or use a license number directly.`,
+      };
+    }
+
+    return {
+      source: "FL DOH MQA (Board of Nursing)",
+      url: baseUrl,
+      found: true,
+      count: results.length,
+      results: results.slice(0, 10),
+    };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to query FL MQA",
+      source: "FL DOH MQA",
+      suggestion: "The FL DOH website may be temporarily unavailable. Try again later.",
+    };
+  }
+}
+
 const TOOLS: Tool[] = [
+  {
+    name: "verify_nursing_license",
+    description:
+      "Verify a nursing license by searching the Florida Department of Health (FL DOH) MQA public database. Returns license type, status, expiration date, and location. Can search by name or license number.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        first_name: { type: "string" as const, description: "Candidate's first name" },
+        last_name: { type: "string" as const, description: "Candidate's last name" },
+        license_number: { type: "string" as const, description: "License number (optional, more precise)" },
+      },
+      required: [],
+    },
+  },
   {
     name: "get_candidate_info",
     description: "Get details about a candidate by ID",
@@ -140,6 +284,13 @@ const TOOLS: Tool[] = [
 
 async function executeFunction(name: string, args: Record<string, unknown>): Promise<object> {
   switch (name) {
+    case "verify_nursing_license": {
+      return scrapeFLMQA({
+        first_name: args.first_name ? String(args.first_name) : undefined,
+        last_name: args.last_name ? String(args.last_name) : undefined,
+        license_number: args.license_number ? String(args.license_number) : undefined,
+      });
+    }
     case "get_candidate_info": {
       const c = await prisma.candidate.findUnique({
         where: { id: String(args.candidate_id) },

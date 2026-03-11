@@ -895,7 +895,7 @@ export default function CalendarPage() {
   return (
     <div className="p-3 h-screen flex flex-col">
       {/* Top bar: Settings */}
-      <div className="mb-2 flex flex-wrap items-center gap-2 relative z-30">
+      <div className="mb-2 flex items-center gap-2 relative z-30">
         <div className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2">
           <Timer className="h-4 w-4 text-[#6b7280]" />
           <select
@@ -974,16 +974,16 @@ export default function CalendarPage() {
           )}
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           {/* Google Meet OAuth connect - shown when Google Meet selected but no OAuth */}
           {videoPlatform === "google_meet" && !gcalOauthConnected && gcalOauthAvailable && (
             <button
               onClick={handleConnectGoogleCalendar}
               disabled={gcalLoading}
-              className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 hover:bg-amber-100 transition-colors"
+              className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 hover:bg-amber-100 transition-colors"
+              title="Connect OAuth for Google Meet"
             >
               <Image src="/google-meet.webp" alt="Google Meet" width={16} height={16} />
-              <span className="text-xs font-medium text-amber-700">Connect OAuth for Meet</span>
               {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600" /> : <Link2 className="h-3.5 w-3.5 text-amber-600" />}
             </button>
           )}
@@ -993,11 +993,10 @@ export default function CalendarPage() {
             <button
               onClick={handleDisconnectMicrosoftCalendar}
               disabled={mscalLoading}
-              className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 hover:bg-red-50 hover:border-red-200 transition-colors group"
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 hover:bg-red-50 hover:border-red-200 transition-colors group"
+              title="Outlook Connected — click to disconnect"
             >
               <Image src="/outlook.svg" alt="Outlook" width={16} height={16} />
-              <span className="text-xs font-medium text-emerald-600 group-hover:hidden">Outlook</span>
-              <span className="text-xs font-medium text-red-500 hidden group-hover:inline">Disconnect</span>
               {mscalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#9ca3af]" /> : (
                 <>
                   <Check className="h-3.5 w-3.5 text-emerald-500 group-hover:hidden" />
@@ -1009,10 +1008,10 @@ export default function CalendarPage() {
             <button
               onClick={handleConnectMicrosoftCalendar}
               disabled={mscalLoading}
-              className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:bg-[#e0f2fe] hover:border-[#0090d9]/30 transition-colors"
+              className="flex items-center gap-1.5 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-2 hover:bg-[#e0f2fe] hover:border-[#0090d9]/30 transition-colors"
+              title="Connect Outlook"
             >
               <Image src="/outlook.svg" alt="Outlook" width={16} height={16} />
-              <span className="text-xs font-medium text-[#0078d4]">Connect Outlook</span>
               {mscalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0078d4]" /> : <Link2 className="h-3.5 w-3.5 text-[#0078d4]" />}
             </button>
           ) : null}
@@ -1022,11 +1021,10 @@ export default function CalendarPage() {
             <button
               onClick={handleDisconnectGoogleCalendar}
               disabled={gcalLoading}
-              className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 hover:bg-red-50 hover:border-red-200 transition-colors group"
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 hover:bg-red-50 hover:border-red-200 transition-colors group"
+              title="Google Calendar Connected — click to disconnect"
             >
               <Image src="/google-calendar.svg" alt="Google Calendar" width={16} height={16} />
-              <span className="text-xs font-medium text-emerald-600 group-hover:hidden">Connected</span>
-              <span className="text-xs font-medium text-red-500 hidden group-hover:inline">Disconnect</span>
               {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#9ca3af]" /> : (
                 <>
                   <Check className="h-3.5 w-3.5 text-emerald-500 group-hover:hidden" />
@@ -1038,18 +1036,13 @@ export default function CalendarPage() {
             <button
               onClick={handleConnectGoogleCalendar}
               disabled={gcalLoading}
-              className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:bg-[#e0f2fe] hover:border-[#0090d9]/30 transition-colors"
+              className="flex items-center gap-1.5 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-2 hover:bg-[#e0f2fe] hover:border-[#0090d9]/30 transition-colors"
+              title="Connect Google Calendar"
             >
               <Image src="/google-calendar.svg" alt="Google Calendar" width={16} height={16} />
-              <span className="text-xs font-medium text-[#0090d9]">Connect Calendar</span>
               {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" /> : <Link2 className="h-3.5 w-3.5 text-[#0090d9]" />}
             </button>
-          ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2">
-              <Image src="/google-calendar.svg" alt="Google Calendar" width={16} height={16} />
-              <span className="text-xs text-[#9ca3af]">Not configured</span>
-            </div>
-          )}
+          ) : null}
 
           {/* List / Calendar toggle */}
           <div className="flex items-center rounded-lg border border-[#e5e7eb] bg-white overflow-hidden">

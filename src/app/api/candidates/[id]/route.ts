@@ -29,7 +29,25 @@ export async function GET(
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     }
 
-    return NextResponse.json(candidate);
+    // Look up the candidate's profile via their email -> User -> CandidateProfile
+    const user = await prisma.user.findUnique({
+      where: { email: candidate.email },
+      include: {
+        profile: {
+          include: {
+            experiences: { orderBy: { startDate: "desc" } },
+            educations: { orderBy: { startDate: "desc" } },
+            skills: true,
+            certifications: { orderBy: { issueDate: "desc" } },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json({
+      ...candidate,
+      profile: user?.profile || null,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to fetch candidate" }, { status: 500 });

@@ -62,6 +62,7 @@ export function CandidateTable({
   onEdit?: (id: string, data: { name: string; email: string; phone: string; position: string }) => void;
   onDelete?: (id: string) => void;
   aiLoading?: string | null;
+  bookingLinkLoading?: string | null;
   deleteLoading?: string | null;
   templateLoading?: string | null;
   onCancelAi?: () => void;
@@ -200,11 +201,11 @@ export function CandidateTable({
                       {(onContactAi || onContactAiClick) && (
                         <button
                           onClick={() => (onContactAiClick ?? onContactAi)?.(c)}
-                          disabled={aiLoading === c.id}
+                          disabled={aiLoading === c.id || bookingLinkLoading === c.id || templateLoading === c.id}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#0077b6] disabled:opacity-40"
                         >
                           {aiLoading === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
-                          {aiLoading === c.id ? "Contacting..." : "Contact AI"}
+                          {aiLoading === c.id ? "Auto-booking..." : bookingLinkLoading === c.id ? "Sending..." : "Contact"}
                         </button>
                       )}
                       {onEdit && (

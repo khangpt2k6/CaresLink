@@ -14,13 +14,12 @@ interface Candidate {
   fitStatus?: FitStatus;
 }
 
-type ContactMode = "booking_link" | "auto_book";
-
 export default function CandidatesPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [bookingLinkLoading, setBookingLinkLoading] = useState<string | null>(null);
   const [templateLoading, setTemplateLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
@@ -98,13 +97,28 @@ export default function CandidatesPage() {
   const handleCancelAi = () => {
     abortRef.current?.abort();
     setAiLoading(null);
+    setBookingLinkLoading(null);
   };
 
-  const handleContactAi = async (c: Candidate, mode: ContactMode) => {
-    const message =
-      mode === "booking_link"
-        ? `Contact the candidate with ID "${c.id}" for the ${c.position} position. Send them the booking link so they can choose their own interview time.`
-        : `Contact the candidate with ID "${c.id}" for the ${c.position} position. Use auto_book_interview to find a mutual time and schedule the interview automatically. Do NOT send the booking link.`;
+  const handleSendBookingLink = async (c: Candidate) => {
+    setContactModal(null);
+    setBookingLinkLoading(c.id);
+    try {
+      const res = await fetch("/api/candidates/send-booking-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId: c.id }),
+      });
+      const data = await res.json();
+      if (res.ok) fetchCandidates();
+      else alert(data.error || "Failed to send booking link");
+    } finally {
+      setBookingLinkLoading(null);
+    }
+  };
+
+  const handleAutoBook = async (c: Candidate) => {
+    const message = `Contact the candidate with ID "${c.id}" for the ${c.position} position. Use auto_book_interview to find a mutual time and schedule the interview automatically. Do NOT send the booking link.`;
     setContactModal(null);
     setAiLoading(c.id);
     abortRef.current = new AbortController();
@@ -168,23 +182,25 @@ export default function CandidatesPage() {
             <p className="mb-4 text-xs text-[#5a6b7c]">Choose how to schedule the interview:</p>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => handleContactAi(contactModal.candidate, "booking_link")}
-                className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] p-4 text-left transition-colors hover:border-[#0090d9] hover:bg-[#f8fafc]"
+                onClick={() => handleSendBookingLink(contactModal.candidate)}
+                disabled={bookingLinkLoading === contactModal.candidate.id}
+                className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] p-4 text-left transition-colors hover:border-[#0090d9] hover:bg-[#f8fafc] disabled:opacity-60"
               >
                 <Link2 className="h-5 w-5 text-[#0090d9]" />
                 <div>
                   <div className="text-sm font-medium text-[#1a2b3c]">Send booking link</div>
-                  <div className="text-xs text-[#5a6b7c]">Candidate picks their own time</div>
+                  <div className="text-xs text-[#5a6b7c]">Direct email, no AI — candidate picks their own time</div>
                 </div>
               </button>
               <button
-                onClick={() => handleContactAi(contactModal.candidate, "auto_book")}
-                className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] p-4 text-left transition-colors hover:border-[#0090d9] hover:bg-[#f8fafc]"
+                onClick={() => handleAutoBook(contactModal.candidate)}
+                disabled={aiLoading === contactModal.candidate.id}
+                className="flex items-center gap-3 rounded-lg border border-[#e2e8f0] p-4 text-left transition-colors hover:border-[#0090d9] hover:bg-[#f8fafc] disabled:opacity-60"
               >
                 <CalendarCheck className="h-5 w-5 text-[#0090d9]" />
                 <div>
-                  <div className="text-sm font-medium text-[#1a2b3c]">Auto-book</div>
-                  <div className="text-xs text-[#5a6b7c]">Find a time that works for both of you</div>
+                  <div className="text-sm font-medium text-[#1a2b3c]">Auto-book (AI)</div>
+                  <div className="text-xs text-[#5a6b7c]">AI finds mutual time and schedules automatically</div>
                 </div>
               </button>
             </div>
@@ -193,7 +209,7 @@ export default function CandidatesPage() {
       )}
 
       {/* AI Response + Cancel during loading */}
-      {(aiPrompt || aiLoading) && (
+      {(aiPrompt || aiLoading || bookingLinkLoading) && (
         <div className="card animate-in mb-4 border-l-4 border-l-[#0090d9] p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -203,11 +219,11 @@ export default function CandidatesPage() {
               <div>
                 <p className="text-xs font-semibold text-[#1a2b3c]">AI Agent</p>
                 <p className="mt-1 text-sm leading-relaxed text-[#5a6b7c]">
-                  {aiLoading ? "Contacting candidate..." : aiPrompt}
+                  {bookingLinkLoading ? "Sending booking link..." : aiLoading ? "Auto-booking..." : aiPrompt}
                 </p>
               </div>
             </div>
-            {aiLoading && (
+            {(aiLoading || bookingLinkLoading) && (
               <button
                 onClick={handleCancelAi}
                 className="shrink-0 rounded-lg border border-[#e2e8f0] px-3 py-1.5 text-xs font-medium text-[#5a6b7c] hover:bg-[#fef2f2] hover:text-[#dc2626] hover:border-[#fecaca]"
@@ -233,6 +249,7 @@ export default function CandidatesPage() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           aiLoading={aiLoading}
+          bookingLinkLoading={bookingLinkLoading}
           deleteLoading={deleteLoading}
           templateLoading={templateLoading}
         />

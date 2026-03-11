@@ -72,7 +72,19 @@ export async function GET(request: NextRequest) {
         interviews: { where: { completed: false, noShow: false }, orderBy: { scheduledAt: "asc" } },
       },
     });
-    return NextResponse.json(candidates);
+
+    // Pin these emails to top
+    const pinnedEmails = ["2006tuankhang@gmail.com", "kphan2729@gmail.com"].map((e) => e.toLowerCase());
+    const sorted = [...candidates].sort((a, b) => {
+      const aIdx = pinnedEmails.indexOf(a.email.toLowerCase());
+      const bIdx = pinnedEmails.indexOf(b.email.toLowerCase());
+      if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+      if (aIdx >= 0) return -1;
+      if (bIdx >= 0) return 1;
+      return 0;
+    });
+
+    return NextResponse.json(sorted);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to fetch candidates" }, { status: 500 });

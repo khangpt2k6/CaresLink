@@ -11,22 +11,15 @@ if (!apiKey) {
 
 const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 
-const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant. You help employers contact candidates and manage the interview process.
+const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant. You help employers manage candidates and schedule interviews.
 
-IMPORTANT: You do NOT schedule interviews directly. Candidates choose their own interview time.
+You specialize in auto-booking: finding a mutual time for recruiter and candidate, then scheduling the interview automatically. Use auto_book_interview when asked to schedule/contact a candidate — do NOT use send_email for booking links. Booking links are sent via the app UI (no AI).
 
-CRITICAL: When asked to contact a candidate, DO NOT ask for confirmation. Just do it immediately:
-1. Call get_candidate_info to get their details
-2. Call send_booking_link to send them the booking page link right away
-3. Confirm what you did
+You can use send_email for custom follow-ups, reminders, or other communications.
 
-The booking page lets candidates see available times (based on HR availability, Google Calendar, and conflicts) and pick their own slot. Once they book, the system automatically creates a calendar event, generates a video call link, and sends a confirmation email.
+When a function returns already_scheduled: true, tell the employer: "This candidate already has an interview on [date]. Cancel it first to reschedule."
 
-You can also use send_email independently for follow-ups, custom messages, or other communications.
-
-When a function returns already_scheduled: true, tell the employer directly: "This candidate already has an interview scheduled on [date]. Cancel it first to reschedule."
-
-You can also manage the recruiter's weekly availability schedule using get_availability and update_availability. When asked to change availability (e.g. "set Monday to Friday 9-5"), update all the relevant days at once.
+You can manage the recruiter's weekly availability with get_availability and update_availability. When asked to change availability (e.g. "set Monday to Friday 9-5"), update all relevant days at once.
 
 Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`;
 
@@ -65,19 +58,6 @@ const TOOLS: Tool[] = [
         body: { type: "string" as const, description: "Email body" },
       },
       required: ["candidate_id", "subject", "body"],
-    },
-  },
-  {
-    name: "send_booking_link",
-    description:
-      "Send the self-service booking link to a candidate so they can choose their own interview time. This is the preferred way to schedule interviews — let candidates pick a time that works for them.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        candidate_id: { type: "string" as const, description: "The candidate ID" },
-        message: { type: "string" as const, description: "Optional custom message to include in the email (e.g. greeting, context about the role)" },
-      },
-      required: ["candidate_id"],
     },
   },
   {
@@ -207,75 +187,6 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         return { success: true, message: "Email sent" };
       }
       return { success: false, error: result.error };
-    }
-    case "send_booking_link": {
-      try {
-        const c = await prisma.candidate.findUnique({ where: { id: String(args.candidate_id) } });
-        if (!c) return { error: "Candidate not found" };
-
-        const existingInterview = await prisma.interview.findFirst({
-          where: {
-            candidateId: c.id,
-            cancelled: false,
-            completed: false,
-            noShow: false,
-            scheduledAt: { gt: new Date() },
-          },
-        });
-        if (existingInterview) {
-          return {
-            success: false,
-            already_scheduled: true,
-            scheduled_at: existingInterview.scheduledAt.toISOString(),
-            error: `Cannot send booking link. This candidate already has an interview on ${existingInterview.scheduledAt.toLocaleString()}. Cancel it first to reschedule.`,
-          };
-        }
-
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-        const bookingUrl = `${appUrl}/book?email=${encodeURIComponent(c.email)}`;
-        const rawMessage = args.message ? String(args.message) : "";
-        const customMessage = rawMessage.replace(/^(hi|hello|dear|hey)\s+[^,.\n]+[,.]?\s*/i, "").trim();
-        const greeting = customMessage || `Your job application for the ${c.position} position at CaresLink has been shortlisted by our recruiting team.`;
-
-        const result = await sendEmail(
-          c.email,
-          `You've Been Shortlisted — ${c.position} at CaresLink`,
-          `Hello ${c.name},\n\n${greeting}\n\nTo move forward, please book your interview at a time that works best for you:\n${bookingUrl}\n\nWe're excited to learn more about you and look forward to connecting soon.\n\nBest regards,\nCaresLink Recruiting Team`,
-          `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2b3c;">
-            <div style="background: #0090d9; padding: 24px; border-radius: 8px 8px 0 0;">
-              <h2 style="margin: 0; color: #fff; font-size: 18px;">You've Been Shortlisted!</h2>
-            </div>
-            <div style="padding: 24px; background: #fff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
-              <p style="margin: 0 0 16px;">Hello ${c.name},</p>
-              <p style="margin: 0 0 16px;">${greeting}</p>
-              <p style="margin: 0 0 16px;">To move forward, please book your interview at a time that works best for you:</p>
-              <div style="text-align: center; margin: 0 0 24px;">
-                <a href="${bookingUrl}" style="display: inline-block; background: #0090d9; color: #fff; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">Book Your Interview</a>
-              </div>
-              <p style="margin: 0 0 4px;">We're excited to learn more about you and look forward to connecting soon.</p>
-              <p style="margin: 24px 0 0; color: #5a6b7c;">Best regards,<br/>CaresLink Recruiting Team</p>
-            </div>
-          </div>`
-        );
-
-        if (result.success) {
-          await prisma.event.create({
-            data: { type: "booking_link_sent", candidateId: c.id, channel: "email", cost: 0.02 },
-          });
-          await prisma.candidate.update({
-            where: { id: c.id },
-            data: { status: c.status === "applied" ? "contacted" : c.status },
-          });
-          return {
-            success: true,
-            booking_url: bookingUrl,
-            note: "Booking link email sent to candidate. They will choose their own interview time on the booking page.",
-          };
-        }
-        return { success: false, error: result.error };
-      } catch (e) {
-        return { error: e instanceof Error ? e.message : "Failed to send booking link" };
-      }
     }
     case "auto_book_interview": {
       try {

@@ -61,7 +61,7 @@ export default function InsightsPage() {
         <div className="card p-5">
           <div className="mb-3 flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-[#0090d9]" />
-            <h2 className="text-sm font-semibold text-[#1a2b3c]">Response Rate</h2>
+            <h2 className="text-sm font-semibold text-[#1a2b3c]">Booking Conversion</h2>
           </div>
           <ResponseRateChart metrics={metrics ?? emptyMetrics} />
         </div>

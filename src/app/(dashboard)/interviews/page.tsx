@@ -166,10 +166,16 @@ export default function InterviewsPage() {
   const handleRejectCandidate = async (interviewId: string, candidateId: string) => {
     setRejectLoading(interviewId);
     try {
+      // Update status to rejected
       const res = await fetch("/api/candidates", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: candidateId, status: "rejected" }) });
-      const data = await res.json();
-      if (res.ok) { fetchPastInterviews(); }
-      else alert(data.error || "Failed to reject candidate");
+      if (!res.ok) { const data = await res.json(); alert(data.error || "Failed to reject candidate"); return; }
+
+      // Send rejection email
+      const emailRes = await fetch("/api/interviews/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidateId, type: "rejection" }) });
+      const emailData = await emailRes.json();
+      if (!emailData.success) console.error("Rejection email failed:", emailData.error);
+
+      fetchPastInterviews();
     } catch { alert("Failed to reject candidate"); }
     finally { setRejectLoading(null); }
   };
@@ -177,11 +183,17 @@ export default function InterviewsPage() {
   const handleFollowUpCandidate = async (interviewId: string, candidateId: string) => {
     setFollowUpLoading(interviewId);
     try {
+      // Update status back to contacted
       const res = await fetch("/api/candidates", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: candidateId, status: "contacted" }) });
-      const data = await res.json();
-      if (res.ok) { fetchPastInterviews(); }
-      else alert(data.error || "Failed to update candidate");
-    } catch { alert("Failed to update candidate"); }
+      if (!res.ok) { const data = await res.json(); alert(data.error || "Failed to update candidate"); return; }
+
+      // Send follow-up email with new booking link
+      const emailRes = await fetch("/api/interviews/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidateId, type: "follow_up" }) });
+      const emailData = await emailRes.json();
+      if (!emailData.success) console.error("Follow-up email failed:", emailData.error);
+
+      fetchPastInterviews();
+    } catch { alert("Failed to follow up candidate"); }
     finally { setFollowUpLoading(null); }
   };
 

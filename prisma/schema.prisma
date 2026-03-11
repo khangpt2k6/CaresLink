@@ -85,6 +85,7 @@ model Candidate {
   phone     String?
   position  String
   status    String   @default("applied")
+  fitStatus String?  // linkedin | not_a_fit | good_fit | waitlist — recruiter classification for template emails
   appliedAt DateTime @default(now())
 
   interviews Interview[]
@@ -138,12 +139,13 @@ model DateOverride {
 
 // Platform settings (single row, key-value)
 model Settings {
-  id              String @id @default("default")
-  timezone        String @default("America/New_York") // IANA timezone
-  defaultDuration Int    @default(60) // interview duration in minutes (30, 45, 60, 90)
-  videoPlatform   String @default("jitsi") // jitsi, zoom, google_meet, ms_teams
+  id              String  @id @default("default")
+  timezone        String  @default("America/New_York") // IANA timezone
+  defaultDuration Int     @default(60) // interview duration in minutes (30, 45, 60, 90)
+  videoPlatform   String  @default("jitsi") // jitsi, zoom, google_meet, ms_teams
   videoLink       String? // custom meeting link for zoom/teams (optional)
-  scheduleVersion Int    @default(0) // bumped when recruiter updates availability
+  scheduleVersion Int     @default(0) // bumped when recruiter updates availability
+  emailTemplates  Json?   // { linkedin: {subject,body}, not_a_fit: {...}, good_fit: {...}, waitlist: {...} }
 }
 
 // Google Calendar OAuth tokens (single row for the recruiter)

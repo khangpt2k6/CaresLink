@@ -168,7 +168,7 @@ export default function DashboardPage() {
           <dl className="space-y-1">
             {[
               { icon: Mail, label: "Emails sent", val: metrics?.emailsSent },
-              { icon: Mail, label: "Email response", val: metrics ? `${(metrics.responseRateEmail * 100).toFixed(0)}%` : null },
+              { icon: Mail, label: "Booking conversion", val: metrics ? `${(metrics.responseRateEmail * 100).toFixed(0)}%` : null },
             ].map((row, i) => (
               <motion.div
                 key={row.label}

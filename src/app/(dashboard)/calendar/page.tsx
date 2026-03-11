@@ -208,7 +208,7 @@ export default function CalendarPage() {
   const [mscalLoading, setMscalLoading] = useState(false);
   const [mscalOauthAvailable, setMscalOauthAvailable] = useState(false);
 
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const videoDropdownRef = useRef<HTMLDivElement>(null);

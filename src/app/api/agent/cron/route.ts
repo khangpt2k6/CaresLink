@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
+import { sendBookingLinkToCandidate } from "@/lib/send-booking-link";
 import { prisma } from "@/lib/db";
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export async function POST(request: NextRequest) {
-  // Verify the request is from a trusted source
   const authHeader = request.headers.get("authorization");
   const bearerToken = authHeader?.replace("Bearer ", "");
 
@@ -14,24 +14,39 @@ export async function POST(request: NextRequest) {
   }
 
   const startedAt = new Date();
+  const parts: string[] = [];
 
   try {
-    const goal = `You are running autonomously as a background recruitment agent. Today is ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}.
+    // TASK 1 — Contact new applicants: direct send, no AI
+    const applied = await prisma.candidate.findMany({
+      where: { status: "applied" },
+      select: { id: true, name: true },
+    });
+    let contacted = 0;
+    for (const c of applied) {
+      const result = await sendBookingLinkToCandidate(c.id);
+      if (result.success) contacted++;
+    }
+    if (applied.length > 0) {
+      parts.push(`Contacted ${contacted}/${applied.length} new applicants with booking links (no AI).`);
+    }
 
-Complete ALL of the following tasks without stopping to ask for confirmation:
+    // TASK 2 & 3 — Follow-ups and reminders: use AI agent
+    const goal = `You are running autonomously. Today is ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}.
 
-TASK 1 — Contact new applicants:
-List all candidates with status "applied". For each one, send them a booking link immediately. Do not skip any.
+Complete ALL without asking for confirmation:
 
-TASK 2 — Follow up on stale candidates:
-Get candidates who haven't replied in 5+ days. For each stale candidate, send a follow-up email with subject "Following Up — [position] Interview at CaresLink" and a friendly message reminding them to book their interview slot.
+TASK 1 — Follow up on stale candidates:
+Get candidates who haven't replied in 5+ days (get_stale_candidates). For each, send a follow-up email with subject "Following Up — [position] Interview at CaresLink" and a friendly message reminding them to book their interview.
 
-TASK 3 — Send interview reminders:
-List upcoming interviews in the next 24 hours where the reminder has NOT been sent yet. Send a reminder for each one.
+TASK 2 — Send interview reminders:
+List upcoming interviews in the next 24 hours where reminder_not_sent is true. Send a reminder for each one (send_reminder).
 
-After completing all tasks, provide a brief summary of exactly what you did: how many candidates you contacted, how many follow-ups you sent, and how many reminders you sent.`;
+Provide a brief summary: how many follow-ups sent, how many reminders sent.`;
 
-    const report = await runAgent(goal);
+    const agentReport = await runAgent(goal);
+    parts.push(agentReport);
+    const report = parts.join("\n\n");
     const completedAt = new Date();
 
     await prisma.agentRun.create({

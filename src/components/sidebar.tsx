@@ -13,12 +13,14 @@ import {
   CalendarClock,
   Clock,
   Lightbulb,
+  Briefcase,
   LogOut,
 } from "lucide-react";
 import { useUser, useClerk } from "@clerk/nextjs";
 
 const employerNav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/candidates", label: "Candidates", icon: Users },
   { href: "/interviews", label: "Interviews", icon: Calendar },
   { href: "/calendar", label: "Calendar", icon: CalendarClock },

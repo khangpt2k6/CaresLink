@@ -9,6 +9,7 @@ import {
 import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronsLeft, ChevronsRight,
   Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink,
+  Copy, Clock, List, CalendarDays, Plus,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,33 @@ const SLOT_HEIGHT = HOUR_HEIGHT / 2;
 
 const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon first for schedule
 const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+// Calendly-style day config
+const CALENDLY_DAYS = [
+  { dayOfWeek: 0, label: "S", fullLabel: "Sunday", color: "bg-[#f59e0b]" },
+  { dayOfWeek: 1, label: "M", fullLabel: "Monday", color: "bg-[#0090d9]" },
+  { dayOfWeek: 2, label: "T", fullLabel: "Tuesday", color: "bg-[#0090d9]" },
+  { dayOfWeek: 3, label: "W", fullLabel: "Wednesday", color: "bg-[#0090d9]" },
+  { dayOfWeek: 4, label: "T", fullLabel: "Thursday", color: "bg-[#0090d9]" },
+  { dayOfWeek: 5, label: "F", fullLabel: "Friday", color: "bg-[#0090d9]" },
+  { dayOfWeek: 6, label: "S", fullLabel: "Saturday", color: "bg-[#f59e0b]" },
+];
+
+// Generate time options at 30-minute intervals (0:00 to 23:30)
+function generateTimeOptions(): { value: number; label: string }[] {
+  const options: { value: number; label: string }[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const value = h + m / 60;
+      const ampm = h < 12 ? "am" : "pm";
+      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      const mStr = m === 0 ? ":00" : `:${m}`;
+      options.push({ value, label: `${h12}${mStr}${ampm}` });
+    }
+  }
+  return options;
+}
+const TIME_OPTIONS = generateTimeOptions();
 
 const TIMEZONES = [
   { value: "America/New_York", label: "Eastern Time (ET)", short: "EST" },
@@ -142,6 +170,9 @@ export default function CalendarPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState(true);
 
+  // Multi-slot support: additional time ranges per day (beyond the primary one)
+  const [extraSlots, setExtraSlots] = useState<Record<number, { startHour: number; endHour: number }[]>>({});
+
   const [overrides, setOverrides] = useState<DateOverride[]>([]);
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
@@ -172,6 +203,7 @@ export default function CalendarPage() {
   const [mscalLoading, setMscalLoading] = useState(false);
   const [mscalOauthAvailable, setMscalOauthAvailable] = useState(false);
 
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const videoDropdownRef = useRef<HTMLDivElement>(null);
@@ -476,6 +508,203 @@ export default function CalendarPage() {
     }
   };
 
+  // Calendly-style: update a day's hours
+  const handleDayTimeChange = (dayOfWeek: number, field: "startHour" | "endHour", value: number) => {
+    const dIdx = DAYS_ORDER.indexOf(dayOfWeek);
+    if (dIdx === -1) return;
+    const daySchedule = schedule.find((s) => s.dayOfWeek === dayOfWeek);
+    if (!daySchedule) return;
+
+    const newStart = field === "startHour" ? value : daySchedule.startHour;
+    const newEnd = field === "endHour" ? value : daySchedule.endHour;
+
+    // Update slotGrid
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      for (let s = 0; s < TOTAL_SLOTS; s++) {
+        const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+        g[dIdx][s] = slotHour >= newStart && slotHour < newEnd;
+      }
+      return g;
+    });
+
+    setSchedule((prev) =>
+      prev.map((d) =>
+        d.dayOfWeek === dayOfWeek ? { ...d, startHour: newStart, endHour: newEnd, enabled: true } : d
+      )
+    );
+  };
+
+  const handleDayToggle = (dayOfWeek: number) => {
+    const dIdx = DAYS_ORDER.indexOf(dayOfWeek);
+    if (dIdx === -1) return;
+    const daySchedule = schedule.find((s) => s.dayOfWeek === dayOfWeek);
+    if (!daySchedule) return;
+    const newEnabled = !daySchedule.enabled;
+
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      if (!newEnabled) {
+        g[dIdx] = Array(TOTAL_SLOTS).fill(false);
+      } else {
+        for (let s = 0; s < TOTAL_SLOTS; s++) {
+          const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+          g[dIdx][s] = slotHour >= daySchedule.startHour && slotHour < daySchedule.endHour;
+        }
+      }
+      return g;
+    });
+
+    setSchedule((prev) =>
+      prev.map((d) =>
+        d.dayOfWeek === dayOfWeek ? { ...d, enabled: newEnabled } : d
+      )
+    );
+
+    // Clear extra slots when disabling
+    if (!newEnabled) {
+      setExtraSlots((prev) => {
+        const next = { ...prev };
+        delete next[dayOfWeek];
+        return next;
+      });
+    }
+  };
+
+  // Add a new time slot to a day
+  const handleAddSlot = (dayOfWeek: number) => {
+    const dIdx = DAYS_ORDER.indexOf(dayOfWeek);
+    if (dIdx === -1) return;
+    const daySchedule = schedule.find((s) => s.dayOfWeek === dayOfWeek);
+
+    // If day is disabled, enable it with default 9-5
+    if (!daySchedule?.enabled) {
+      setSchedule((prev) =>
+        prev.map((d) =>
+          d.dayOfWeek === dayOfWeek ? { ...d, enabled: true, startHour: 9, endHour: 17 } : d
+        )
+      );
+      setSlotGrid((prev) => {
+        const g = prev.map((row) => [...row]);
+        for (let s = 0; s < TOTAL_SLOTS; s++) {
+          const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+          g[dIdx][s] = slotHour >= 9 && slotHour < 17;
+        }
+        return g;
+      });
+      return;
+    }
+
+    // Find the latest end hour across all slots for this day
+    const existing = extraSlots[dayOfWeek] || [];
+    const allEnds = [daySchedule.endHour, ...existing.map((s) => s.endHour)];
+    const latestEnd = Math.max(...allEnds);
+    const newStart = latestEnd + 1;
+    const newEnd = newStart + 1;
+    if (newStart >= 24) return;
+
+    const clampedEnd = Math.min(24, newEnd);
+
+    setExtraSlots((prev) => ({
+      ...prev,
+      [dayOfWeek]: [...(prev[dayOfWeek] || []), { startHour: newStart, endHour: clampedEnd }],
+    }));
+
+    // Update slotGrid
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      for (let s = 0; s < TOTAL_SLOTS; s++) {
+        const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+        if (slotHour >= newStart && slotHour < clampedEnd) {
+          g[dIdx][s] = true;
+        }
+      }
+      return g;
+    });
+  };
+
+  // Remove an extra slot
+  const handleRemoveExtraSlot = (dayOfWeek: number, slotIndex: number) => {
+    const dIdx = DAYS_ORDER.indexOf(dayOfWeek);
+    if (dIdx === -1) return;
+    const slot = extraSlots[dayOfWeek]?.[slotIndex];
+    if (!slot) return;
+
+    setExtraSlots((prev) => ({
+      ...prev,
+      [dayOfWeek]: (prev[dayOfWeek] || []).filter((_, i) => i !== slotIndex),
+    }));
+
+    // Remove from slotGrid
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      for (let s = 0; s < TOTAL_SLOTS; s++) {
+        const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+        if (slotHour >= slot.startHour && slotHour < slot.endHour) {
+          g[dIdx][s] = false;
+        }
+      }
+      return g;
+    });
+  };
+
+  // Update an extra slot's time
+  const handleExtraSlotTimeChange = (dayOfWeek: number, slotIndex: number, field: "startHour" | "endHour", value: number) => {
+    const dIdx = DAYS_ORDER.indexOf(dayOfWeek);
+    if (dIdx === -1) return;
+    const slot = extraSlots[dayOfWeek]?.[slotIndex];
+    if (!slot) return;
+
+    const oldStart = slot.startHour;
+    const oldEnd = slot.endHour;
+    const newStart = field === "startHour" ? value : oldStart;
+    const newEnd = field === "endHour" ? value : oldEnd;
+
+    setExtraSlots((prev) => ({
+      ...prev,
+      [dayOfWeek]: (prev[dayOfWeek] || []).map((s, i) =>
+        i === slotIndex ? { startHour: newStart, endHour: newEnd } : s
+      ),
+    }));
+
+    // Update slotGrid: clear old range, set new range
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      for (let s = 0; s < TOTAL_SLOTS; s++) {
+        const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+        if (slotHour >= oldStart && slotHour < oldEnd) {
+          g[dIdx][s] = false;
+        }
+      }
+      for (let s = 0; s < TOTAL_SLOTS; s++) {
+        const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+        if (slotHour >= newStart && slotHour < newEnd) {
+          g[dIdx][s] = true;
+        }
+      }
+      return g;
+    });
+  };
+
+  const handleCopyToAll = (sourceDayOfWeek: number) => {
+    const source = schedule.find((s) => s.dayOfWeek === sourceDayOfWeek);
+    if (!source || !source.enabled) return;
+
+    setSchedule((prev) =>
+      prev.map((d) => ({ ...d, startHour: source.startHour, endHour: source.endHour, enabled: true }))
+    );
+    setSlotGrid((prev) => {
+      const g = prev.map((row) => [...row]);
+      for (let dIdx = 0; dIdx < 7; dIdx++) {
+        for (let s = 0; s < TOTAL_SLOTS; s++) {
+          const slotHour = GRID_START + s / SLOTS_PER_HOUR;
+          g[dIdx][s] = slotHour >= source.startHour && slotHour < source.endHour;
+        }
+      }
+      return g;
+    });
+  };
+
   // Date override
   const toggleDateOverride = async (date: Date) => {
     const existing = overrides.find((o) => isSameDay(new Date(o.date), date));
@@ -660,12 +889,12 @@ export default function CalendarPage() {
                       }}
                       className={cn(
                         "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                        isActive ? "bg-blue-50" : "hover:bg-gray-50"
+                        isActive ? "bg-[#e0f2fe]" : "hover:bg-gray-50"
                       )}
                     >
                       <Image src={platform.src} alt={platform.label} width={22} height={22} className="rounded" />
-                      <span className={cn("text-sm", isActive ? "text-blue-600 font-medium" : "text-[#374151]")}>{platform.label}</span>
-                      {isActive && <Check className="h-4 w-4 text-blue-600 ml-auto" />}
+                      <span className={cn("text-sm", isActive ? "text-[#0090d9] font-medium" : "text-[#374151]")}>{platform.label}</span>
+                      {isActive && <Check className="h-4 w-4 text-[#0090d9] ml-auto" />}
                     </button>
                   );
                 })}
@@ -709,7 +938,7 @@ export default function CalendarPage() {
             <button
               onClick={handleConnectMicrosoftCalendar}
               disabled={mscalLoading}
-              className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+              className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:bg-[#e0f2fe] hover:border-[#0090d9]/30 transition-colors"
             >
               <Image src="/outlook.svg" alt="Outlook" width={16} height={16} />
               <span className="text-xs font-medium text-[#0078d4]">Connect Outlook</span>
@@ -738,11 +967,11 @@ export default function CalendarPage() {
             <button
               onClick={handleConnectGoogleCalendar}
               disabled={gcalLoading}
-              className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+              className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 hover:bg-[#e0f2fe] hover:border-[#0090d9]/30 transition-colors"
             >
               <Image src="/google-calendar.svg" alt="Google Calendar" width={16} height={16} />
-              <span className="text-xs font-medium text-blue-600">Connect Calendar</span>
-              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" /> : <Link2 className="h-3.5 w-3.5 text-blue-600" />}
+              <span className="text-xs font-medium text-[#0090d9]">Connect Calendar</span>
+              {gcalLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0090d9]" /> : <Link2 className="h-3.5 w-3.5 text-[#0090d9]" />}
             </button>
           ) : (
             <div className="flex items-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2">
@@ -750,6 +979,30 @@ export default function CalendarPage() {
               <span className="text-xs text-[#9ca3af]">Not configured</span>
             </div>
           )}
+
+          {/* List / Calendar toggle */}
+          <div className="flex items-center rounded-lg border border-[#e5e7eb] bg-white overflow-hidden">
+            <button
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                viewMode === "list" ? "bg-gray-100 text-[#374151]" : "text-[#6b7280] hover:bg-gray-50"
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              List
+            </button>
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                viewMode === "calendar" ? "bg-gray-100 text-[#374151]" : "text-[#6b7280] hover:bg-gray-50"
+              )}
+            >
+              <CalendarDays className="h-3.5 w-3.5" />
+              Calendar
+            </button>
+          </div>
 
           <button
             onClick={handleSave}
@@ -808,7 +1061,304 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Main calendar area */}
+      {/* LIST VIEW */}
+      {viewMode === "list" && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="rounded-lg border border-[#e5e7eb] bg-white">
+            {/* Schedule header */}
+            <div className="border-b border-[#e5e7eb] px-6 py-5">
+              <p className="text-[11px] font-medium text-[#6b7280] uppercase tracking-wider">Schedule</p>
+              <h2 className="text-lg font-semibold text-[#1a2b3c]">Working hours (default)</h2>
+            </div>
+
+            {/* Main content: Weekly hours + Date-specific hours */}
+            <div className="flex divide-x divide-[#e5e7eb]">
+              {/* Weekly hours - left side */}
+              <div className="flex-1 px-6 py-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock className="h-4 w-4 text-[#374151]" />
+                  <h3 className="text-sm font-semibold text-[#374151]">Weekly hours</h3>
+                </div>
+                <p className="text-xs text-[#9ca3af] mb-5">Set when you are typically available for meetings</p>
+
+                <div className="space-y-3">
+                  {CALENDLY_DAYS.map((day) => {
+                    const daySchedule = schedule.find((s) => s.dayOfWeek === day.dayOfWeek);
+                    const isEnabled = daySchedule?.enabled ?? false;
+                    const dayExtras = extraSlots[day.dayOfWeek] || [];
+                    return (
+                      <div key={day.dayOfWeek} className="flex gap-3">
+                        <button
+                          onClick={() => handleDayToggle(day.dayOfWeek)}
+                          className={cn(
+                            "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white transition-all mt-1",
+                            isEnabled ? day.color : "bg-[#d1d5db]"
+                          )}
+                          title={`${isEnabled ? "Disable" : "Enable"} ${day.fullLabel}`}
+                        >
+                          {day.label}
+                        </button>
+                        {isEnabled ? (
+                          <div className="flex flex-col gap-2">
+                            {/* Primary time slot */}
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={daySchedule?.startHour ?? 9}
+                                onChange={(e) => handleDayTimeChange(day.dayOfWeek, "startHour", Number(e.target.value))}
+                                className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                              >
+                                {TIME_OPTIONS.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                              <span className="text-sm text-[#9ca3af]">-</span>
+                              <select
+                                value={daySchedule?.endHour ?? 17}
+                                onChange={(e) => handleDayTimeChange(day.dayOfWeek, "endHour", Number(e.target.value))}
+                                className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                              >
+                                {TIME_OPTIONS.filter((opt) => opt.value > (daySchedule?.startHour ?? 9)).map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={() => handleDayToggle(day.dayOfWeek)}
+                                className="rounded-md p-1.5 text-[#9ca3af] hover:bg-red-50 hover:text-red-400 transition-colors"
+                                title="Remove"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleAddSlot(day.dayOfWeek)}
+                                className="rounded-md p-1.5 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
+                                title="Add time slot"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleCopyToAll(day.dayOfWeek)}
+                                className="rounded-md p-1.5 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
+                                title="Copy to all days"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {/* Extra time slots */}
+                            {dayExtras.map((slot, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <select
+                                  value={slot.startHour}
+                                  onChange={(e) => handleExtraSlotTimeChange(day.dayOfWeek, idx, "startHour", Number(e.target.value))}
+                                  className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                                >
+                                  {TIME_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                                <span className="text-sm text-[#9ca3af]">-</span>
+                                <select
+                                  value={slot.endHour}
+                                  onChange={(e) => handleExtraSlotTimeChange(day.dayOfWeek, idx, "endHour", Number(e.target.value))}
+                                  className="w-[110px] rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm text-[#374151] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                                >
+                                  {TIME_OPTIONS.filter((opt) => opt.value > slot.startHour).map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => handleRemoveExtraSlot(day.dayOfWeek, idx)}
+                                  className="rounded-md p-1.5 text-[#9ca3af] hover:bg-red-50 hover:text-red-400 transition-colors"
+                                  title="Remove time slot"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-sm text-[#d1d5db]">Unavailable</span>
+                            <button
+                              onClick={() => handleAddSlot(day.dayOfWeek)}
+                              className="rounded-md p-1 text-[#9ca3af] hover:bg-[#e0f2fe] hover:text-[#0090d9] transition-colors"
+                              title="Add time slot"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Timezone */}
+                <div className="mt-5 pt-4 border-t border-[#f3f4f6]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-[#9ca3af]">Total weekly hours</span>
+                    <span className="text-sm font-semibold text-[#0090d9]">
+                      {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-1.5 text-xs text-[#0090d9]">
+                    <Globe className="h-3.5 w-3.5" />
+                    <span>{TIMEZONES.find((tz) => tz.value === timezone)?.label || timezone}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Date-specific hours - right side */}
+              <div className="w-[360px] flex-shrink-0 px-6 py-5">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-[#374151]" />
+                    <h3 className="text-sm font-semibold text-[#374151]">Date-specific hours</h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedDate(new Date())}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-xs font-medium text-[#374151] hover:bg-gray-50 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Hours
+                  </button>
+                </div>
+                <p className="text-xs text-[#9ca3af] mb-4">Adjust hours for specific days</p>
+
+                {/* Mini Calendar */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <button
+                      onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                      className="rounded p-1 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <span className="text-sm font-medium text-[#374151]">{format(currentMonth, "MMMM yyyy")}</span>
+                    <button
+                      onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                      className="rounded p-1 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-7 mb-1">
+                    {["SU", "MO", "TU", "WE", "TH", "FR", "SA"].map((d) => (
+                      <span key={d} className="py-1.5 text-center text-[11px] font-medium text-[#9ca3af]">{d}</span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-y-1">
+                    {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
+                    {days.map((date) => {
+                      const today = isToday(date);
+                      const override = getOverride(date);
+                      const isSelected = selectedDate && isSameDay(date, selectedDate);
+                      return (
+                        <button
+                          key={date.toISOString()}
+                          onClick={() => setSelectedDate(isSelected ? null : date)}
+                          className={cn(
+                            "flex h-8 w-full items-center justify-center text-xs transition-all relative rounded-md",
+                            today ? "font-bold" : "font-normal",
+                            today && !isSelected ? "text-white" : "text-[#374151] hover:bg-gray-50",
+                            isSelected && "ring-1 ring-[#0090d9] bg-[#e0f2fe]",
+                            override && !override.available && "text-red-400",
+                          )}
+                        >
+                          {today && !isSelected && (
+                            <span className="absolute inset-0 flex items-center justify-center">
+                              <span className="w-7 h-7 rounded-full bg-[#0090d9]" />
+                            </span>
+                          )}
+                          <span className="relative z-10">{format(date, "d")}</span>
+                          {override && (
+                            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Date override panel */}
+                {selectedDate && isSameMonth(selectedDate, currentMonth) && (
+                  <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-semibold text-[#374151]">
+                        {format(selectedDate, "EEE, MMM d")}
+                      </span>
+                      <button onClick={() => setSelectedDate(null)} className="rounded p-1 hover:bg-gray-100">
+                        <X className="h-3.5 w-3.5 text-[#9ca3af]" />
+                      </button>
+                    </div>
+                    {getOverride(selectedDate) ? (
+                      <div>
+                        <p className="mb-3 text-xs text-[#6b7280]">
+                          Blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
+                        </p>
+                        <button
+                          onClick={() => toggleDateOverride(selectedDate)}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600 transition-colors"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Unblock
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <input
+                          type="text"
+                          value={overrideReason}
+                          onChange={(e) => setOverrideReason(e.target.value)}
+                          placeholder="Reason (optional)"
+                          className="mb-3 w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-sm focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                        />
+                        <button
+                          onClick={() => toggleDateOverride(selectedDate)}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white hover:bg-red-600 transition-colors"
+                        >
+                          <Ban className="h-3.5 w-3.5" />
+                          Block Date
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Active overrides list */}
+                {overrides.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
+                    <p className="text-[11px] font-medium text-[#9ca3af] mb-2">Blocked dates</p>
+                    <div className="space-y-1.5">
+                      {overrides.filter((o) => !o.available).map((o) => (
+                        <div key={o.id} className="flex items-center justify-between rounded-md bg-red-50 px-3 py-1.5">
+                          <span className="text-xs text-red-600">
+                            {format(new Date(o.date), "MMM d")}
+                            {o.reason ? ` — ${o.reason}` : ""}
+                          </span>
+                          <button
+                            onClick={async () => {
+                              await fetch(`/api/availability/overrides?id=${o.id}`, { method: "DELETE" });
+                              setOverrides((prev) => prev.filter((x) => x.id !== o.id));
+                            }}
+                            className="rounded p-0.5 text-red-400 hover:text-red-600"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CALENDAR VIEW */}
+      {viewMode === "calendar" && (
       <div className="flex-1 flex min-h-0 border border-[#e5e7eb] rounded-lg bg-white overflow-hidden">
         {/* Week calendar */}
         <div className="flex-1 flex flex-col min-h-0">
@@ -867,14 +1417,14 @@ export default function CalendarPage() {
                 >
                   <span className={cn(
                     "text-xs",
-                    today ? "text-blue-600 font-semibold" : "text-[#6b7280]"
+                    today ? "text-[#0090d9] font-semibold" : "text-[#6b7280]"
                   )}>
                     {dayName}
                   </span>
                   <span className={cn(
                     "ml-1.5 text-xs",
                     today
-                      ? "inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white font-semibold"
+                      ? "inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#0090d9] text-white font-semibold"
                       : "text-[#6b7280]"
                   )}>
                     {dayNum}
@@ -1026,8 +1576,14 @@ export default function CalendarPage() {
 
           {sidebarOpen && (
             <div className="p-3 space-y-4 overflow-y-auto" style={{ maxHeight: "calc(100% - 40px)" }}>
-              {/* Mini Calendar */}
+              {/* Date-specific hours */}
               <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h3 className="text-xs font-semibold text-[#374151]">Date-specific hours</h3>
+                    <p className="text-[10px] text-[#9ca3af]">Adjust hours for specific days</p>
+                  </div>
+                </div>
                 <div className="flex items-center justify-between mb-2">
                   <button
                     onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
@@ -1035,6 +1591,7 @@ export default function CalendarPage() {
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
+                  <span className="text-[11px] font-medium text-[#374151]">{format(currentMonth, "MMMM yyyy")}</span>
                   <button
                     onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
                     className="rounded p-0.5 text-[#9ca3af] hover:bg-gray-100 hover:text-[#374151] transition-colors"
@@ -1062,18 +1619,18 @@ export default function CalendarPage() {
                         onClick={() => setSelectedDate(isSelected ? null : date)}
                         className={cn(
                           "flex h-7 w-full items-center justify-center text-[11px] transition-all relative rounded",
-                          inWeek && "bg-blue-50",
+                          inWeek && "bg-[#e0f2fe]",
                           today ? "font-bold" : "font-normal",
                           today && !isSelected
                             ? "text-white"
                             : inWeek ? "text-[#374151]" : "text-[#6b7280] hover:bg-gray-50",
-                          isSelected && "ring-1 ring-blue-500",
+                          isSelected && "ring-1 ring-[#0090d9]",
                           override && !override.available && "text-red-400",
                         )}
                       >
                         {today && !isSelected && (
                           <span className="absolute inset-0 flex items-center justify-center">
-                            <span className="w-6 h-6 rounded-full bg-blue-600" />
+                            <span className="w-6 h-6 rounded-full bg-[#0090d9]" />
                           </span>
                         )}
                         <span className="relative z-10">{format(date, "d")}</span>
@@ -1117,7 +1674,7 @@ export default function CalendarPage() {
                         value={overrideReason}
                         onChange={(e) => setOverrideReason(e.target.value)}
                         placeholder="Reason (optional)"
-                        className="mb-2 w-full rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        className="mb-2 w-full rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-xs focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
                       />
                       <button
                         onClick={() => toggleDateOverride(selectedDate)}
@@ -1179,6 +1736,7 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

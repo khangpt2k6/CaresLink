@@ -14,6 +14,9 @@ import {
   Bot,
   Lightbulb,
   Clock,
+  Briefcase,
+  MapPin,
+  ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -24,6 +27,25 @@ interface AgentRun {
   startedAt: string;
   completedAt: string;
   createdAt: string;
+}
+
+interface Job {
+  id: string;
+  title: string;
+  department: string | null;
+  location: string;
+  type: string;
+  status: string;
+  candidateCount: number;
+}
+
+interface DashCandidate {
+  id: string;
+  name: string;
+  email: string;
+  position: string;
+  status: string;
+  appliedAt: string;
 }
 
 interface Metrics {
@@ -51,6 +73,8 @@ export default function DashboardPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [candidates, setCandidates] = useState<DashCandidate[]>([]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -70,6 +94,14 @@ export default function DashboardPage() {
     fetch("/api/agent/runs")
       .then((r) => r.json())
       .then((d) => setAgentRuns(d.runs ?? []))
+      .catch(console.error);
+    fetch("/api/jobs")
+      .then((r) => r.json())
+      .then((d) => setJobs(Array.isArray(d) ? d : []))
+      .catch(console.error);
+    fetch("/api/candidates")
+      .then((r) => r.json())
+      .then((d) => setCandidates(Array.isArray(d) ? d.slice(0, 5) : []))
       .catch(console.error);
   }, [isCandidate]);
 
@@ -187,6 +219,119 @@ export default function DashboardPage() {
               </motion.div>
             ))}
           </div>
+        </div>
+      </motion.div>
+
+      {/* Jobs & Candidates */}
+      <motion.div {...fadeUp(0.18)} className="mt-4 grid gap-4 lg:grid-cols-2">
+        {/* Jobs */}
+        <div className="card p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[#1a2b3c]">Jobs</h2>
+              <p className="text-xs text-[#8a95a3]">Your posted positions</p>
+            </div>
+            <Link href="/jobs" className="flex items-center gap-1 text-xs font-medium text-[#0090d9] hover:underline">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          {jobs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <Briefcase className="mb-2 h-7 w-7 text-[#d0dbe6]" />
+              <p className="text-xs text-[#8a95a3]">No jobs posted yet</p>
+              <Link href="/jobs" className="mt-2 text-xs font-medium text-[#0090d9] hover:underline">Post your first job</Link>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {jobs.slice(0, 4).map((job, i) => (
+                <motion.div
+                  key={job.id}
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 + i * 0.06, duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <Link href="/jobs" className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-[#f0f4f8] transition-colors">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8f4fd]">
+                        <Briefcase className="h-3.5 w-3.5 text-[#0090d9]" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[#1a2b3c]">{job.title}</p>
+                        <p className="flex items-center gap-2 text-[11px] text-[#8a95a3]">
+                          <span className="flex items-center gap-0.5"><MapPin className="h-2.5 w-2.5" />{job.location}</span>
+                          <span>{job.type}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs text-[#5a6b7c]">{job.candidateCount} applicant{job.candidateCount !== 1 ? "s" : ""}</span>
+                      <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${job.status === "open" ? "bg-[#ecfdf5] text-[#059669]" : "bg-[#fffbeb] text-[#b45309]"}`}>
+                        {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                      </span>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Candidates */}
+        <div className="card p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[#1a2b3c]">Candidates</h2>
+              <p className="text-xs text-[#8a95a3]">Recent applicants</p>
+            </div>
+            <Link href="/candidates" className="flex items-center gap-1 text-xs font-medium text-[#0090d9] hover:underline">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          {candidates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <Users className="mb-2 h-7 w-7 text-[#d0dbe6]" />
+              <p className="text-xs text-[#8a95a3]">No candidates yet</p>
+              <Link href="/candidates" className="mt-2 text-xs font-medium text-[#0090d9] hover:underline">Add your first candidate</Link>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {candidates.map((c, i) => {
+                const statusColors: Record<string, string> = {
+                  applied: "bg-[#f1f5f9] text-[#64748b]",
+                  contacted: "bg-[#dbeafe] text-[#2563eb]",
+                  scheduled: "bg-[#fffbeb] text-[#b45309]",
+                  interviewed: "bg-[#e0e7ff] text-[#4f46e5]",
+                  offered: "bg-[#ecfdf5] text-[#059669]",
+                  hired: "bg-[#ecfdf5] text-[#059669]",
+                  rejected: "bg-[#fef2f2] text-[#dc2626]",
+                  no_show: "bg-[#fffbeb] text-[#b45309]",
+                };
+                return (
+                  <motion.div
+                    key={c.id}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 + i * 0.06, duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <Link href="/candidates" className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-[#f0f4f8] transition-colors">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#0090d9] text-[10px] font-medium text-white">
+                          {c.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-[#1a2b3c]">{c.name}</p>
+                          <p className="text-[11px] text-[#8a95a3]">{c.position}</p>
+                        </div>
+                      </div>
+                      <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusColors[c.status] || statusColors.applied}`}>
+                        {c.status.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                      </span>
+                    </Link>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </motion.div>
 

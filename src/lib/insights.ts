@@ -64,7 +64,11 @@ export async function getMetrics(
     (e) => e.type === "status_changed" && (e.metadata || "").toLowerCase().includes("hired")
   ).length;
 
-  const uniqueCandidates = new Set(events.map((e) => e.candidateId).filter(Boolean)).size;
+  // Count actual candidates in the system (not just those with events)
+  const candidateWhere: { position?: string } = {};
+  if (position) candidateWhere.position = position;
+  const totalCandidates = await prisma.candidate.count({ where: candidateWhere });
+
   const totalCost = events.reduce((s, e) => s + (e.cost || 0), 0);
 
   // Time-to-hire: from appliedAt to hire event (status_changed with hired)
@@ -86,10 +90,13 @@ export async function getMetrics(
     }
   }
 
+  // Booking conversion rate: candidates who booked an interview / total emails sent
+  const bookingConversion = emailsSent ? interviews / emailsSent : 0;
+
   return {
-    totalCandidates: uniqueCandidates,
+    totalCandidates,
     emailsSent,
-    responseRateEmail: emailsSent ? emailOpened / emailsSent : 0,
+    responseRateEmail: bookingConversion,
     interviewsScheduled: interviews,
     noShowCount: noShows,
     noShowRate: interviews ? noShows / interviews : 0,
@@ -183,15 +190,15 @@ export function getInsights(metrics: RecruitmentMetrics, staleCount = 0): Insigh
     });
   }
 
-  if (metrics.emailsSent >= 3 && metrics.responseRateEmail < 0.2) {
+  if (metrics.emailsSent >= 3 && metrics.responseRateEmail < 0.5) {
     insights.push({
-      title: "Low Email Response Rate",
-      description: `Only ${(metrics.responseRateEmail * 100).toFixed(0)}% of emails get responses.`,
+      title: "Low Booking Conversion",
+      description: `Only ${(metrics.responseRateEmail * 100).toFixed(0)}% of outreach emails lead to an interview booking.`,
       metric: "responseRateEmail",
       currentValue: `${(metrics.responseRateEmail * 100).toFixed(0)}%`,
       recommendedAction:
         "Improve subject lines; send at optimal times (Tue–Thu 10–11am); add a follow-up email sequence.",
-      priority: "high",
+      priority: metrics.responseRateEmail < 0.2 ? "high" : "medium",
     });
   }
 

@@ -18,7 +18,7 @@ interface Metrics {
 
 export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
   const data = [
-    { channel: "Email", rate: metrics.responseRateEmail * 100 },
+    { channel: "Email", rate: Math.round(metrics.responseRateEmail * 100) },
   ];
 
   return (
@@ -32,7 +32,7 @@ export function ResponseRateChart({ metrics }: { metrics: Metrics }) {
             formatter={(value) => `${Number(value).toFixed(0)}%`}
             contentStyle={{ borderRadius: "8px", background: "#fff", border: "1px solid #e2e8f0", fontSize: "12px" }}
           />
-          <Bar dataKey="rate" fill="#0090d9" name="Response Rate" radius={[4, 4, 0, 0]} barSize={36} />
+          <Bar dataKey="rate" fill="#0090d9" name="Booking Conversion" radius={[4, 4, 0, 0]} barSize={36} />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     });
     const custom = settings?.emailTemplates as Record<string, { subject?: string; body?: string }> | null;
     const customTmpl = custom?.[fitStatus];
-    const defaultTmpl = DEFAULT_TEMPLATES[fitStatus];
+    const defaultTmpl = DEFAULT_TEMPLATES[fitStatus as FitStatus];
     const tmpl = customTmpl
       ? { subject: customTmpl.subject ?? defaultTmpl.subject, body: customTmpl.body ?? defaultTmpl.body }
       : defaultTmpl;

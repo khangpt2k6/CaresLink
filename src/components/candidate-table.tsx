@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Bot, Loader2, Pencil, Trash2, Check, X, Send } from "lucide-react";
 
@@ -62,6 +63,7 @@ export function CandidateTable({
   templateLoading?: string | null;
   onCancelAi?: () => void;
 }) {
+  const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", position: "" });
 
@@ -118,7 +120,12 @@ export function CandidateTable({
                         {c.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-[#1a2b3c] truncate">{c.name}</div>
+                        <div
+                          className="text-sm font-medium text-[#1a2b3c] truncate cursor-pointer hover:text-[#0090d9] transition-colors"
+                          onClick={() => router.push(`/candidates/${c.id}`)}
+                        >
+                          {c.name}
+                        </div>
                         <div className="text-xs text-[#64748b] truncate">{c.email}</div>
                         {c.phone && <div className="text-[11px] text-[#94a3b8]">{c.phone}</div>}
                       </div>

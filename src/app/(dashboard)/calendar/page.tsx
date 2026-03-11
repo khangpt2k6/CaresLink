@@ -1139,9 +1139,23 @@ export default function CalendarPage() {
             <div className="flex divide-x divide-[#e5e7eb]">
               {/* Weekly hours - left side */}
               <div className="flex-1 px-6 py-5">
-                <div className="flex items-center gap-2 mb-1">
-                  <Clock className="h-4 w-4 text-[#374151]" />
-                  <h3 className="text-sm font-semibold text-[#374151]">Weekly hours</h3>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-[#374151]" />
+                    <h3 className="text-sm font-semibold text-[#374151]">Weekly hours</h3>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Globe className="h-3.5 w-3.5 text-[#0090d9]" />
+                    <select
+                      value={timezone}
+                      onChange={(e) => handleTimezoneChange(e.target.value)}
+                      className="bg-transparent text-xs text-[#0090d9] font-medium focus:outline-none cursor-pointer hover:text-[#007bc0] transition-colors"
+                    >
+                      {TIMEZONES.map((tz) => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <p className="text-xs text-[#9ca3af] mb-5">Set when you are typically available for meetings</p>
 
@@ -1301,10 +1315,6 @@ export default function CalendarPage() {
                     <span className="text-sm font-semibold text-[#0090d9]">
                       {((slotGrid.flat().filter(Boolean).length * SLOT_MINS) / 60).toFixed(1)}h
                     </span>
-                  </div>
-                  <div className="mt-3 flex items-center gap-1.5 text-xs text-[#0090d9]">
-                    <Globe className="h-3.5 w-3.5" />
-                    <span>{TIMEZONES.find((tz) => tz.value === timezone)?.label || timezone}</span>
                   </div>
                 </div>
               </div>

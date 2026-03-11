@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { CandidateTable } from "@/components/candidate-table";
+import { CandidateTable, type FitStatus } from "@/components/candidate-table";
 import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X } from "lucide-react";
 
 interface Candidate {
@@ -11,6 +11,7 @@ interface Candidate {
   phone: string | null;
   position: string;
   status: string;
+  fitStatus?: FitStatus;
 }
 
 type ContactMode = "booking_link" | "auto_book";
@@ -20,6 +21,7 @@ export default function CandidatesPage() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [templateLoading, setTemplateLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [form, setForm] = useState({ name: "", email: "", phone: "", position: "" });
@@ -45,6 +47,34 @@ export default function CandidatesPage() {
       if (res.ok) { setForm({ name: "", email: "", phone: "", position: "" }); fetchCandidates(); }
       else { const data = await res.json(); alert(data.error || "Failed to add"); }
     } finally { setAdding(false); }
+  };
+
+  const handleFitStatusChange = async (id: string, fitStatus: FitStatus) => {
+    try {
+      const res = await fetch("/api/candidates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, fitStatus: fitStatus ?? null }),
+      });
+      if (res.ok) fetchCandidates();
+    } catch { alert("Failed to update"); }
+  };
+
+  const handleSendTemplate = async (c: Candidate, fitStatus: NonNullable<FitStatus>) => {
+    setTemplateLoading(c.id);
+    try {
+      const res = await fetch("/api/candidates/send-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId: c.id, fitStatus }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        fetchCandidates();
+      } else {
+        alert(data.error || "Failed to send template email");
+      }
+    } finally { setTemplateLoading(null); }
   };
 
   const handleEdit = async (id: string, data: { name: string; email: string; phone: string; position: string }) => {
@@ -198,10 +228,13 @@ export default function CandidatesPage() {
         <CandidateTable
           candidates={candidates}
           onContactAiClick={(c) => setContactModal({ candidate: c })}
+          onFitStatusChange={handleFitStatusChange}
+          onSendTemplate={handleSendTemplate}
           onEdit={handleEdit}
           onDelete={handleDelete}
           aiLoading={aiLoading}
           deleteLoading={deleteLoading}
+          templateLoading={templateLoading}
         />
       )}
     </div>

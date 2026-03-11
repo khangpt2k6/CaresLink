@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Bot, Loader2, Pencil, Trash2, Check, X } from "lucide-react";
+import { Bot, Loader2, Pencil, Trash2, Check, X, Mail } from "lucide-react";
+
+export type FitStatus = "linkedin" | "not_a_fit" | "good_fit" | "waitlist" | null;
 
 interface Candidate {
   id: string;
@@ -11,6 +13,7 @@ interface Candidate {
   phone: string | null;
   position: string;
   status: string;
+  fitStatus?: FitStatus;
 }
 
 const statusStyles: Record<string, string> = {
@@ -24,23 +27,43 @@ const statusStyles: Record<string, string> = {
   no_show: "bg-[#fffbeb] text-[#b45309]",
 };
 
+const fitStatusLabels: Record<NonNullable<FitStatus>, string> = {
+  linkedin: "LinkedIn",
+  not_a_fit: "Not a fit",
+  good_fit: "Good fit",
+  waitlist: "Waitlist",
+};
+
+const fitStatusStyles: Record<NonNullable<FitStatus>, string> = {
+  linkedin: "bg-[#e0f2fe] text-[#0369a1]",
+  not_a_fit: "bg-[#fef2f2] text-[#dc2626]",
+  good_fit: "bg-[#ecfdf5] text-[#059669]",
+  waitlist: "bg-[#fffbeb] text-[#b45309]",
+};
+
 export function CandidateTable({
   candidates,
   onContactAi,
   onContactAiClick,
+  onFitStatusChange,
+  onSendTemplate,
   onEdit,
   onDelete,
   aiLoading,
   deleteLoading,
+  templateLoading,
   onCancelAi,
 }: {
   candidates: Candidate[];
   onContactAi?: (candidate: Candidate) => void;
   onContactAiClick?: (candidate: Candidate) => void;
+  onFitStatusChange?: (id: string, fitStatus: FitStatus) => void;
+  onSendTemplate?: (candidate: Candidate, fitStatus: NonNullable<FitStatus>) => void;
   onEdit?: (id: string, data: { name: string; email: string; phone: string; position: string }) => void;
   onDelete?: (id: string) => void;
   aiLoading?: string | null;
   deleteLoading?: string | null;
+  templateLoading?: string | null;
   onCancelAi?: () => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -75,9 +98,12 @@ export function CandidateTable({
               Position
             </th>
             <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#5a6b7c]">
+              Fit
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#5a6b7c]">
               Status
             </th>
-            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#5a6b7c] whitespace-nowrap" style={{ minWidth: 180 }}>
+            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#5a6b7c] whitespace-nowrap" style={{ minWidth: 200 }}>
               Actions
             </th>
           </tr>
@@ -116,6 +142,39 @@ export function CandidateTable({
                 )}
               </td>
               <td className="whitespace-nowrap px-4 py-3">
+                {onFitStatusChange || onSendTemplate ? (
+                  <div className="flex flex-col gap-1">
+                    <select
+                      value={c.fitStatus ?? ""}
+                      onChange={(e) => onFitStatusChange?.(c.id, (e.target.value || null) as FitStatus)}
+                      className="rounded border border-[#e2e8f0] bg-white px-2 py-1 text-xs text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none"
+                    >
+                      <option value="">—</option>
+                      <option value="linkedin">LinkedIn</option>
+                      <option value="not_a_fit">Not a fit</option>
+                      <option value="good_fit">Good fit</option>
+                      <option value="waitlist">Waitlist</option>
+                    </select>
+                    {c.fitStatus && onSendTemplate && (
+                      <button
+                        onClick={() => onSendTemplate(c, c.fitStatus!)}
+                        disabled={templateLoading === c.id}
+                        className="inline-flex items-center gap-1 text-xs text-[#0090d9] hover:underline disabled:opacity-50"
+                      >
+                        {templateLoading === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+                        Send template
+                      </button>
+                    )}
+                  </div>
+                ) : c.fitStatus ? (
+                  <span className={cn("inline-block rounded-sm px-2 py-0.5 text-xs font-medium", fitStatusStyles[c.fitStatus])}>
+                    {fitStatusLabels[c.fitStatus]}
+                  </span>
+                ) : (
+                  <span className="text-xs text-[#8a95a3]">—</span>
+                )}
+              </td>
+              <td className="whitespace-nowrap px-4 py-3">
                 <span
                   className={cn(
                     "inline-block rounded-sm px-2 py-0.5 text-xs font-medium",
@@ -125,7 +184,7 @@ export function CandidateTable({
                   {c.status}
                 </span>
               </td>
-              <td className="whitespace-nowrap px-4 py-3 text-right" style={{ minWidth: 180 }}>
+              <td className="whitespace-nowrap px-4 py-3 text-right" style={{ minWidth: 200 }}>
                 <div className="inline-flex items-center gap-1.5">
                   {editingId === c.id ? (
                     <>

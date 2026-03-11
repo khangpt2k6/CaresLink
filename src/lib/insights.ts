@@ -53,7 +53,7 @@ export async function getMetrics(
   });
 
   // Count all email-related events: direct emails, booking links, reminders
-  const emailEventTypes = ["email_sent", "booking_link_sent", "reminder_sent"];
+  const emailEventTypes = ["email_sent", "booking_link_sent", "reminder_sent", "template_email_sent"];
   const emailsSent = events.filter((e) => emailEventTypes.includes(e.type)).length;
   const emailOpened = events.filter((e) => e.type === "email_opened").length;
   const interviews = events.filter((e) =>
@@ -103,7 +103,7 @@ export async function getMetrics(
 }
 
 export async function getStaleCandidates(minDays = 5): Promise<StaleCandidate[]> {
-  const outreachTypes = ["email_sent", "booking_link_sent"];
+  const outreachTypes = ["email_sent", "booking_link_sent", "template_email_sent"];
   const responseTypes = ["interview_scheduled", "self_booked"];
 
   const candidates = await prisma.candidate.findMany({

@@ -8,7 +8,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, name, email, phone, position, status } = body;
+    const { id, name, email, phone, position, status, fitStatus } = body;
     if (!id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
@@ -21,6 +21,7 @@ export async function PUT(request: NextRequest) {
         ...(phone !== undefined && { phone: phone || null }),
         ...(position !== undefined && { position }),
         ...(status !== undefined && { status }),
+        ...(fitStatus !== undefined && { fitStatus: fitStatus || null }),
       },
     });
     return NextResponse.json(candidate);

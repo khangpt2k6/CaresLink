@@ -9,10 +9,11 @@ import {
 import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronsLeft, ChevronsRight,
   Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink,
-  Copy, Clock, List, CalendarDays, Plus,
+  Copy, Clock, List, CalendarDays, Plus, Settings,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { getNextHolidays } from "@/lib/holidays";
 
 // Grid config: 0 AM -> 12 AM (24h), 30-min slots
 const GRID_START = 0;
@@ -211,8 +212,10 @@ export default function CalendarPage() {
   const [mscalLoading, setMscalLoading] = useState(false);
   const [mscalOauthAvailable, setMscalOauthAvailable] = useState(false);
 
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [viewMode, setViewMode] = useState<"list" | "calendar" | "advanced">("list");
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
+  const [holidayToggles, setHolidayToggles] = useState<Set<string>>(new Set());
+  const [holidayLoading, setHolidayLoading] = useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const videoDropdownRef = useRef<HTMLDivElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -223,6 +226,51 @@ export default function CalendarPage() {
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
+
+  // Holidays
+  const holidays = useMemo(() => getNextHolidays(), []);
+
+  // Sync holiday toggles from overrides
+  useEffect(() => {
+    const holidayNames = new Set(holidays.map((h) => h.name));
+    const active = new Set(
+      overrides
+        .filter((o) => !o.available && o.reason && holidayNames.has(o.reason))
+        .map((o) => o.reason!)
+    );
+    setHolidayToggles(active);
+  }, [overrides, holidays]);
+
+  // Fetch all overrides (not just current month) when viewing advanced
+  useEffect(() => {
+    if (viewMode === "advanced") {
+      fetch("/api/availability/overrides").then((r) => r.json()).then(setOverrides).catch(() => {});
+    }
+  }, [viewMode]);
+
+  const toggleHoliday = async (holiday: { name: string; date: Date }) => {
+    setHolidayLoading((prev) => new Set(prev).add(holiday.name));
+
+    const existing = overrides.find((o) => !o.available && o.reason === holiday.name);
+    if (existing) {
+      await fetch(`/api/availability/overrides?id=${existing.id}`, { method: "DELETE" });
+      setOverrides((prev) => prev.filter((o) => o.id !== existing.id));
+    } else {
+      const res = await fetch("/api/availability/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: holiday.date.toISOString(), available: false, reason: holiday.name }),
+      });
+      const data = await res.json();
+      setOverrides((prev) => [...prev, data]);
+    }
+
+    setHolidayLoading((prev) => {
+      const next = new Set(prev);
+      next.delete(holiday.name);
+      return next;
+    });
+  };
 
   // Current time ticker
   useEffect(() => {
@@ -1092,6 +1140,16 @@ export default function CalendarPage() {
             >
               <CalendarDays className="h-3.5 w-3.5" />
               Calendar
+            </button>
+            <button
+              onClick={() => setViewMode("advanced")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                viewMode === "advanced" ? "bg-gray-100 text-[#374151]" : "text-[#6b7280] hover:bg-gray-50"
+              )}
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Advanced
             </button>
           </div>
 
@@ -2052,6 +2110,90 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
+      )}
+
+      {/* ADVANCED SETTINGS VIEW */}
+      {viewMode === "advanced" && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="rounded-lg border border-[#e5e7eb] bg-white">
+            <div className="border-b border-[#e5e7eb] px-6 py-5">
+              <p className="text-[11px] font-medium text-[#6b7280] uppercase tracking-wider mb-1">Advanced</p>
+              <h2 className="text-lg font-semibold text-[#1a2b3c]">Advanced settings</h2>
+              <p className="text-xs text-[#9ca3af] mt-1">Control availability across all your event types</p>
+            </div>
+
+            <div className="px-6 py-6 max-w-2xl">
+              {/* Holidays section */}
+              <h3 className="text-base font-semibold text-[#1a2b3c] mb-1">Holidays</h3>
+              <p className="text-xs text-[#9ca3af] mb-5">
+                CaresLink will automatically mark you as unavailable for the selected holidays
+              </p>
+
+              {/* Country selector */}
+              <div className="mb-5 rounded-lg border border-[#e5e7eb] px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#9ca3af]">Country for holidays</span>
+                    <span className="text-sm font-medium text-[#374151]">United States</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Holiday list */}
+              <div className="rounded-lg border border-[#e5e7eb] overflow-hidden">
+                {holidays.map((holiday, idx) => {
+                  const isEnabled = holidayToggles.has(holiday.name);
+                  const isLoading = holidayLoading.has(holiday.name);
+                  return (
+                    <div
+                      key={holiday.name}
+                      className={cn(
+                        "flex items-center justify-between px-4 py-3.5 transition-colors hover:bg-[#f9fafb]",
+                        idx !== 0 && "border-t border-[#f3f4f6]"
+                      )}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          "text-sm text-[#374151]",
+                          isEnabled && "font-medium"
+                        )}>
+                          {holiday.name}
+                        </p>
+                        <p className="text-xs text-[#9ca3af] mt-0.5">
+                          Next: {format(holiday.date, "MMM d, yyyy")}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => toggleHoliday(holiday)}
+                        disabled={isLoading}
+                        className={cn(
+                          "relative flex-shrink-0 w-10 h-[22px] rounded-full transition-colors ml-4",
+                          isEnabled ? "bg-[#0090d9]" : "bg-[#d1d5db]",
+                          isLoading && "opacity-50 cursor-wait"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform shadow-sm",
+                            isEnabled && "translate-x-[18px]"
+                          )}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Summary */}
+              <div className="mt-5 flex items-center justify-between">
+                <span className="text-xs text-[#9ca3af]">Holidays blocked</span>
+                <span className="text-sm font-semibold text-[#0090d9]">
+                  {holidayToggles.size} of {holidays.length}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

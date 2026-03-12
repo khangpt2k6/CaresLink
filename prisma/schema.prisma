@@ -201,8 +201,8 @@ model DateOverride {
   id        String   @id @default(cuid())
   date      DateTime // the specific date
   available Boolean  @default(false) // false = blocked, true = available override
-  startHour Int?     // optional custom hours for that day
-  endHour   Int?
+  startHour Float?   // optional custom hours for that day (e.g. 9.5 = 9:30am)
+  endHour   Float?
   reason    String?  // e.g. "Holiday", "Out of office"
   createdAt DateTime @default(now())
 

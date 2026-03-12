@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Bot, Loader2, Pencil, Trash2, Check, X, Send, Eye } from "lucide-react";
+import { Bot, Loader2, Pencil, Trash2, Check, X, Send, Eye, ChevronDown } from "lucide-react";
 
 export type FitStatus = "not_a_fit" | "good_fit" | "waitlist" | null;
 
@@ -33,6 +33,90 @@ const fitConfig: Record<NonNullable<FitStatus>, { label: string; bg: string; tex
   good_fit: { label: "Good fit", bg: "bg-[#e0f2fe]", text: "text-[#0090d9]", border: "border-[#bae6fd]" },
   waitlist: { label: "Waitlist", bg: "bg-[#f8fafc]", text: "text-[#64748b]", border: "border-[#e2e8f0]" },
 };
+
+const fitOptions: { value: FitStatus; label: string }[] = [
+  { value: "good_fit", label: "Good Fit" },
+  { value: "waitlist", label: "Waitlist" },
+  { value: "not_a_fit", label: "Not a Fit" },
+];
+
+function FitDropdown({
+  value,
+  onChange,
+}: {
+  value: FitStatus;
+  onChange: (v: FitStatus) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const current = value ? fitConfig[value] : null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex w-[130px] items-center justify-between gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20",
+          current
+            ? `${current.bg} ${current.text} ${current.border}`
+            : "bg-[#f8fafc] text-[#94a3b8] border-[#e2e8f0] hover:border-[#cbd5e1]"
+        )}
+      >
+        <span>{current ? current.label : "Select fit"}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-[150px] overflow-hidden rounded-lg border border-[#e2e8f0] bg-white shadow-lg shadow-black/8 animate-in fade-in slide-in-from-top-1">
+          {value && (
+            <button
+              type="button"
+              onClick={() => { onChange(null); setOpen(false); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#94a3b8] hover:bg-[#f8fafc] transition-colors"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-[#e2e8f0]" />
+              Clear selection
+            </button>
+          )}
+          {fitOptions.map((opt) => {
+            const cfg = fitConfig[opt.value as NonNullable<FitStatus>];
+            const isActive = value === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-xs font-medium transition-colors",
+                  isActive
+                    ? `${cfg.bg} ${cfg.text}`
+                    : "text-[#334155] hover:bg-[#f8fafc]"
+                )}
+              >
+                <span className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  opt.value === "good_fit" ? "bg-[#0090d9]" : opt.value === "waitlist" ? "bg-[#f59e0b]" : "bg-[#94a3b8]"
+                )} />
+                {opt.label}
+                {isActive && <Check className="ml-auto h-3 w-3" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const AVATAR_BG = "bg-[#0090d9]";
 
@@ -137,22 +221,10 @@ export function CandidateTable({
                 </td>
                 <td className="px-5 py-3 align-middle">
                   {onFitStatusChange ? (
-                    <select
-                      value={c.fitStatus ?? ""}
-                      onChange={(e) => onFitStatusChange?.(c.id, (e.target.value || null) as FitStatus)}
-                      className={cn(
-                        "w-[120px] rounded-full px-3 py-1 text-xs font-medium border cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20 transition-colors appearance-none bg-no-repeat bg-[length:14px] bg-[right_8px_center]",
-                        fit
-                          ? `${fit.bg} ${fit.text} ${fit.border}`
-                          : "bg-[#f8fafc] text-[#94a3b8] border-[#e2e8f0] hover:border-[#cbd5e1]"
-                      )}
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")` }}
-                    >
-                      <option value="">Select fit</option>
-                      <option value="good_fit">Good fit</option>
-                      <option value="waitlist">Waitlist</option>
-                      <option value="not_a_fit">Not a fit</option>
-                    </select>
+                    <FitDropdown
+                      value={c.fitStatus ?? null}
+                      onChange={(v) => onFitStatusChange(c.id, v)}
+                    />
                   ) : fit ? (
                     <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", fit.bg, fit.text)}>
                       {fit.label}

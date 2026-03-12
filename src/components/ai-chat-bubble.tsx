@@ -67,6 +67,50 @@ interface ChatMessage {
   text: string;
 }
 
+/** Render simple markdown: **bold**, bullet lists, line breaks */
+function formatAiText(text: string) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Blank line → spacer
+    if (!line.trim()) {
+      elements.push(<div key={i} className="h-2" />);
+      continue;
+    }
+
+    // Bullet list item (- or *)
+    const bulletMatch = line.match(/^\s*[-*]\s+(.*)/);
+    const isBullet = !!bulletMatch;
+    const content = isBullet ? bulletMatch![1] : line;
+
+    // Inline bold: **text**
+    const parts = content.split(/(\*\*[^*]+\*\*)/g);
+    const rendered = parts.map((part, j) => {
+      const boldMatch = part.match(/^\*\*(.+)\*\*$/);
+      if (boldMatch) {
+        return <strong key={j} className="font-semibold">{boldMatch[1]}</strong>;
+      }
+      return <span key={j}>{part}</span>;
+    });
+
+    if (isBullet) {
+      elements.push(
+        <div key={i} className="flex gap-2 pl-1">
+          <span className="text-[#0090d9] mt-px shrink-0">&#8226;</span>
+          <span>{rendered}</span>
+        </div>
+      );
+    } else {
+      elements.push(<div key={i}>{rendered}</div>);
+    }
+  }
+
+  return <>{elements}</>;
+}
+
 interface ChatSession {
   id: string;
   title: string;
@@ -523,18 +567,18 @@ export function AiChatBubble() {
                     className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {m.role === "ai" && (
-                      <div className="mr-2 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd]">
-                        <Bot className="h-3.5 w-3.5 text-[#0090d9]" />
+                      <div className="mr-2 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd] overflow-hidden">
+                        <img src="/ai-logo.png" alt="AI" className="h-5 w-5 object-contain" />
                       </div>
                     )}
                     <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
+                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed ${
                         m.role === "user"
-                          ? "bg-[#0090d9] text-white rounded-br-md"
+                          ? "bg-[#0090d9] text-white rounded-br-md whitespace-pre-wrap"
                           : "bg-[#f5f7fa] text-[#1a2b3c] rounded-bl-md border border-[#e8ecf2]"
                       }`}
                     >
-                      {m.text}
+                      {m.role === "ai" ? formatAiText(m.text) : m.text}
                     </div>
                   </motion.div>
                 ))}
@@ -547,8 +591,8 @@ export function AiChatBubble() {
                   exit={{ opacity: 0 }}
                   className="flex justify-start"
                 >
-                  <div className="mr-2 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd]">
-                    <Bot className="h-3.5 w-3.5 text-[#0090d9]" />
+                  <div className="mr-2 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd] overflow-hidden">
+                    <img src="/ai-logo.png" alt="AI" className="h-5 w-5 object-contain" />
                   </div>
                   <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[#e8ecf2] bg-[#f5f7fa] px-4 py-3">
                     <div className="flex gap-1">

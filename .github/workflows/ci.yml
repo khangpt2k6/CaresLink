@@ -1,4 +1,4 @@
-name: CI
+name: CI — Integration Tests
 
 on:
   push:
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-and-build:
+  integration-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -29,11 +29,5 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
-      - name: Build
-        run: npm run build
-        env:
-          # Placeholder values for build (Next.js compiles at build time; no DB connection needed)
-          DATABASE_URL: postgresql://user:pass@localhost:5432/careslink
-          DIRECT_URL: postgresql://user:pass@localhost:5432/careslink
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder
-          CLERK_SECRET_KEY: sk_test_placeholder
+      - name: Run integration tests
+        run: npm test

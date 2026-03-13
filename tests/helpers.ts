@@ -14,7 +14,7 @@ export function createRequest(
     (init.headers as Record<string, string>)["Content-Type"] = "application/json";
   }
 
-  return new NextRequest(fullUrl, init);
+  return new NextRequest(fullUrl, init as never);
 }
 
 /** Parse JSON from a NextResponse */

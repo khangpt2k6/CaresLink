@@ -182,7 +182,10 @@ model Interview {
   confirmed       Boolean  @default(false)
   createdAt       DateTime @default(now())
 
-  events Event[]
+  events      Event[]
+  transcripts InterviewTranscript[]
+  notes       InterviewNote[]
+  summary     InterviewSummary?
 }
 
 // HR weekly availability (recurring schedule)
@@ -283,4 +286,50 @@ model Event {
   metadata    String?
   cost        Float      @default(0)
   createdAt   DateTime   @default(now())
+}
+
+// ─── Interview Intelligence ──────────────────────────────────
+
+model InterviewTranscript {
+  id          String   @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  speaker     String   // "interviewer" | "candidate" | "unknown"
+  content     String
+  timestampMs Int      // milliseconds from start of recording
+  confidence  Float?   // 0-1 from Deepgram
+  createdAt   DateTime @default(now())
+
+  @@index([interviewId, timestampMs])
+}
+
+model InterviewNote {
+  id          String   @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  content     String
+  category    String?  // "strength" | "concern" | "follow_up" | "general"
+  source      String   @default("manual") // "manual" | "ai"
+  timestampMs Int?     // optional link to transcript moment
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([interviewId])
+}
+
+model InterviewSummary {
+  id             String   @id @default(cuid())
+  interviewId    String   @unique
+  interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  summary        String   // overall narrative summary
+  strengths      Json     // string[]
+  concerns       Json     // string[]
+  recommendation String?  // "strong_hire" | "hire" | "no_hire" | "strong_no_hire"
+  technicalRating   Int?  // 1-5
+  communicationRating Int? // 1-5
+  cultureFitRating  Int?  // 1-5
+  overallRating     Int?  // 1-5
+  nextSteps      Json?    // string[] — suggested actions
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }

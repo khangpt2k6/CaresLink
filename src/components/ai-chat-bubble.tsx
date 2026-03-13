@@ -336,7 +336,7 @@ export function AiChatBubble() {
                 >
                   {expanded ? <ChevronsRight className="h-3.5 w-3.5" /> : <ChevronsLeft className="h-3.5 w-3.5" />}
                 </motion.button>
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/20 overflow-hidden">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white overflow-hidden">
                   <img src="/ai-logo.png" alt="CaresLink AI" className="h-5 w-5 object-contain" />
                 </div>
                 <div className="min-w-0">

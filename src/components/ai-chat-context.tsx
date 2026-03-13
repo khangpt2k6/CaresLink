@@ -20,8 +20,8 @@ const AiChatContext = createContext<AiChatState>({
   panelWidth: 0,
 });
 
-const WIDTH_DEFAULT = 420;
-const WIDTH_EXPANDED = 620;
+const WIDTH_DEFAULT = 370;
+const WIDTH_EXPANDED = 540;
 
 export function AiChatProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);

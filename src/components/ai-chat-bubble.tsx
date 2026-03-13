@@ -2,10 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Bot,
   X,
   Send,
-  Sparkles,
   Users,
   CalendarCheck,
   Clock,
@@ -65,6 +63,50 @@ const integrations = [
 interface ChatMessage {
   role: "user" | "ai";
   text: string;
+}
+
+/** Render simple markdown: **bold**, bullet lists, line breaks */
+function formatAiText(text: string) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Blank line → spacer
+    if (!line.trim()) {
+      elements.push(<div key={i} className="h-2" />);
+      continue;
+    }
+
+    // Bullet list item (- or *)
+    const bulletMatch = line.match(/^\s*[-*]\s+(.*)/);
+    const isBullet = !!bulletMatch;
+    const content = isBullet ? bulletMatch![1] : line;
+
+    // Inline bold: **text**
+    const parts = content.split(/(\*\*[^*]+\*\*)/g);
+    const rendered = parts.map((part, j) => {
+      const boldMatch = part.match(/^\*\*(.+)\*\*$/);
+      if (boldMatch) {
+        return <strong key={j} className="font-semibold">{boldMatch[1]}</strong>;
+      }
+      return <span key={j}>{part}</span>;
+    });
+
+    if (isBullet) {
+      elements.push(
+        <div key={i} className="flex gap-2 pl-1">
+          <span className="text-[#0090d9] mt-px shrink-0">&#8226;</span>
+          <span>{rendered}</span>
+        </div>
+      );
+    } else {
+      elements.push(<div key={i}>{rendered}</div>);
+    }
+  }
+
+  return <>{elements}</>;
 }
 
 interface ChatSession {
@@ -282,23 +324,23 @@ export function AiChatBubble() {
             className="fixed bottom-0 right-0 top-0 z-40 flex flex-col border-l border-[#e2e8f0] bg-white shadow-xl overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-[#0090d9] to-[#0077b6] px-4 py-3">
-              <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center justify-between bg-gradient-to-r from-[#0090d9] to-[#0077b6] px-3 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
                 {/* Expand/Shrink toggle */}
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={toggleExpand}
-                  className="rounded-lg p-1.5 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
+                  className="rounded-lg p-1 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
                   title={expanded ? "Shrink panel" : "Expand panel"}
                 >
-                  {expanded ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+                  {expanded ? <ChevronsRight className="h-3.5 w-3.5" /> : <ChevronsLeft className="h-3.5 w-3.5" />}
                 </motion.button>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20">
-                  <Bot className="h-4.5 w-4.5 text-white" style={{ width: 18, height: 18 }} />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/20 overflow-hidden">
+                  <img src="/ai-logo.png" alt="CaresLink AI" className="h-5 w-5 object-contain" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">CaresLink AI</p>
+                  <p className="text-[13px] font-semibold text-white truncate">CaresLink AI</p>
                   <div className="flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-green-300 animate-pulse" />
                     <p className="text-[10px] text-white/70">Recruitment Assistant</p>
@@ -310,28 +352,28 @@ export function AiChatBubble() {
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => { setShowIntegrations(!showIntegrations); setShowHistory(false); }}
-                  className={`rounded-lg p-1.5 transition-colors ${showIntegrations ? "bg-white/25 text-white" : "text-white/60 hover:bg-white/15 hover:text-white"}`}
+                  className={`rounded-lg p-1 transition-colors ${showIntegrations ? "bg-white/25 text-white" : "text-white/60 hover:bg-white/15 hover:text-white"}`}
                   title="Integrations"
                 >
-                  <Link2 className="h-4 w-4" />
+                  <Link2 className="h-3.5 w-3.5" />
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={createNewChat}
-                  className="rounded-lg p-1.5 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
+                  className="rounded-lg p-1 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
                   title="New chat"
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-3.5 w-3.5" />
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setOpen(false)}
-                  className="rounded-lg p-1.5 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
+                  className="rounded-lg p-1 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
                   title="Close panel"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5" />
                 </motion.button>
               </div>
             </div>
@@ -475,7 +517,7 @@ export function AiChatBubble() {
             {/* Messages Area */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
+              className="flex-1 overflow-y-auto px-3 py-3 space-y-3"
             >
               <AnimatePresence initial={false}>
                 {messages.length === 0 && !showIntegrations && (
@@ -483,18 +525,18 @@ export function AiChatBubble() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.15, duration: 0.3 }}
-                    className="flex flex-col items-center justify-center pt-6 pb-2 text-center"
+                    className="flex flex-col items-center justify-center pt-4 pb-2 text-center"
                   >
-                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f4fd]">
-                      <Sparkles className="h-7 w-7 text-[#0090d9]" />
+                    <div className="mb-2.5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f4fd] overflow-hidden">
+                      <img src="/ai-logo.png" alt="CaresLink AI" className="h-7 w-7 object-contain" />
                     </div>
-                    <p className="text-base font-semibold text-[#1a2b3c]">Hi! How can I help?</p>
-                    <p className="mt-1.5 text-sm text-[#8a95a3] max-w-[300px]">
+                    <p className="text-sm font-semibold text-[#1a2b3c]">Hi! How can I help?</p>
+                    <p className="mt-1 text-xs text-[#8a95a3] max-w-[260px]">
                       I can manage candidates, schedule interviews, update your availability, and more.
                     </p>
 
                     {/* Quick Actions */}
-                    <div className="mt-6 w-full space-y-2">
+                    <div className="mt-4 w-full space-y-1.5">
                       {quickActions.map((action, i) => (
                         <motion.button
                           key={action.label}
@@ -503,12 +545,12 @@ export function AiChatBubble() {
                           transition={{ delay: 0.2 + i * 0.05, duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
                           onClick={() => sendMessage(action.prompt)}
                           disabled={loading}
-                          className="flex w-full items-center gap-3 rounded-xl border border-[#e2e8f0] px-4 py-3 text-left transition-all duration-150 hover:border-[#0090d9]/30 hover:bg-[#f5faff] hover:shadow-sm disabled:opacity-50"
+                          className="flex w-full items-center gap-2.5 rounded-lg border border-[#e2e8f0] px-3 py-2 text-left transition-all duration-150 hover:border-[#0090d9]/30 hover:bg-[#f5faff] hover:shadow-sm disabled:opacity-50"
                         >
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd]">
-                            <action.icon className="h-4 w-4 text-[#0090d9]" />
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#e8f4fd]">
+                            <action.icon className="h-3.5 w-3.5 text-[#0090d9]" />
                           </div>
-                          <span className="text-sm text-[#1a2b3c]">{action.label}</span>
+                          <span className="text-xs text-[#1a2b3c]">{action.label}</span>
                         </motion.button>
                       ))}
                     </div>
@@ -523,18 +565,18 @@ export function AiChatBubble() {
                     className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {m.role === "ai" && (
-                      <div className="mr-2 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd]">
-                        <Bot className="h-3.5 w-3.5 text-[#0090d9]" />
+                      <div className="mr-1.5 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#e8f4fd] overflow-hidden">
+                        <img src="/ai-logo.png" alt="AI" className="h-4 w-4 object-contain" />
                       </div>
                     )}
                     <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
+                      className={`max-w-[82%] rounded-2xl px-3 py-2 text-[12px] leading-relaxed ${
                         m.role === "user"
-                          ? "bg-[#0090d9] text-white rounded-br-md"
+                          ? "bg-[#0090d9] text-white rounded-br-md whitespace-pre-wrap"
                           : "bg-[#f5f7fa] text-[#1a2b3c] rounded-bl-md border border-[#e8ecf2]"
                       }`}
                     >
-                      {m.text}
+                      {m.role === "ai" ? formatAiText(m.text) : m.text}
                     </div>
                   </motion.div>
                 ))}
@@ -547,10 +589,10 @@ export function AiChatBubble() {
                   exit={{ opacity: 0 }}
                   className="flex justify-start"
                 >
-                  <div className="mr-2 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#e8f4fd]">
-                    <Bot className="h-3.5 w-3.5 text-[#0090d9]" />
+                  <div className="mr-1.5 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#e8f4fd] overflow-hidden">
+                    <img src="/ai-logo.png" alt="AI" className="h-4 w-4 object-contain" />
                   </div>
-                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[#e8ecf2] bg-[#f5f7fa] px-4 py-3">
+                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[#e8ecf2] bg-[#f5f7fa] px-3 py-2">
                     <div className="flex gap-1">
                       {[0, 1, 2].map((i) => (
                         <motion.span
@@ -568,16 +610,16 @@ export function AiChatBubble() {
             </div>
 
             {/* Input Area */}
-            <div className="border-t border-[#e2e8f0] bg-[#fafbfc] px-4 py-3">
+            <div className="border-t border-[#e2e8f0] bg-[#fafbfc] px-3 py-2.5">
               <form onSubmit={handleSubmit} className="relative">
                 <textarea
                   ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask anything... (Enter to send, Shift+Enter for new line)"
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-[#e2e8f0] bg-white px-4 py-3 pr-12 text-sm text-[#1a2b3c] placeholder:text-[#8a95a3] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20 transition-all"
+                  placeholder="Ask anything... (Enter to send)"
+                  rows={2}
+                  className="w-full resize-none rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 pr-10 text-xs text-[#1a2b3c] placeholder:text-[#8a95a3] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20 transition-all"
                   disabled={loading}
                 />
                 <motion.button
@@ -585,12 +627,12 @@ export function AiChatBubble() {
                   disabled={loading || !input.trim()}
                   whileHover={{ scale: 1.08 }}
                   whileTap={{ scale: 0.92 }}
-                  className="absolute bottom-3 right-3 rounded-lg bg-[#0090d9] p-2 text-white hover:bg-[#0077b6] transition-colors disabled:opacity-30"
+                  className="absolute bottom-2 right-2 rounded-md bg-[#0090d9] p-1.5 text-white hover:bg-[#0077b6] transition-colors disabled:opacity-30"
                 >
-                  <Send className="h-4 w-4" />
+                  <Send className="h-3.5 w-3.5" />
                 </motion.button>
               </form>
-              <p className="mt-2 text-center text-[10px] text-[#b0bec8]">
+              <p className="mt-1.5 text-center text-[9px] text-[#b0bec8]">
                 Powered by Gemini AI &middot; CaresLink Agent v1
               </p>
             </div>
@@ -604,10 +646,10 @@ export function AiChatBubble() {
           onClick={toggle}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.94 }}
-          className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#0090d9] text-white shadow-lg hover:bg-[#0077b6] transition-colors"
-          style={{ boxShadow: "0 4px 14px rgba(0, 144, 217, 0.45)" }}
+          className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg hover:shadow-xl transition-shadow overflow-hidden ring-1 ring-black/5"
+          style={{ boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)" }}
         >
-          <Bot className="h-5 w-5" />
+          <img src="/ai-logo.png" alt="CaresLink AI" className="h-9 w-9 object-contain" />
         </motion.button>
       )}
     </>

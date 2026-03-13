@@ -9,10 +9,11 @@ import {
 import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronsLeft, ChevronsRight,
   Save, Loader2, X, Ban, Check, Globe, Timer, Link2, Unlink,
-  Copy, Clock, List, CalendarDays, Plus,
+  Copy, Clock, List, CalendarDays, Plus, Settings,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { getNextHolidays } from "@/lib/holidays";
 
 // Grid config: 0 AM -> 12 AM (24h), 30-min slots
 const GRID_START = 0;
@@ -188,6 +189,9 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [overrideReason, setOverrideReason] = useState("");
+  const [overrideMode, setOverrideMode] = useState<"hours" | "block">("hours");
+  const [overrideStartHour, setOverrideStartHour] = useState(9);
+  const [overrideEndHour, setOverrideEndHour] = useState(17);
 
   const [timezone, setTimezone] = useState("America/New_York");
   const [tzSaving, setTzSaving] = useState(false);
@@ -208,8 +212,10 @@ export default function CalendarPage() {
   const [mscalLoading, setMscalLoading] = useState(false);
   const [mscalOauthAvailable, setMscalOauthAvailable] = useState(false);
 
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [viewMode, setViewMode] = useState<"list" | "calendar" | "advanced">("list");
   const [videoDropdownOpen, setVideoDropdownOpen] = useState(false);
+  const [holidayToggles, setHolidayToggles] = useState<Set<string>>(new Set());
+  const [holidayLoading, setHolidayLoading] = useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const videoDropdownRef = useRef<HTMLDivElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -220,6 +226,51 @@ export default function CalendarPage() {
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
+
+  // Holidays
+  const holidays = useMemo(() => getNextHolidays(), []);
+
+  // Sync holiday toggles from overrides
+  useEffect(() => {
+    const holidayNames = new Set(holidays.map((h) => h.name));
+    const active = new Set(
+      overrides
+        .filter((o) => !o.available && o.reason && holidayNames.has(o.reason))
+        .map((o) => o.reason!)
+    );
+    setHolidayToggles(active);
+  }, [overrides, holidays]);
+
+  // Fetch all overrides (not just current month) when viewing advanced
+  useEffect(() => {
+    if (viewMode === "advanced") {
+      fetch("/api/availability/overrides").then((r) => r.json()).then(setOverrides).catch(() => {});
+    }
+  }, [viewMode]);
+
+  const toggleHoliday = async (holiday: { name: string; date: Date }) => {
+    setHolidayLoading((prev) => new Set(prev).add(holiday.name));
+
+    const existing = overrides.find((o) => !o.available && o.reason === holiday.name);
+    if (existing) {
+      await fetch(`/api/availability/overrides?id=${existing.id}`, { method: "DELETE" });
+      setOverrides((prev) => prev.filter((o) => o.id !== existing.id));
+    } else {
+      const res = await fetch("/api/availability/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: holiday.date.toISOString(), available: false, reason: holiday.name }),
+      });
+      const data = await res.json();
+      setOverrides((prev) => [...prev, data]);
+    }
+
+    setHolidayLoading((prev) => {
+      const next = new Set(prev);
+      next.delete(holiday.name);
+      return next;
+    });
+  };
 
   // Current time ticker
   useEffect(() => {
@@ -795,6 +846,30 @@ export default function CalendarPage() {
     setOverrideReason("");
   };
 
+  const saveCustomHours = async (date: Date) => {
+    if (overrideStartHour >= overrideEndHour) return;
+    const existing = overrides.find((o) => isSameDay(new Date(o.date), date));
+    if (existing) {
+      await fetch(`/api/availability/overrides?id=${existing.id}`, { method: "DELETE" });
+      setOverrides((prev) => prev.filter((o) => o.id !== existing.id));
+    }
+    const res = await fetch("/api/availability/overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: date.toISOString(),
+        available: true,
+        startHour: overrideStartHour,
+        endHour: overrideEndHour,
+      }),
+    });
+    const data = await res.json();
+    setOverrides((prev) => [...prev, data]);
+    setSelectedDate(null);
+    setOverrideStartHour(9);
+    setOverrideEndHour(17);
+  };
+
   // Mini calendar helpers
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -1065,6 +1140,16 @@ export default function CalendarPage() {
             >
               <CalendarDays className="h-3.5 w-3.5" />
               Calendar
+            </button>
+            <button
+              onClick={() => setViewMode("advanced")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                viewMode === "advanced" ? "bg-gray-100 text-[#374151]" : "text-[#6b7280] hover:bg-gray-50"
+              )}
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Advanced
             </button>
           </div>
 
@@ -1376,6 +1461,7 @@ export default function CalendarPage() {
                             today && !isSelected ? "text-white" : "text-[#374151] hover:bg-gray-50",
                             isSelected && "ring-1 ring-[#0090d9] bg-[#e0f2fe]",
                             override && !override.available && "text-red-400",
+                            override && override.available && "text-blue-600",
                           )}
                         >
                           {today && !isSelected && (
@@ -1385,7 +1471,10 @@ export default function CalendarPage() {
                           )}
                           <span className="relative z-10">{format(date, "d")}</span>
                           {override && (
-                            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400" />
+                            <span className={cn(
+                              "absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full",
+                              override.available ? "bg-blue-500" : "bg-red-400"
+                            )} />
                           )}
                         </button>
                       );
@@ -1394,7 +1483,9 @@ export default function CalendarPage() {
                 </div>
 
                 {/* Date override panel */}
-                {selectedDate && isSameMonth(selectedDate, currentMonth) && (
+                {selectedDate && isSameMonth(selectedDate, currentMonth) && (() => {
+                  const existingOverride = getOverride(selectedDate);
+                  return (
                   <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-semibold text-[#374151]">
@@ -1404,57 +1495,148 @@ export default function CalendarPage() {
                         <X className="h-3.5 w-3.5 text-[#9ca3af]" />
                       </button>
                     </div>
-                    {getOverride(selectedDate) ? (
+
+                    {/* If override exists, show current state + remove button */}
+                    {existingOverride ? (
                       <div>
-                        <p className="mb-3 text-xs text-[#6b7280]">
-                          Blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
-                        </p>
+                        {existingOverride.available ? (
+                          <div className="mb-3 rounded-lg bg-blue-50 px-3 py-2">
+                            <p className="text-xs font-medium text-blue-700">Custom hours</p>
+                            <p className="text-xs text-blue-600">
+                              {TIME_OPTIONS.find((t) => t.value === existingOverride.startHour)?.label || `${existingOverride.startHour}h`}
+                              {" — "}
+                              {TIME_OPTIONS.find((t) => t.value === existingOverride.endHour)?.label || `${existingOverride.endHour}h`}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="mb-3 text-xs text-[#6b7280]">
+                            Blocked{existingOverride.reason ? `: ${existingOverride.reason}` : ""}
+                          </p>
+                        )}
                         <button
                           onClick={() => toggleDateOverride(selectedDate)}
-                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600 transition-colors"
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-xs font-medium text-[#374151] hover:bg-gray-200 transition-colors"
                         >
-                          <Check className="h-3.5 w-3.5" />
-                          Unblock
+                          <X className="h-3.5 w-3.5" />
+                          Remove Override
                         </button>
                       </div>
                     ) : (
                       <div>
-                        <input
-                          type="text"
-                          value={overrideReason}
-                          onChange={(e) => setOverrideReason(e.target.value)}
-                          placeholder="Reason (optional)"
-                          className="mb-3 w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-sm focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
-                        />
-                        <button
-                          onClick={() => toggleDateOverride(selectedDate)}
-                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white hover:bg-red-600 transition-colors"
-                        >
-                          <Ban className="h-3.5 w-3.5" />
-                          Block Date
-                        </button>
+                        {/* Toggle: Set Hours vs Block */}
+                        <div className="flex mb-3 rounded-lg bg-gray-100 p-0.5">
+                          <button
+                            onClick={() => setOverrideMode("hours")}
+                            className={cn(
+                              "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                              overrideMode === "hours"
+                                ? "bg-white text-[#374151] shadow-sm"
+                                : "text-[#9ca3af] hover:text-[#6b7280]"
+                            )}
+                          >
+                            <Clock className="h-3 w-3 inline mr-1" />
+                            Set Hours
+                          </button>
+                          <button
+                            onClick={() => setOverrideMode("block")}
+                            className={cn(
+                              "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                              overrideMode === "block"
+                                ? "bg-white text-[#374151] shadow-sm"
+                                : "text-[#9ca3af] hover:text-[#6b7280]"
+                            )}
+                          >
+                            <Ban className="h-3 w-3 inline mr-1" />
+                            Block Day
+                          </button>
+                        </div>
+
+                        {overrideMode === "hours" ? (
+                          <div>
+                            <div className="flex items-center gap-2 mb-3">
+                              <select
+                                value={overrideStartHour}
+                                onChange={(e) => setOverrideStartHour(Number(e.target.value))}
+                                className="flex-1 rounded-lg border border-[#e5e7eb] px-2 py-2 text-xs focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                              >
+                                {TIME_OPTIONS.map((t) => (
+                                  <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
+                              </select>
+                              <span className="text-xs text-[#9ca3af]">—</span>
+                              <select
+                                value={overrideEndHour}
+                                onChange={(e) => setOverrideEndHour(Number(e.target.value))}
+                                className="flex-1 rounded-lg border border-[#e5e7eb] px-2 py-2 text-xs focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                              >
+                                {TIME_OPTIONS.filter((t) => t.value > overrideStartHour).map((t) => (
+                                  <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <button
+                              onClick={() => saveCustomHours(selectedDate)}
+                              disabled={overrideStartHour >= overrideEndHour}
+                              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-2 text-xs font-medium text-white hover:bg-[#0080c4] disabled:opacity-50 transition-colors"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              Apply Hours
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <input
+                              type="text"
+                              value={overrideReason}
+                              onChange={(e) => setOverrideReason(e.target.value)}
+                              placeholder="Reason (optional)"
+                              className="mb-3 w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-xs focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
+                            />
+                            <button
+                              onClick={() => toggleDateOverride(selectedDate)}
+                              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white hover:bg-red-600 transition-colors"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                              Block Date
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Active overrides list */}
                 {overrides.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-[#f3f4f6]">
-                    <p className="text-[11px] font-medium text-[#9ca3af] mb-2">Blocked dates</p>
+                    <p className="text-[11px] font-medium text-[#9ca3af] mb-2">Date overrides</p>
                     <div className="space-y-1.5">
-                      {overrides.filter((o) => !o.available).map((o) => (
-                        <div key={o.id} className="flex items-center justify-between rounded-md bg-red-50 px-3 py-1.5">
-                          <span className="text-xs text-red-600">
-                            {format(new Date(o.date), "MMM d")}
-                            {o.reason ? ` — ${o.reason}` : ""}
-                          </span>
+                      {overrides.map((o) => (
+                        <div key={o.id} className={cn(
+                          "flex items-center justify-between rounded-md px-3 py-1.5",
+                          o.available ? "bg-blue-50" : "bg-red-50"
+                        )}>
+                          <div>
+                            <span className={cn("text-xs font-medium", o.available ? "text-blue-700" : "text-red-600")}>
+                              {format(new Date(o.date), "MMM d")}
+                            </span>
+                            {o.available && o.startHour != null && o.endHour != null ? (
+                              <span className="text-xs text-blue-500 ml-1.5">
+                                {TIME_OPTIONS.find((t) => t.value === o.startHour)?.label || `${o.startHour}h`}
+                                {" – "}
+                                {TIME_OPTIONS.find((t) => t.value === o.endHour)?.label || `${o.endHour}h`}
+                              </span>
+                            ) : o.reason ? (
+                              <span className="text-xs text-red-500 ml-1.5">{o.reason}</span>
+                            ) : null}
+                          </div>
                           <button
                             onClick={async () => {
                               await fetch(`/api/availability/overrides?id=${o.id}`, { method: "DELETE" });
                               setOverrides((prev) => prev.filter((x) => x.id !== o.id));
                             }}
-                            className="rounded p-0.5 text-red-400 hover:text-red-600"
+                            className={cn("rounded p-0.5", o.available ? "text-blue-400 hover:text-blue-600" : "text-red-400 hover:text-red-600")}
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -1738,6 +1920,7 @@ export default function CalendarPage() {
                             : inWeek ? "text-[#374151]" : "text-[#6b7280] hover:bg-gray-50",
                           isSelected && "ring-1 ring-[#0090d9]",
                           override && !override.available && "text-red-400",
+                          override && override.available && "text-blue-600",
                         )}
                       >
                         {today && !isSelected && (
@@ -1747,7 +1930,10 @@ export default function CalendarPage() {
                         )}
                         <span className="relative z-10">{format(date, "d")}</span>
                         {override && (
-                          <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400" />
+                          <span className={cn(
+                            "absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full",
+                            override.available ? "bg-blue-500" : "bg-red-400"
+                          )} />
                         )}
                       </button>
                     );
@@ -1756,7 +1942,9 @@ export default function CalendarPage() {
               </div>
 
               {/* Date override panel */}
-              {selectedDate && isSameMonth(selectedDate, currentMonth) && (
+              {selectedDate && isSameMonth(selectedDate, currentMonth) && (() => {
+                const existingOverride = getOverride(selectedDate);
+                return (
                 <div className="border-t border-[#f3f4f6] pt-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-[#374151]">
@@ -1766,39 +1954,113 @@ export default function CalendarPage() {
                       <X className="h-3 w-3 text-[#9ca3af]" />
                     </button>
                   </div>
-                  {getOverride(selectedDate) ? (
+
+                  {existingOverride ? (
                     <div>
-                      <p className="mb-2 text-[11px] text-[#6b7280]">
-                        Blocked{getOverride(selectedDate)?.reason ? `: ${getOverride(selectedDate)!.reason}` : ""}
-                      </p>
+                      {existingOverride.available ? (
+                        <div className="mb-2 rounded-md bg-blue-50 px-2 py-1.5">
+                          <p className="text-[11px] font-medium text-blue-700">Custom hours</p>
+                          <p className="text-[11px] text-blue-600">
+                            {TIME_OPTIONS.find((t) => t.value === existingOverride.startHour)?.label || `${existingOverride.startHour}h`}
+                            {" — "}
+                            {TIME_OPTIONS.find((t) => t.value === existingOverride.endHour)?.label || `${existingOverride.endHour}h`}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="mb-2 text-[11px] text-[#6b7280]">
+                          Blocked{existingOverride.reason ? `: ${existingOverride.reason}` : ""}
+                        </p>
+                      )}
                       <button
                         onClick={() => toggleDateOverride(selectedDate)}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 transition-colors"
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-[#374151] hover:bg-gray-200 transition-colors"
                       >
-                        <Check className="h-3 w-3" />
-                        Unblock
+                        <X className="h-3 w-3" />
+                        Remove Override
                       </button>
                     </div>
                   ) : (
                     <div>
-                      <input
-                        type="text"
-                        value={overrideReason}
-                        onChange={(e) => setOverrideReason(e.target.value)}
-                        placeholder="Reason (optional)"
-                        className="mb-2 w-full rounded-lg border border-[#e5e7eb] px-3 py-1.5 text-xs focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/30"
-                      />
-                      <button
-                        onClick={() => toggleDateOverride(selectedDate)}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 transition-colors"
-                      >
-                        <Ban className="h-3 w-3" />
-                        Block Date
-                      </button>
+                      <div className="flex mb-2 rounded-md bg-gray-100 p-0.5">
+                        <button
+                          onClick={() => setOverrideMode("hours")}
+                          className={cn(
+                            "flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors",
+                            overrideMode === "hours"
+                              ? "bg-white text-[#374151] shadow-sm"
+                              : "text-[#9ca3af] hover:text-[#6b7280]"
+                          )}
+                        >
+                          Set Hours
+                        </button>
+                        <button
+                          onClick={() => setOverrideMode("block")}
+                          className={cn(
+                            "flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors",
+                            overrideMode === "block"
+                              ? "bg-white text-[#374151] shadow-sm"
+                              : "text-[#9ca3af] hover:text-[#6b7280]"
+                          )}
+                        >
+                          Block Day
+                        </button>
+                      </div>
+
+                      {overrideMode === "hours" ? (
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <select
+                              value={overrideStartHour}
+                              onChange={(e) => setOverrideStartHour(Number(e.target.value))}
+                              className="flex-1 rounded-md border border-[#e5e7eb] px-1.5 py-1.5 text-[11px] focus:border-[#0090d9] focus:outline-none"
+                            >
+                              {TIME_OPTIONS.map((t) => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                              ))}
+                            </select>
+                            <span className="text-[11px] text-[#9ca3af]">—</span>
+                            <select
+                              value={overrideEndHour}
+                              onChange={(e) => setOverrideEndHour(Number(e.target.value))}
+                              className="flex-1 rounded-md border border-[#e5e7eb] px-1.5 py-1.5 text-[11px] focus:border-[#0090d9] focus:outline-none"
+                            >
+                              {TIME_OPTIONS.filter((t) => t.value > overrideStartHour).map((t) => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <button
+                            onClick={() => saveCustomHours(selectedDate)}
+                            disabled={overrideStartHour >= overrideEndHour}
+                            className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0080c4] disabled:opacity-50 transition-colors"
+                          >
+                            <Check className="h-3 w-3" />
+                            Apply
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <input
+                            type="text"
+                            value={overrideReason}
+                            onChange={(e) => setOverrideReason(e.target.value)}
+                            placeholder="Reason (optional)"
+                            className="mb-2 w-full rounded-md border border-[#e5e7eb] px-2 py-1.5 text-[11px] focus:border-[#0090d9] focus:outline-none"
+                          />
+                          <button
+                            onClick={() => toggleDateOverride(selectedDate)}
+                            className="flex w-full items-center justify-center gap-1 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 transition-colors"
+                          >
+                            <Ban className="h-3 w-3" />
+                            Block
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
 
               {/* Schedule Summary */}
               <div className="border-t border-[#f3f4f6] pt-3">
@@ -1848,6 +2110,90 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
+      )}
+
+      {/* ADVANCED SETTINGS VIEW */}
+      {viewMode === "advanced" && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="rounded-lg border border-[#e5e7eb] bg-white">
+            <div className="border-b border-[#e5e7eb] px-6 py-5">
+              <p className="text-[11px] font-medium text-[#6b7280] uppercase tracking-wider mb-1">Advanced</p>
+              <h2 className="text-lg font-semibold text-[#1a2b3c]">Advanced settings</h2>
+              <p className="text-xs text-[#9ca3af] mt-1">Control availability across all your event types</p>
+            </div>
+
+            <div className="px-6 py-6 max-w-2xl">
+              {/* Holidays section */}
+              <h3 className="text-base font-semibold text-[#1a2b3c] mb-1">Holidays</h3>
+              <p className="text-xs text-[#9ca3af] mb-5">
+                CaresLink will automatically mark you as unavailable for the selected holidays
+              </p>
+
+              {/* Country selector */}
+              <div className="mb-5 rounded-lg border border-[#e5e7eb] px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#9ca3af]">Country for holidays</span>
+                    <span className="text-sm font-medium text-[#374151]">United States</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Holiday list */}
+              <div className="rounded-lg border border-[#e5e7eb] overflow-hidden">
+                {holidays.map((holiday, idx) => {
+                  const isEnabled = holidayToggles.has(holiday.name);
+                  const isLoading = holidayLoading.has(holiday.name);
+                  return (
+                    <div
+                      key={holiday.name}
+                      className={cn(
+                        "flex items-center justify-between px-4 py-3.5 transition-colors hover:bg-[#f9fafb]",
+                        idx !== 0 && "border-t border-[#f3f4f6]"
+                      )}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          "text-sm text-[#374151]",
+                          isEnabled && "font-medium"
+                        )}>
+                          {holiday.name}
+                        </p>
+                        <p className="text-xs text-[#9ca3af] mt-0.5">
+                          Next: {format(holiday.date, "MMM d, yyyy")}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => toggleHoliday(holiday)}
+                        disabled={isLoading}
+                        className={cn(
+                          "relative flex-shrink-0 w-10 h-[22px] rounded-full transition-colors ml-4",
+                          isEnabled ? "bg-[#0090d9]" : "bg-[#d1d5db]",
+                          isLoading && "opacity-50 cursor-wait"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform shadow-sm",
+                            isEnabled && "translate-x-[18px]"
+                          )}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Summary */}
+              <div className="mt-5 flex items-center justify-between">
+                <span className="text-xs text-[#9ca3af]">Holidays blocked</span>
+                <span className="text-sm font-semibold text-[#0090d9]">
+                  {holidayToggles.size} of {holidays.length}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

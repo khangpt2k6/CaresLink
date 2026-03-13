@@ -12,11 +12,11 @@ import {
   DollarSign,
   Mail,
   Bot,
-  Lightbulb,
   Clock,
   Briefcase,
   MapPin,
   ArrowRight,
+  Calendar,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -192,13 +192,13 @@ export default function DashboardPage() {
         {/* Quick Actions */}
         <div className="card p-5">
           <h2 className="text-sm font-semibold text-[#1a2b3c]">Quick Actions</h2>
-          <p className="mb-3 text-xs text-[#8a95a3]">Jump to common tasks</p>
+          <p className="mb-3 text-xs text-[#8a95a3]">Navigate your workspace</p>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { href: "/candidates", label: "Add Candidate", icon: Users },
-              { href: "/candidates", label: "Contact via AI", icon: Bot },
-              { href: "/interviews", label: "Book Interview", icon: CalendarCheck },
-              { href: "/insights", label: "View Insights", icon: Lightbulb },
+              { href: "/jobs", label: "Job Postings", desc: "Create and manage open roles", icon: Briefcase },
+              { href: "/candidates", label: "Candidate Pipeline", desc: "Track and review applicants", icon: Users },
+              { href: "/interviews", label: "Interview Schedule", desc: "View upcoming interviews", icon: CalendarCheck },
+              { href: "/calendar", label: "Calendar Overview", desc: "Edit your availability", icon: Calendar },
             ].map((action, i) => (
               <motion.div
                 key={action.label}
@@ -215,6 +215,7 @@ export default function DashboardPage() {
                     <action.icon className="h-4.5 w-4.5 text-[#0090d9]" style={{ width: 18, height: 18 }} />
                   </div>
                   <p className="text-xs font-medium text-[#1a2b3c]">{action.label}</p>
+                  <p className="text-[10px] text-[#8a95a3] leading-tight">{action.desc}</p>
                 </Link>
               </motion.div>
             ))}

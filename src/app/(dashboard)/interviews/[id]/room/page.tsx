@@ -103,11 +103,38 @@ export default function InterviewRoomPage() {
   const notesTimerRef = useRef<NodeJS.Timeout | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-  // Load interview details
+  // Load interview details + existing data from DB
   useEffect(() => {
     fetch(`/api/interviews/${interviewId}`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => d && setInterview(d));
+
+    // Load existing transcripts
+    fetch(`/api/interviews/${interviewId}/transcript`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) setTranscripts(data);
+      })
+      .catch(console.error);
+
+    // Load existing notes
+    fetch(`/api/interviews/${interviewId}/notes`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) setNotes(data);
+      })
+      .catch(console.error);
+
+    // Load existing summary
+    fetch(`/api/interviews/${interviewId}/summary`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.summary) {
+          setSummary(data.summary);
+          setEnded(true);
+        }
+      })
+      .catch(console.error);
   }, [interviewId]);
 
   // Auto-scroll transcript

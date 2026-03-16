@@ -177,7 +177,7 @@ async function main() {
     where: {
       interviews: { none: { transcripts: { some: {} } } },
     },
-    take: 5,
+    take: 1,
   });
 
   if (candidates.length === 0) {

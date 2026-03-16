@@ -356,7 +356,7 @@ export default function DashboardPage() {
               <p className="mt-0.5 text-xs text-[#b0bec8]">The agent runs every weekday at 9 AM automatically</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {agentRuns.map((run, i) => {
                 const isError = run.report.startsWith("ERROR:");
                 const date = new Date(run.createdAt);
@@ -371,26 +371,124 @@ export default function DashboardPage() {
                   (new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000
                 );
 
+                // Parse the report into structured sections
+                const parseReport = (report: string) => {
+                  const headlineMatch = report.match(/^(.*?)(?:\*\*Task Completion Summary:\*\*|$)/s);
+                  const headline = headlineMatch?.[1]?.replace(/\*\*/g, "").trim() || "";
+
+                  const tasks: { name: string; detail: string; success: boolean }[] = [];
+                  const taskRegex = /\*\*TASK\s*\d+\s*[-–]\s*(.*?):\*\*\s*(.*?)(?=\*\*TASK|\*\*Total|$)/gs;
+                  let match;
+                  while ((match = taskRegex.exec(report)) !== null) {
+                    tasks.push({
+                      name: match[1].trim(),
+                      detail: match[2].replace(/\*\*/g, "").trim(),
+                      success: !match[2].toLowerCase().includes("error") && !match[2].toLowerCase().includes("fail"),
+                    });
+                  }
+
+                  const totalsMatch = report.match(/\*\*Total Actions Completed:\*\*(.*?)$/s);
+                  const totalsRaw = totalsMatch?.[1]?.replace(/\*\*/g, "").trim() || "";
+                  const totals: { label: string; value: string }[] = [];
+                  const totalParts = totalsRaw.split(/\s*[-–]\s*/);
+                  for (const part of totalParts) {
+                    const kv = part.match(/(.*?):\s*(.*)/);
+                    if (kv) totals.push({ label: kv[1].trim(), value: kv[2].trim() });
+                  }
+
+                  return { headline, tasks, totals };
+                };
+
+                const { headline, tasks, totals } = parseReport(run.report);
+
                 return (
                   <motion.div
                     key={run.id}
                     initial={{ opacity: 0, x: -6 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.25 + i * 0.05, duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-                    className={`rounded-lg border px-3.5 py-2.5 ${
-                      isError
-                        ? "border-red-100 bg-red-50"
-                        : "border-[#e8f4fd] bg-[#f5faff]"
+                    className={`overflow-hidden rounded-xl border ${
+                      isError ? "border-red-200 bg-red-50" : "border-[#e2e8f0] bg-white"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className={`text-xs leading-relaxed ${isError ? "text-red-600" : "text-[#1a2b3c]"}`}>
-                        {run.report}
-                      </p>
-                      <div className="flex shrink-0 flex-col items-end gap-0.5">
-                        <span className="text-[10px] text-[#8a95a3]">{timeAgo}</span>
-                        <span className="text-[10px] text-[#b0bec8]">{durationSec}s</span>
+                    {/* Header */}
+                    <div className={`flex items-center justify-between px-4 py-2.5 ${
+                      isError ? "bg-red-100" : "bg-[#f5faff]"
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <div className={`flex h-5 w-5 items-center justify-center rounded-full ${
+                          isError ? "bg-red-200" : "bg-[#0090d9]/10"
+                        }`}>
+                          <Bot className={`h-3 w-3 ${isError ? "text-red-500" : "text-[#0090d9]"}`} />
+                        </div>
+                        <span className="text-xs font-medium text-[#1a2b3c]">Agent Run</span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                          run.trigger === "cron"
+                            ? "bg-violet-100 text-violet-600"
+                            : "bg-[#e8f4fd] text-[#0090d9]"
+                        }`}>
+                          {run.trigger === "cron" ? "Scheduled" : "Manual"}
+                        </span>
                       </div>
+                      <div className="flex items-center gap-2.5 text-[10px] text-[#8a95a3]">
+                        <span>{durationSec}s</span>
+                        <span>{timeAgo}</span>
+                      </div>
+                    </div>
+
+                    <div className="px-4 py-3 space-y-3">
+                      {/* Headline */}
+                      {headline && (
+                        <p className={`text-xs font-medium ${isError ? "text-red-600" : "text-[#1a2b3c]"}`}>
+                          {headline}
+                        </p>
+                      )}
+
+                      {/* Tasks */}
+                      {tasks.length > 0 && (
+                        <div className="space-y-1.5">
+                          {tasks.map((task, ti) => (
+                            <div key={ti} className="flex items-start gap-2 rounded-lg bg-[#f8fafc] px-3 py-2">
+                              <div className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ${
+                                task.success ? "bg-emerald-100" : "bg-red-100"
+                              }`}>
+                                {task.success ? (
+                                  <svg className="h-2.5 w-2.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <svg className="h-2.5 w-2.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-medium text-[#1a2b3c]">{task.name}</span>
+                                <p className="text-[11px] text-[#5a6b7c] leading-relaxed">{task.detail}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Totals */}
+                      {totals.length > 0 && (
+                        <div className="flex flex-wrap gap-2 border-t border-[#e2e8f0] pt-2.5">
+                          {totals.map((t, ti) => (
+                            <div key={ti} className="flex items-center gap-1.5 rounded-full bg-[#f0f4f8] px-2.5 py-1">
+                              <span className="text-[10px] text-[#8a95a3]">{t.label}</span>
+                              <span className="text-[10px] font-semibold text-[#1a2b3c]">{t.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Fallback: show raw text if nothing was parsed */}
+                      {!headline && tasks.length === 0 && totals.length === 0 && (
+                        <p className={`text-xs leading-relaxed ${isError ? "text-red-600" : "text-[#5a6b7c]"}`}>
+                          {run.report}
+                        </p>
+                      )}
                     </div>
                   </motion.div>
                 );

@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Ban,
   MessageSquare,
+  Bot,
 } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -124,6 +125,14 @@ export function InterviewCard({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {showRecruiterActions && (
+            <Link
+              href={`/interviews/${interview.id}/room`}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-violet-600 transition-colors"
+            >
+              <Bot className="h-3 w-3" /> AI Room
+            </Link>
+          )}
           {interview.meetLink && (
             <a href={interview.meetLink} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#0077b6] transition-colors">

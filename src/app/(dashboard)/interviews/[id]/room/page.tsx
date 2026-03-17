@@ -162,6 +162,9 @@ export default function InterviewRoomPage() {
   const [ended, setEnded] = useState(false);
   const [activeTab, setActiveTab] = useState<"notes" | "summary">("notes");
 
+  const [newSegmentIds, setNewSegmentIds] = useState<Set<string>>(new Set());
+  const [streamRef, setStreamRef] = useState<MediaStream | null>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
@@ -169,6 +172,8 @@ export default function InterviewRoomPage() {
   const segmentTimerRef = useRef<NodeJS.Timeout | null>(null);
   const notesTimerRef = useRef<NodeJS.Timeout | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isAutoScrollRef = useRef(true);
 
   /* ─── Data loading ─── */
   useEffect(() => {

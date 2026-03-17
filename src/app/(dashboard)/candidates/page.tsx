@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { CandidateTable, type FitStatus } from "@/components/candidate-table";
-import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X } from "lucide-react";
+import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X, CheckCircle2, Calendar, Hash, Info } from "lucide-react";
 
 interface Candidate {
   id: string;
@@ -12,6 +12,74 @@ interface Candidate {
   position: string;
   status: string;
   fitStatus?: FitStatus;
+}
+
+/* ─── Parse AI markdown response into structured display ─── */
+function AiResponseBody({ text }: { text: string }) {
+  // Extract **Key:** Value pairs
+  const fieldPattern = /\*\*(.+?)\*\*\s*:?\s*/g;
+  const fields: { key: string; value: string }[] = [];
+  let remaining = text;
+
+  // Split by **Key:** pattern
+  const parts = text.split(/\*\*(.+?)\*\*\s*:?\s*/);
+  // parts: [preamble, key1, val1, key2, val2, ...]
+
+  let preamble = "";
+  if (parts.length >= 3) {
+    preamble = parts[0].replace(/^[^a-zA-Z]*/, "").trim();
+    for (let i = 1; i < parts.length - 1; i += 2) {
+      const key = parts[i].replace(/:$/, "").trim();
+      const rawVal = (parts[i + 1] || "").replace(/^\s*-\s*/, "").replace(/\s*-\s*$/, "").trim();
+      if (key && rawVal) fields.push({ key, value: rawVal });
+    }
+  }
+
+  const FIELD_ICONS: Record<string, React.ReactNode> = {
+    "Interview Scheduled": <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />,
+    "Date": <Calendar className="h-3.5 w-3.5 text-[#0090d9]" />,
+    "Interview ID": <Hash className="h-3.5 w-3.5 text-[#8a95a3]" />,
+    "Status": <Info className="h-3.5 w-3.5 text-[#0090d9]" />,
+  };
+
+  if (fields.length === 0) {
+    // Fallback: render with basic **bold** parsing
+    const rendered = text.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-[#1a2b3c]">$1</strong>');
+    return <p className="text-sm leading-relaxed text-[#5a6b7c]" dangerouslySetInnerHTML={{ __html: rendered }} />;
+  }
+
+  // Find the trailing sentence (after last field)
+  const lastFieldVal = fields[fields.length - 1].value;
+  const sentenceSplit = lastFieldVal.match(/^(.*?)([A-Z][^**]*$)/);
+  let closingMessage = "";
+  if (sentenceSplit && sentenceSplit[2] && sentenceSplit[2].length > 30) {
+    fields[fields.length - 1].value = sentenceSplit[1].replace(/\s*-?\s*$/, "").trim();
+    closingMessage = sentenceSplit[2].trim();
+  }
+
+  return (
+    <div className="space-y-3">
+      {preamble && (
+        <p className="text-sm font-medium text-emerald-600">{preamble}</p>
+      )}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {fields.map((f, i) => (
+          <div key={i} className="flex items-start gap-2.5 rounded-lg bg-[#f5f7fa] px-3 py-2.5">
+            <div className="mt-0.5">{FIELD_ICONS[f.key] || <Info className="h-3.5 w-3.5 text-[#8a95a3]" />}</div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">{f.key}</p>
+              <p className="mt-0.5 text-xs font-medium text-[#1a2b3c] break-all">{f.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      {closingMessage && (
+        <p className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 text-xs leading-relaxed text-[#5a6b7c]">
+          {closingMessage}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function CandidatesPage() {
@@ -210,26 +278,52 @@ export default function CandidatesPage() {
 
       {/* AI Response + Cancel during loading */}
       {(aiPrompt || aiLoading || bookingLinkLoading) && (
-        <div className="card animate-in mb-4 border-l-4 border-l-[#0090d9] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="rounded-lg bg-[#e8f4fd] p-1.5">
-                <Bot className="h-4 w-4 text-[#0090d9]" />
+        <div className="card animate-in mb-4 overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-[#e2e8f0] bg-gradient-to-r from-[#e8f4fd] to-white px-4 py-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0090d9] shadow-sm">
+                <Bot className="h-3.5 w-3.5 text-white" />
               </div>
-              <div>
-                <p className="text-xs font-semibold text-[#1a2b3c]">AI Agent</p>
-                <p className="mt-1 text-sm leading-relaxed text-[#5a6b7c]">
-                  {bookingLinkLoading ? "Sending booking link..." : aiLoading ? "Auto-booking..." : aiPrompt}
-                </p>
-              </div>
+              <span className="text-xs font-semibold text-[#1a2b3c]">AI Agent</span>
+              {(aiLoading || bookingLinkLoading) && (
+                <span className="flex items-center gap-1.5 rounded-full bg-[#0090d9]/10 px-2 py-0.5 text-[10px] font-medium text-[#0090d9]">
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  Processing
+                </span>
+              )}
+              {!aiLoading && !bookingLinkLoading && aiPrompt && (
+                <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
+                  <CheckCircle2 className="h-2.5 w-2.5" />
+                  Complete
+                </span>
+              )}
             </div>
             {(aiLoading || bookingLinkLoading) && (
               <button
                 onClick={handleCancelAi}
-                className="shrink-0 rounded-lg border border-[#e2e8f0] px-3 py-1.5 text-xs font-medium text-[#5a6b7c] hover:bg-[#fef2f2] hover:text-[#dc2626] hover:border-[#fecaca]"
+                className="rounded-lg border border-[#e2e8f0] px-2.5 py-1 text-[11px] font-medium text-[#5a6b7c] hover:bg-[#fef2f2] hover:text-[#dc2626] hover:border-[#fecaca] transition-colors"
               >
                 Cancel
               </button>
+            )}
+          </div>
+
+          {/* Body */}
+          <div className="px-4 py-3.5">
+            {bookingLinkLoading ? (
+              <p className="text-sm text-[#5a6b7c]">Sending booking link to candidate...</p>
+            ) : aiLoading ? (
+              <div className="flex items-center gap-2 text-sm text-[#5a6b7c]">
+                <span>Finding a mutual time and scheduling the interview automatically</span>
+                <span className="flex gap-0.5">
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} className="inline-block h-1 w-1 animate-bounce rounded-full bg-[#0090d9]" style={{ animationDelay: `${i * 150}ms` }} />
+                  ))}
+                </span>
+              </div>
+            ) : (
+              <AiResponseBody text={aiPrompt} />
             )}
           </div>
         </div>

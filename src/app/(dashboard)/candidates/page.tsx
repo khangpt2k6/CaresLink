@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { CandidateTable, type FitStatus } from "@/components/candidate-table";
-import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X, CheckCircle2, Calendar, Hash, Info } from "lucide-react";
+import { CandidateTable, type FitStatus, type MatchScore } from "@/components/candidate-table";
+import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X, CheckCircle2, Calendar, Hash, Info, Sparkles, BriefcaseBusiness, ChevronDown } from "lucide-react";
 
 interface Candidate {
   id: string;
@@ -95,6 +95,16 @@ export default function CandidatesPage() {
   const [contactModal, setContactModal] = useState<{ candidate: Candidate } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Job matching state
+  interface Job { id: string; title: string; department: string | null; status: string; candidateCount: number }
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [matchScores, setMatchScores] = useState<Record<string, MatchScore>>({});
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [matchJobTitle, setMatchJobTitle] = useState<string>("");
+  const [jobDropdownOpen, setJobDropdownOpen] = useState(false);
+  const jobDropdownRef = useRef<HTMLDivElement>(null);
+
   const fetchCandidates = () => {
     setLoading(true);
     fetch("/api/candidates")
@@ -105,6 +115,62 @@ export default function CandidatesPage() {
   };
 
   useEffect(() => { fetchCandidates(); }, []);
+
+  // Fetch jobs for matching dropdown
+  useEffect(() => {
+    fetch("/api/jobs?status=open").then((r) => r.ok ? r.json() : []).then(setJobs).catch(console.error);
+  }, []);
+
+  // Close job dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (jobDropdownRef.current && !jobDropdownRef.current.contains(e.target as Node)) setJobDropdownOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const handleRunMatching = async (jobId: string) => {
+    setSelectedJobId(jobId);
+    setJobDropdownOpen(false);
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) return;
+    setMatchJobTitle(job.title);
+    setMatchLoading(true);
+    setMatchScores({});
+    try {
+      const res = await fetch("/api/jobs/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      });
+      const data = await res.json();
+      if (data.matches) {
+        const scores: Record<string, MatchScore> = {};
+        for (const m of data.matches) {
+          scores[m.candidateId] = { score: m.score, label: m.label, reason: m.reason };
+        }
+        setMatchScores(scores);
+      } else {
+        alert(data.error || "Matching failed");
+      }
+    } catch {
+      alert("Failed to run AI matching");
+    } finally {
+      setMatchLoading(false);
+    }
+  };
+
+  const handleClearMatching = () => {
+    setSelectedJobId("");
+    setMatchScores({});
+    setMatchJobTitle("");
+  };
+
+  // Sort candidates by match score when matching is active
+  const sortedCandidates = Object.keys(matchScores).length > 0
+    ? [...candidates].sort((a, b) => (matchScores[b.id]?.score ?? -1) - (matchScores[a.id]?.score ?? -1))
+    : candidates;
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -329,6 +395,91 @@ export default function CandidatesPage() {
         </div>
       )}
 
+      {/* AI Job Matching Bar */}
+      {jobs.length > 0 && (
+        <div className="card mb-4 p-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#0090d9] to-[#6366f1] shadow-sm">
+                <Sparkles className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#1a2b3c]">AI Job Matching</p>
+                <p className="text-[10px] text-[#8a95a3]">Select a job to rank candidates by fit</p>
+              </div>
+            </div>
+
+            <div ref={jobDropdownRef} className="relative ml-auto">
+              <button
+                type="button"
+                onClick={() => setJobDropdownOpen((o) => !o)}
+                disabled={matchLoading}
+                className="flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-white px-4 py-2 text-sm font-medium text-[#334155] transition-all hover:border-[#0090d9] hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20 disabled:opacity-50"
+              >
+                <BriefcaseBusiness className="h-4 w-4 text-[#0090d9]" />
+                <span>{selectedJobId ? jobs.find((j) => j.id === selectedJobId)?.title || "Select job" : "Select a job posting"}</span>
+                <ChevronDown className={`h-4 w-4 text-[#94a3b8] transition-transform ${jobDropdownOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {jobDropdownOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-lg border border-[#e2e8f0] bg-white shadow-lg shadow-black/8 animate-in fade-in slide-in-from-top-1">
+                  {jobs.map((job) => (
+                    <button
+                      key={job.id}
+                      type="button"
+                      onClick={() => handleRunMatching(job.id)}
+                      className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[#f8fafc] ${selectedJobId === job.id ? "bg-[#f0f7ff]" : ""}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-[#1a2b3c]">{job.title}</div>
+                        <div className="text-[11px] text-[#8a95a3]">{job.department || "No department"} &middot; {job.candidateCount} candidates</div>
+                      </div>
+                      {selectedJobId === job.id && <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-[#0090d9]" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {selectedJobId && !matchLoading && (
+              <button
+                onClick={handleClearMatching}
+                className="rounded-lg border border-[#e2e8f0] px-3 py-2 text-xs font-medium text-[#64748b] hover:bg-[#f8fafc] transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Match loading / results summary */}
+          {matchLoading && (
+            <div className="mt-3 flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#f0f7ff] to-[#faf5ff] px-4 py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-[#0090d9]" />
+              <span className="text-sm text-[#475569]">AI is analyzing {candidates.length} candidates against <strong>{matchJobTitle}</strong></span>
+              <span className="flex gap-0.5 ml-1">
+                {[0, 1, 2].map((i) => (
+                  <span key={i} className="inline-block h-1 w-1 animate-bounce rounded-full bg-[#6366f1]" style={{ animationDelay: `${i * 150}ms` }} />
+                ))}
+              </span>
+            </div>
+          )}
+
+          {!matchLoading && Object.keys(matchScores).length > 0 && (
+            <div className="mt-3 flex items-center gap-4 rounded-lg bg-gradient-to-r from-[#f0fdf4] to-[#f0f7ff] px-4 py-3">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <span className="text-sm text-[#475569]">
+                Ranked <strong>{Object.keys(matchScores).length}</strong> candidates for <strong>{matchJobTitle}</strong>
+              </span>
+              <div className="ml-auto flex items-center gap-3 text-xs text-[#8a95a3]">
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {Object.values(matchScores).filter((m) => m.score >= 75).length} strong</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {Object.values(matchScores).filter((m) => m.score >= 50 && m.score < 75).length} partial</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> {Object.values(matchScores).filter((m) => m.score < 50).length} weak</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -336,7 +487,7 @@ export default function CandidatesPage() {
         </div>
       ) : (
         <CandidateTable
-          candidates={candidates}
+          candidates={sortedCandidates}
           onContactAiClick={(c) => setContactModal({ candidate: c })}
           onFitStatusChange={handleFitStatusChange}
           onSendTemplate={handleSendTemplate}
@@ -346,6 +497,7 @@ export default function CandidatesPage() {
           bookingLinkLoading={bookingLinkLoading}
           deleteLoading={deleteLoading}
           templateLoading={templateLoading}
+          matchScores={Object.keys(matchScores).length > 0 ? matchScores : undefined}
         />
       )}
     </div>

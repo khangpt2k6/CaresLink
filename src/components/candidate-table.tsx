@@ -7,6 +7,12 @@ import { Bot, Loader2, Pencil, Trash2, Check, X, Send, Eye, ChevronDown } from "
 
 export type FitStatus = "not_a_fit" | "good_fit" | "waitlist" | null;
 
+export interface MatchScore {
+  score: number;
+  label: string;
+  reason: string;
+}
+
 interface Candidate {
   id: string;
   name: string;
@@ -118,6 +124,36 @@ function FitDropdown({
   );
 }
 
+function MatchScoreBadge({ match }: { match: MatchScore }) {
+  const getColor = (score: number) => {
+    if (score >= 90) return { bg: "bg-emerald-50", text: "text-emerald-700", ring: "ring-emerald-200", bar: "bg-emerald-500" };
+    if (score >= 75) return { bg: "bg-blue-50", text: "text-blue-700", ring: "ring-blue-200", bar: "bg-blue-500" };
+    if (score >= 50) return { bg: "bg-amber-50", text: "text-amber-700", ring: "ring-amber-200", bar: "bg-amber-500" };
+    if (score >= 25) return { bg: "bg-orange-50", text: "text-orange-700", ring: "ring-orange-200", bar: "bg-orange-400" };
+    return { bg: "bg-red-50", text: "text-red-700", ring: "ring-red-200", bar: "bg-red-400" };
+  };
+  const color = getColor(match.score);
+
+  return (
+    <div className="group/match relative">
+      <div className={cn("flex items-center gap-2 rounded-lg px-2.5 py-1.5 ring-1", color.bg, color.ring)}>
+        <div className="flex flex-col items-center gap-0.5">
+          <span className={cn("text-sm font-bold leading-none", color.text)}>{match.score}%</span>
+          <div className="h-1 w-10 rounded-full bg-black/5">
+            <div className={cn("h-full rounded-full transition-all", color.bar)} style={{ width: `${match.score}%` }} />
+          </div>
+        </div>
+        <span className={cn("text-[10px] font-medium leading-tight", color.text)}>{match.label}</span>
+      </div>
+      {/* Tooltip */}
+      <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-56 -translate-x-1/2 rounded-lg border border-[#e2e8f0] bg-white p-2.5 text-xs text-[#475569] opacity-0 shadow-lg transition-opacity group-hover/match:opacity-100">
+        <p className="leading-relaxed">{match.reason}</p>
+        <div className={cn("absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-[#e2e8f0] bg-white")} />
+      </div>
+    </div>
+  );
+}
+
 const AVATAR_BG = "bg-[#0090d9]";
 
 export function CandidateTable({
@@ -133,6 +169,7 @@ export function CandidateTable({
   deleteLoading,
   templateLoading,
   onCancelAi,
+  matchScores,
 }: {
   candidates: Candidate[];
   onContactAi?: (candidate: Candidate) => void;
@@ -146,6 +183,7 @@ export function CandidateTable({
   deleteLoading?: string | null;
   templateLoading?: string | null;
   onCancelAi?: () => void;
+  matchScores?: Record<string, MatchScore>;
 }) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -175,6 +213,7 @@ export function CandidateTable({
           <tr className="border-b border-[#e2e8f0]">
             <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Candidate</th>
             <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Position</th>
+            {matchScores && <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Match</th>}
             <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Fit</th>
             <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Send</th>
             <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Profile</th>
@@ -219,6 +258,15 @@ export function CandidateTable({
                     <span className="text-sm text-[#334155]">{c.position}</span>
                   )}
                 </td>
+                {matchScores && (
+                  <td className="px-5 py-3 align-middle">
+                    {matchScores[c.id] ? (
+                      <MatchScoreBadge match={matchScores[c.id]} />
+                    ) : (
+                      <span className="text-xs text-[#94a3b8]">—</span>
+                    )}
+                  </td>
+                )}
                 <td className="px-5 py-3 align-middle">
                   {onFitStatusChange ? (
                     <FitDropdown

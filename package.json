@@ -13,6 +13,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "seed:jobs": "tsx scripts/seed-jobs.ts",
     "seed:candidates": "tsx scripts/seed-candidates.ts",
+    "seed:profiles": "tsx scripts/seed-candidate-profiles.ts",
     "update:healthcare": "tsx scripts/update-candidates-to-healthcare.ts",
     "db:studio": "prisma studio",
     "resend": "tsx scripts/manage-resend.ts",

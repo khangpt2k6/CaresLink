@@ -183,7 +183,23 @@ export default function InterviewRoomPage() {
     fetch(`/api/interviews/${interviewId}/summary`).then((r) => r.ok ? r.json() : null).then((d) => { if (d?.summary) { setSummary(d.summary); setEnded(true); } }).catch(console.error);
   }, [interviewId]);
 
-  useEffect(() => { transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [transcripts]);
+  /* Smart auto-scroll: sticks to bottom unless user scrolled up */
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      isAutoScrollRef.current = scrollHeight - scrollTop - clientHeight < 80;
+    };
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isAutoScrollRef.current) {
+      transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [transcripts]);
 
   const fmt = (ms: number) => {
     const m = Math.floor(ms / 60000);
@@ -203,7 +219,10 @@ export default function InterviewRoomPage() {
     try {
       const res = await fetch(`/api/interviews/${interviewId}/deepgram-token`, { method: "POST", body: form });
       const data = await res.json();
-      if (data.transcript) setTranscripts((p) => [...p, data.transcript]);
+      if (data.transcript) {
+        setTranscripts((p) => [...p, data.transcript]);
+        setNewSegmentIds((prev) => new Set(prev).add(data.transcript.id));
+      }
     } catch (err) { console.error(err); }
   }, [interviewId, speaker]);
 
@@ -220,6 +239,7 @@ export default function InterviewRoomPage() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setStreamRef(stream);
       const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
@@ -238,6 +258,7 @@ export default function InterviewRoomPage() {
     mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
     [timerRef, segmentTimerRef, notesTimerRef].forEach((r) => { if (r.current) clearInterval(r.current); });
     setIsRecording(false);
+    setStreamRef(null);
     setTimeout(sendAudioChunk, 500);
   }, [sendAudioChunk]);
 
@@ -283,8 +304,12 @@ export default function InterviewRoomPage() {
 
         <div className="flex items-center gap-2.5">
           {isRecording && (
-            <div className="flex items-center gap-2 rounded-full border border-[#e2e8f0] bg-[#f5f7fa] px-3 py-1.5">
-              <div className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+            <div className="flex items-center gap-3 rounded-full border border-[#e2e8f0] bg-[#f5f7fa] px-3 py-1.5">
+              <div className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              </div>
+              <LiveWaveform stream={streamRef} />
               <span className="text-xs font-semibold tabular-nums text-[#1a2b3c]">{fmt(elapsedMs)}</span>
             </div>
           )}
@@ -328,43 +353,126 @@ export default function InterviewRoomPage() {
               <span className="text-[10px] text-[#8a95a3]">{transcripts.length} segments</span>
             )}
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scroll-smooth">
             {transcripts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#e8f4fd]">
-                  <Mic className="h-5 w-5 text-[#0090d9]" />
-                </div>
-                <p className="mt-3 text-sm font-medium text-[#1a2b3c]">
-                  {isRecording ? "Listening..." : "Ready to record"}
-                </p>
-                <p className="mt-1 text-xs text-[#8a95a3]">Segments appear every 15s</p>
+                {isRecording ? (
+                  <>
+                    <div className="relative flex h-14 w-14 items-center justify-center">
+                      <span className="absolute h-14 w-14 animate-ping rounded-full bg-[#0090d9]/10" />
+                      <span className="absolute h-10 w-10 animate-pulse rounded-full bg-[#0090d9]/15" />
+                      <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-[#e8f4fd]">
+                        <Mic className="h-5 w-5 text-[#0090d9]" />
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm font-medium text-[#1a2b3c]">Listening...</p>
+                    <div className="mt-2 flex items-center gap-1">
+                      {[0, 1, 2].map((i) => (
+                        <motion.div
+                          key={i}
+                          animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }}
+                          transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                          className="h-1 w-1 rounded-full bg-[#0090d9]"
+                        />
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-xs text-[#8a95a3]">Transcript appears in real-time</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#e8f4fd]">
+                      <Mic className="h-5 w-5 text-[#0090d9]" />
+                    </div>
+                    <p className="mt-3 text-sm font-medium text-[#1a2b3c]">Ready to record</p>
+                    <p className="mt-1 text-xs text-[#8a95a3]">Click &quot;Start Recording&quot; to begin</p>
+                  </>
+                )}
               </div>
             ) : (
-              <div className="divide-y divide-[#f0f4f8]">
-                {transcripts.map((t, idx) => (
+              <div>
+                {transcripts.map((t, idx) => {
+                  const isNew = newSegmentIds.has(t.id);
+                  const isLatest = idx === transcripts.length - 1;
+                  return (
+                    <motion.div
+                      key={t.id}
+                      initial={isNew ? { opacity: 0, y: 12, scale: 0.98 } : false}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                      className={`flex gap-3 border-b border-[#f0f4f8] px-5 py-3.5 transition-colors ${
+                        isLatest && isRecording ? "bg-[#fafcff]" : "hover:bg-[#fafbfc]"
+                      }`}
+                    >
+                      {/* Speaker avatar */}
+                      <div className="relative mt-0.5">
+                        <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white ${
+                          t.speaker === "interviewer" ? "bg-[#0090d9]" : "bg-[#5a6b7c]"
+                        }`}>
+                          {t.speaker === "interviewer" ? "I" : "C"}
+                        </div>
+                        {isLatest && isRecording && (
+                          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#0090d9]">
+                            <span className="absolute inset-0 animate-ping rounded-full bg-[#0090d9]/60" />
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="text-[11px] font-semibold capitalize text-[#1a2b3c]">{t.speaker}</span>
+                          <span className="flex items-center gap-0.5 text-[10px] text-[#b0bec8]">
+                            <Clock className="h-2.5 w-2.5" />{fmt(t.timestampMs)}
+                          </span>
+                          {isLatest && isNew && (
+                            <motion.span
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              className="rounded-full bg-[#e8f4fd] px-1.5 py-0.5 text-[9px] font-medium text-[#0090d9]"
+                            >
+                              LIVE
+                            </motion.span>
+                          )}
+                        </div>
+                        <p className="text-[13px] leading-relaxed text-[#3a4b5c]">
+                          {isNew && isLatest ? (
+                            <TypewriterText
+                              text={t.content}
+                              speed={15}
+                              onDone={() => setNewSegmentIds((prev) => {
+                                const next = new Set(prev);
+                                next.delete(t.id);
+                                return next;
+                              })}
+                            />
+                          ) : (
+                            t.content
+                          )}
+                        </p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+
+                {/* Listening indicator at bottom while recording */}
+                {isRecording && (
                   <motion.div
-                    key={t.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ duration: 0.25, delay: idx > transcripts.length - 3 ? 0.08 : 0 }}
-                    className="flex gap-3 px-5 py-3 hover:bg-[#fafbfc] transition-colors"
+                    className="flex items-center gap-2 px-5 py-3 text-[#8a95a3]"
                   >
-                    <div className={`mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-[10px] font-bold text-white ${
-                      t.speaker === "interviewer" ? "bg-[#0090d9]" : "bg-[#5a6b7c]"
-                    }`}>
-                      {t.speaker === "interviewer" ? "I" : "C"}
+                    <div className="flex gap-0.5">
+                      {[0, 1, 2, 3].map((i) => (
+                        <motion.div
+                          key={i}
+                          animate={{ scaleY: [0.4, 1, 0.4] }}
+                          transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.1 }}
+                          className="h-3 w-[2px] origin-center rounded-full bg-[#0090d9]/40"
+                        />
+                      ))}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-0.5 flex items-center gap-2">
-                        <span className="text-[11px] font-semibold capitalize text-[#1a2b3c]">{t.speaker}</span>
-                        <span className="flex items-center gap-0.5 text-[10px] text-[#b0bec8]">
-                          <Clock className="h-2.5 w-2.5" />{fmt(t.timestampMs)}
-                        </span>
-                      </div>
-                      <p className="text-[13px] leading-relaxed text-[#3a4b5c]">{t.content}</p>
-                    </div>
+                    <span className="text-[11px]">Listening for next segment...</span>
                   </motion.div>
-                ))}
+                )}
                 <div ref={transcriptEndRef} />
               </div>
             )}

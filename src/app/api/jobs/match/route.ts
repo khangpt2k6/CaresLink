@@ -53,14 +53,14 @@ export async function POST(request: NextRequest) {
           where: { candidateId: c.id },
           include: {
             screening: true,
-            summaries: { take: 1, orderBy: { createdAt: "desc" } },
+            summary: true,
           },
           orderBy: { scheduledAt: "desc" },
         });
 
         const profile = user?.profile;
         const screening = interview?.screening;
-        const interviewSummary = interview?.summaries?.[0];
+        const interviewSummary = interview?.summary;
 
         return {
           id: c.id,
@@ -107,10 +107,10 @@ export async function POST(request: NextRequest) {
                 strengths: interviewSummary.strengths,
                 concerns: interviewSummary.concerns,
                 ratings: {
-                  technical: interviewSummary.ratingTechnical,
-                  communication: interviewSummary.ratingCommunication,
-                  cultureFit: interviewSummary.ratingCultureFit,
-                  overall: interviewSummary.ratingOverall,
+                  technical: interviewSummary.technicalRating,
+                  communication: interviewSummary.communicationRating,
+                  cultureFit: interviewSummary.cultureFitRating,
+                  overall: interviewSummary.overallRating,
                 },
                 recommendation: interviewSummary.recommendation,
               }

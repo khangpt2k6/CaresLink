@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
         const user = await prisma.user.findFirst({
           where: { email: { equals: c.email, mode: "insensitive" } },
           include: {
-            candidateProfile: {
+            profile: {
               include: {
                 experiences: { orderBy: { startDate: "desc" } },
                 educations: { orderBy: { startDate: "desc" } },
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
           orderBy: { scheduledAt: "desc" },
         });
 
-        const profile = user?.candidateProfile;
+        const profile = user?.profile;
         const screening = interview?.screening;
         const interviewSummary = interview?.summaries?.[0];
 

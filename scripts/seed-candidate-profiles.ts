@@ -466,6 +466,21 @@ const positionData: Record<
   },
 };
 
+// Position aliases — map variant titles to canonical template keys
+const positionAliases: Record<string, string> = {
+  "Nursing": "Registered Nurse",
+  "Registered Nurse - Med/Surg": "Registered Nurse",
+  "Registered Nurse - ICU": "Registered Nurse",
+  "Registered Nurse - ER": "Registered Nurse",
+  "RN": "Registered Nurse",
+  "CNA": "Medical Assistant",
+  "CMA": "Medical Assistant",
+};
+
+function getPositionData(position: string) {
+  return positionData[position] || positionData[positionAliases[position]] || null;
+}
+
 // ── Helpers ─────────────────────────────────────────────────
 
 function pick<T>(arr: T[]): T {
@@ -519,7 +534,7 @@ async function main() {
     }
 
     const position = candidate.position;
-    const data = positionData[position];
+    const data = getPositionData(position);
     if (!data) {
       console.log(`  ! ${candidate.name} — no profile template for "${position}", skipping`);
       skipped++;

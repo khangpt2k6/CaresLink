@@ -186,6 +186,7 @@ model Interview {
   transcripts InterviewTranscript[]
   notes       InterviewNote[]
   summary     InterviewSummary?
+  screening   Screening?
 }
 
 // HR weekly availability (recurring schedule)
@@ -332,4 +333,19 @@ model InterviewSummary {
   nextSteps      Json?    // string[] — suggested actions
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// AI Screening — automated pre-interview screening chat
+model Screening {
+  id           String   @id @default(cuid())
+  interviewId  String   @unique
+  interview    Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  status       String   @default("pending") // pending | in_progress | completed
+  messages     Json     @default("[]") // Array of {role, content, timestamp}
+  answers      Json?    // Structured answers: {name, introduction, whyApply, strengths, immigration, ...}
+  aiSummary    String?  // AI-generated screening summary
+  flagged      Boolean  @default(false) // flagged for recruiter review
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

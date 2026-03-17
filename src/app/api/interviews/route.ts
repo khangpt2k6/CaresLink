@@ -110,10 +110,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const upcoming = searchParams.get("upcoming") !== "false";
     const past = searchParams.get("past") === "true";
+    const completed = searchParams.get("completed") === "true";
     const pastDays = Math.min(30, Math.max(1, parseInt(searchParams.get("days") || "7", 10)));
 
     let baseWhere: Record<string, unknown> = {};
-    if (past && user.role === "EMPLOYER") {
+    if (completed && user.role === "EMPLOYER") {
+      // Show completed interviews (last 30 days)
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      baseWhere = {
+        completed: true,
+        scheduledAt: { gte: cutoff },
+      };
+    } else if (past && user.role === "EMPLOYER") {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - pastDays);
       baseWhere = {
@@ -138,7 +147,7 @@ export async function GET(request: NextRequest) {
 
     const interviews = await prisma.interview.findMany({
       where: Object.keys(where).length ? where : undefined,
-      orderBy: { scheduledAt: past ? "desc" : "asc" },
+      orderBy: { scheduledAt: (past || completed) ? "desc" : "asc" },
       include: { candidate: true },
     });
     return NextResponse.json(interviews);

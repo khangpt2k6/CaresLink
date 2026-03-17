@@ -51,6 +51,8 @@ export default function InterviewsPage() {
   const [candidateConfirmLoading, setCandidateConfirmLoading] = useState<string | null>(null);
   const [rejectLoading, setRejectLoading] = useState<string | null>(null);
   const [followUpLoading, setFollowUpLoading] = useState<string | null>(null);
+  const [completedInterviews, setCompletedInterviews] = useState<Interview[]>([]);
+  const [completedLoading, setCompletedLoading] = useState(false);
 
   const fetchInterviews = () => {
     setLoading(true);
@@ -87,8 +89,18 @@ export default function InterviewsPage() {
       .finally(() => setPastLoading(false));
   };
 
+  const fetchCompletedInterviews = () => {
+    if (!isRecruiter) return;
+    setCompletedLoading(true);
+    fetch("/api/interviews?completed=true", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setCompletedInterviews)
+      .catch(console.error)
+      .finally(() => setCompletedLoading(false));
+  };
+
   useEffect(() => { fetchInterviews(); }, []);
-  useEffect(() => { if (isRecruiter) fetchPastInterviews(); }, [isRecruiter]);
+  useEffect(() => { if (isRecruiter) { fetchPastInterviews(); fetchCompletedInterviews(); } }, [isRecruiter]);
 
   const handleOpenBooking = async () => { setShowBooking(true); const res = await fetch("/api/candidates"); setCandidates(await res.json()); };
 
@@ -314,6 +326,23 @@ export default function InterviewsPage() {
                 <div className="space-y-2">
                   {pastInterviews.map((i) => (
                     <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} onMarkNoShow={handleMarkNoShow} onRejectCandidate={handleRejectCandidate} onFollowUpCandidate={handleFollowUpCandidate} reminderLoading={reminderLoading} deleteLoading={deleteLoading} noShowLoading={noShowLoading} rejectLoading={rejectLoading} followUpLoading={followUpLoading} showRecruiterActions={true} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isRecruiter && (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold text-[#1a2b3c]">Completed (last 30 days)</h2>
+              {completedLoading ? (
+                <div className="flex items-center justify-center py-8"><Loader2 className="h-4 w-4 animate-spin text-[#0090d9]" /></div>
+              ) : completedInterviews.length === 0 ? (
+                <p className="text-xs text-[#8a95a3]">No completed interviews yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {completedInterviews.map((i) => (
+                    <InterviewCard key={i.id} interview={i} onSendReminder={handleSendReminder} onDelete={handleDelete} reminderLoading={reminderLoading} deleteLoading={deleteLoading} noShowLoading={noShowLoading} showRecruiterActions={true} />
                   ))}
                 </div>
               )}

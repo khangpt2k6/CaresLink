@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { format } from "date-fns";
-import { Loader2, Check, Calendar, Clock, Video, AlertTriangle } from "lucide-react";
+import { Loader2, Check, Calendar, Clock, Video, AlertTriangle, Bot, ArrowRight } from "lucide-react";
 
 interface InterviewDetails {
   id: string;

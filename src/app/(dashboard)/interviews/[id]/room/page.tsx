@@ -27,7 +27,7 @@ interface TranscriptSegment { id: string; speaker: string; content: string; time
 interface Note { id: string; content: string; category: string | null; source: string }
 interface Summary {
   summary: string; strengths: string[]; concerns: string[];
-  recommendation: string; technicalRating: number; communicationRating: number;
+  technicalRating: number; communicationRating: number;
   cultureFitRating: number; overallRating: number; nextSteps: string[];
 }
 interface Interview { id: string; position: string; candidate: { name: string; email: string } }
@@ -122,9 +122,12 @@ const CATEGORY_ICONS: Record<string, { label: string; icon: React.ReactNode }> =
   general: { label: "General", icon: <MessageSquare className="h-3.5 w-3.5" /> },
 };
 
-const REC_LABELS: Record<string, string> = {
-  strong_hire: "Strong Hire", hire: "Hire", no_hire: "No Hire", strong_no_hire: "Strong No Hire",
-};
+const DECISION_OPTIONS = [
+  { value: "strong_hire", label: "Strong Hire" },
+  { value: "hire", label: "Hire" },
+  { value: "no_hire", label: "No Hire" },
+  { value: "strong_no_hire", label: "Strong No Hire" },
+] as const;
 
 /* ─── Rating bar (platform blue only) ─── */
 function RatingBar({ label, value }: { label: string; value: number }) {
@@ -161,19 +164,26 @@ export default function InterviewRoomPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [ended, setEnded] = useState(false);
   const [activeTab, setActiveTab] = useState<"notes" | "summary">("notes");
+  const [decision, setDecision] = useState<string | null>(null);
+  const [decisionSaving, setDecisionSaving] = useState(false);
 
   const [newSegmentIds, setNewSegmentIds] = useState<Set<string>>(new Set());
   const [streamRef, setStreamRef] = useState<MediaStream | null>(null);
+  const [liveText, setLiveText] = useState(""); // interim text being spoken right now
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const segmentTimerRef = useRef<NodeJS.Timeout | null>(null);
   const notesTimerRef = useRef<NodeJS.Timeout | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isAutoScrollRef = useRef(true);
+  const wsRef = useRef<WebSocket | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const speakerRef = useRef<string>("interviewer");
+
+  // Keep speakerRef in sync
+  useEffect(() => { speakerRef.current = speaker; }, [speaker]);
 
   /* ─── Data loading ─── */
   useEffect(() => {
@@ -183,7 +193,7 @@ export default function InterviewRoomPage() {
     fetch(`/api/interviews/${interviewId}/summary`).then((r) => r.ok ? r.json() : null).then((d) => { if (d?.summary) { setSummary(d.summary); setEnded(true); } }).catch(console.error);
   }, [interviewId]);
 
-  /* Smart auto-scroll: sticks to bottom unless user scrolled up */
+  /* Smart auto-scroll */
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -199,7 +209,7 @@ export default function InterviewRoomPage() {
     if (isAutoScrollRef.current) {
       transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [transcripts]);
+  }, [transcripts, liveText]);
 
   const fmt = (ms: number) => {
     const m = Math.floor(ms / 60000);
@@ -207,25 +217,7 @@ export default function InterviewRoomPage() {
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
 
-  /* ─── Recording logic ─── */
-  const sendAudioChunk = useCallback(async () => {
-    if (chunksRef.current.length === 0) return;
-    const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-    chunksRef.current = [];
-    const form = new FormData();
-    form.append("audio", blob, "chunk.webm");
-    form.append("speaker", speaker);
-    form.append("timestampMs", String(Date.now() - startTimeRef.current));
-    try {
-      const res = await fetch(`/api/interviews/${interviewId}/deepgram-token`, { method: "POST", body: form });
-      const data = await res.json();
-      if (data.transcript) {
-        setTranscripts((p) => [...p, data.transcript]);
-        setNewSegmentIds((prev) => new Set(prev).add(data.transcript.id));
-      }
-    } catch (err) { console.error(err); }
-  }, [interviewId, speaker]);
-
+  /* ─── Generate notes ─── */
   const generateNotes = useCallback(async () => {
     setNotesLoading(true);
     try {
@@ -236,31 +228,124 @@ export default function InterviewRoomPage() {
     finally { setNotesLoading(false); }
   }, [interviewId]);
 
+  /* ─── Save finalized transcript segment to DB ─── */
+  const saveSegment = useCallback(async (content: string, timestampMs: number) => {
+    try {
+      const res = await fetch(`/api/interviews/${interviewId}/deepgram-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speaker: speakerRef.current, content, timestampMs }),
+      });
+      const data = await res.json();
+      if (data.transcript) {
+        setTranscripts((p) => [...p, data.transcript]);
+        setNewSegmentIds((prev) => new Set(prev).add(data.transcript.id));
+      }
+    } catch (err) { console.error(err); }
+  }, [interviewId]);
+
+  /* ─── Real-time recording via Deepgram WebSocket ─── */
   const startRecording = async () => {
     try {
+      // 1. Get mic stream
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setStreamRef(stream);
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
+
+      // 2. Get Deepgram API key
+      const tokenRes = await fetch(`/api/interviews/${interviewId}/deepgram-token`);
+      const { key } = await tokenRes.json();
+
+      // 3. Open Deepgram WebSocket with interim_results for real-time text
+      const ws = new WebSocket(
+        "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&interim_results=true&endpointing=300&utterance_end_ms=1500&encoding=linear16&sample_rate=16000",
+        ["token", key]
+      );
+      wsRef.current = ws;
+
+      ws.onopen = () => console.log("Deepgram WebSocket connected");
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "UtteranceEnd") {
+          setLiveText("");
+          return;
+        }
+
+        const transcript = data?.channel?.alternatives?.[0]?.transcript;
+        if (!transcript) return;
+
+        if (data.is_final) {
+          // Final result — save to DB, clear live text
+          if (transcript.trim()) {
+            const ts = Date.now() - startTimeRef.current;
+            saveSegment(transcript.trim(), ts);
+          }
+          setLiveText("");
+        } else {
+          // Interim result — show live as user speaks
+          setLiveText(transcript);
+        }
+      };
+
+      ws.onerror = (err) => console.error("Deepgram WS error:", err);
+      ws.onclose = () => console.log("Deepgram WS closed");
+
+      // 4. Audio pipeline: mic → 16kHz PCM → WebSocket
+      const audioCtx = new AudioContext({ sampleRate: 16000 });
+      audioContextRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (e) => {
+        if (ws.readyState !== WebSocket.OPEN || isMuted) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const pcm = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+          pcm[i] = Math.max(-1, Math.min(1, input[i])) * 0x7fff;
+        }
+        ws.send(pcm.buffer);
+      };
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+
+      // 5. Start timers
       startTimeRef.current = Date.now();
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorder.start(1000);
       setIsRecording(true);
       timerRef.current = setInterval(() => setElapsedMs(Date.now() - startTimeRef.current), 1000);
-      segmentTimerRef.current = setInterval(sendAudioChunk, 15000);
       notesTimerRef.current = setInterval(generateNotes, 60000);
-    } catch { alert("Microphone access denied."); }
+
+    } catch (err) {
+      console.error("Failed to start recording:", err);
+      alert("Microphone access denied or connection failed.");
+    }
   };
 
   const stopRecording = useCallback(() => {
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
-    [timerRef, segmentTimerRef, notesTimerRef].forEach((r) => { if (r.current) clearInterval(r.current); });
+    // Close Deepgram WebSocket
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "CloseStream" }));
+      wsRef.current.close();
+    }
+    wsRef.current = null;
+
+    // Stop audio processing
+    processorRef.current?.disconnect();
+    audioContextRef.current?.close();
+
+    // Stop mic
+    streamRef?.getTracks().forEach((t) => t.stop());
+
+    // Clear timers
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (notesTimerRef.current) clearInterval(notesTimerRef.current);
+
     setIsRecording(false);
     setStreamRef(null);
-    setTimeout(sendAudioChunk, 500);
-  }, [sendAudioChunk]);
+    setLiveText("");
+  }, [streamRef]);
 
   const handleEndInterview = async () => {
     stopRecording(); setEnded(true); setSummaryLoading(true); setActiveTab("summary");
@@ -274,6 +359,19 @@ export default function InterviewRoomPage() {
   };
 
   const notesByCategory = (cat: string) => notes.filter((n) => n.category === cat);
+
+  const saveDecision = async (value: string) => {
+    setDecision(value);
+    setDecisionSaving(true);
+    try {
+      await fetch(`/api/interviews/${interviewId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: value }),
+      });
+    } catch (err) { console.error(err); }
+    finally { setDecisionSaving(false); }
+  };
 
   return (
     <div className="flex h-screen flex-col bg-[#f5f7fa]">
@@ -346,7 +444,7 @@ export default function InterviewRoomPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Transcript */}
         <div className="flex w-1/2 flex-col border-r border-[#e2e8f0]">
-          <div className="flex items-center gap-2 border-b border-[#e2e8f0] bg-white px-5 py-2.5">
+          <div className="flex h-10 items-center gap-2 border-b border-[#e2e8f0] bg-white px-5">
             <FileText className="h-3.5 w-3.5 text-[#0090d9]" />
             <span className="text-xs font-semibold text-[#1a2b3c]">Transcript</span>
             {transcripts.length > 0 && (
@@ -453,8 +551,48 @@ export default function InterviewRoomPage() {
                   );
                 })}
 
-                {/* Listening indicator at bottom while recording */}
-                {isRecording && (
+                {/* Live interim text — words appearing as you speak */}
+                {isRecording && liveText && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex gap-3 border-b border-[#e8f4fd] bg-[#fafcff] px-5 py-3.5"
+                  >
+                    <div className="relative mt-0.5">
+                      <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white ${
+                        speaker === "interviewer" ? "bg-[#0090d9]/60" : "bg-[#5a6b7c]/60"
+                      }`}>
+                        {speaker === "interviewer" ? "I" : "C"}
+                      </div>
+                      <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#0090d9]">
+                        <span className="absolute inset-0 animate-ping rounded-full bg-[#0090d9]/60" />
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="text-[11px] font-semibold capitalize text-[#1a2b3c]/60">{speaker}</span>
+                        <motion.span
+                          animate={{ opacity: [0.5, 1, 0.5] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                          className="rounded-full bg-[#0090d9]/10 px-1.5 py-0.5 text-[9px] font-medium text-[#0090d9]"
+                        >
+                          LIVE
+                        </motion.span>
+                      </div>
+                      <p className="text-[13px] leading-relaxed text-[#3a4b5c]/70">
+                        {liveText}
+                        <motion.span
+                          animate={{ opacity: [1, 0] }}
+                          transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse" }}
+                          className="ml-0.5 inline-block h-3.5 w-[2px] bg-[#0090d9] align-middle"
+                        />
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Listening indicator when no live text */}
+                {isRecording && !liveText && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -470,7 +608,7 @@ export default function InterviewRoomPage() {
                         />
                       ))}
                     </div>
-                    <span className="text-[11px]">Listening for next segment...</span>
+                    <span className="text-[11px]">Listening...</span>
                   </motion.div>
                 )}
                 <div ref={transcriptEndRef} />
@@ -481,7 +619,7 @@ export default function InterviewRoomPage() {
 
         {/* Right: Notes / Summary */}
         <div className="flex w-1/2 flex-col">
-          <div className="flex items-center border-b border-[#e2e8f0] bg-white px-5 py-2.5">
+          <div className="flex h-10 items-center border-b border-[#e2e8f0] bg-white px-5">
             {(["notes", "summary"] as const).map((tab) => (
               <button
                 key={tab}
@@ -586,22 +724,48 @@ export default function InterviewRoomPage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {/* Recommendation */}
-                      <div className="card px-4 py-3.5">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">AI Recommendation</p>
-                            <p className="mt-0.5 text-lg font-bold text-[#1a2b3c]">{REC_LABELS[summary.recommendation] ?? summary.recommendation}</p>
-                          </div>
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e8f4fd]">
-                            <Star className="h-5 w-5 text-[#0090d9]" />
-                          </div>
+                      {/* Your Decision — Human only */}
+                      <div className="rounded-xl border border-[#e2e8f0] bg-white px-4 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">Your Decision</p>
+                        <p className="mt-0.5 mb-3 text-[12px] text-[#5a6b7c]">Review the AI analysis below, then make your hiring decision.</p>
+                        <div className="flex gap-2">
+                          {DECISION_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              onClick={() => saveDecision(opt.value)}
+                              disabled={decisionSaving}
+                              className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
+                                decision === opt.value
+                                  ? "border-[#0090d9] bg-[#e8f4fd] text-[#0090d9]"
+                                  : "border-[#e2e8f0] bg-white text-[#5a6b7c] hover:border-[#0090d9]/30 hover:bg-[#f5f9fd]"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
                         </div>
-                        <p className="mt-3 border-t border-[#e2e8f0] pt-3 text-[13px] leading-relaxed text-[#3a4b5c]">{summary.summary}</p>
+                        {decision && (
+                          <motion.p
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="mt-2 text-[11px] text-[#8a95a3]"
+                          >
+                            Decision saved. You can change it at any time.
+                          </motion.p>
+                        )}
+                      </div>
+
+                      {/* AI Summary */}
+                      <div className="rounded-xl border border-[#e2e8f0] bg-white px-4 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                        <div className="flex items-center gap-2">
+                          <Brain className="h-3.5 w-3.5 text-[#0090d9]" />
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">AI Analysis</p>
+                        </div>
+                        <p className="mt-2 text-[13px] leading-relaxed text-[#3a4b5c]">{summary.summary}</p>
                       </div>
 
                       {/* Ratings */}
-                      <div className="card px-4 py-3.5">
+                      <div className="rounded-xl border border-[#e2e8f0] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-4 py-3.5">
                         <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">Ratings</p>
                         <div className="space-y-2.5">
                           <RatingBar label="Technical" value={summary.technicalRating} />
@@ -613,7 +777,7 @@ export default function InterviewRoomPage() {
 
                       {/* Strengths & Concerns */}
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="card px-4 py-3.5">
+                        <div className="rounded-xl border border-[#e2e8f0] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-4 py-3.5">
                           <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">
                             <CheckCircle2 className="h-3 w-3 text-[#0090d9]" /> Strengths
                           </p>
@@ -626,7 +790,7 @@ export default function InterviewRoomPage() {
                             ))}
                           </ul>
                         </div>
-                        <div className="card px-4 py-3.5">
+                        <div className="rounded-xl border border-[#e2e8f0] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-4 py-3.5">
                           <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">
                             <AlertTriangle className="h-3 w-3 text-[#8a95a3]" /> Concerns
                           </p>
@@ -643,7 +807,7 @@ export default function InterviewRoomPage() {
 
                       {/* Next Steps */}
                       {summary.nextSteps?.length > 0 && (
-                        <div className="card px-4 py-3.5">
+                        <div className="rounded-xl border border-[#e2e8f0] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-4 py-3.5">
                           <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#8a95a3]">
                             <ArrowRight className="h-3 w-3 text-[#0090d9]" /> Next Steps
                           </p>

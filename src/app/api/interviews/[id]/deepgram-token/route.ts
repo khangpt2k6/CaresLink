@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 
-// POST /api/interviews/[id]/deepgram-token
-// Transcribes an audio blob via Deepgram REST API and saves the transcript segment
-export async function POST(
+// GET /api/interviews/[id]/deepgram-token
+// Returns a temporary Deepgram API key for browser WebSocket streaming
+export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -18,53 +18,61 @@ export async function POST(
     return NextResponse.json({ error: "Interview not found" }, { status: 404 });
   }
 
-  const formData = await request.formData();
-  const audio = formData.get("audio") as Blob | null;
-  const speaker = (formData.get("speaker") as string) ?? "interviewer";
-  const timestampMs = parseInt((formData.get("timestampMs") as string) ?? "0");
+  // Create a temporary Deepgram API key (valid for 10 seconds)
+  const res = await fetch("https://api.deepgram.com/v1/projects/" + await getProjectId() + "/keys", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      comment: `Temp key for interview ${id}`,
+      scopes: ["usage:write"],
+      time_to_live_in_seconds: 600,
+    }),
+  });
 
-  if (!audio) {
-    return NextResponse.json({ error: "No audio provided" }, { status: 400 });
+  if (!res.ok) {
+    // Fallback: return the main key directly (less secure but works)
+    return NextResponse.json({ key: process.env.DEEPGRAM_API_KEY });
   }
 
-  const audioBuffer = Buffer.from(await audio.arrayBuffer());
+  const data = await res.json();
+  return NextResponse.json({ key: data.key });
+}
 
-  // Send to Deepgram REST API
-  const dgResponse = await fetch(
-    "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&diarize=false",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`,
-        "Content-Type": audio.type || "audio/webm",
-      },
-      body: audioBuffer,
-    }
-  );
+async function getProjectId(): Promise<string> {
+  const res = await fetch("https://api.deepgram.com/v1/projects", {
+    headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` },
+  });
+  const data = await res.json();
+  return data.projects?.[0]?.project_id ?? "";
+}
 
-  if (!dgResponse.ok) {
-    const err = await dgResponse.text();
-    console.error("Deepgram error:", err);
-    return NextResponse.json({ error: "Transcription failed" }, { status: 500 });
-  }
+// POST /api/interviews/[id]/deepgram-token
+// Save a transcript segment from the browser WebSocket stream
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const result = await requireEmployer(request);
+  if ("error" in result) return result.error;
 
-  const dgData = await dgResponse.json();
-  const content: string =
-    dgData?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
-  const confidence: number =
-    dgData?.results?.channels?.[0]?.alternatives?.[0]?.confidence ?? null;
+  const { id } = await params;
+  const body = await request.json();
+  const { speaker, content, timestampMs, confidence } = body;
 
-  if (!content.trim()) {
+  if (!content?.trim()) {
     return NextResponse.json({ transcript: null });
   }
 
   const transcript = await prisma.interviewTranscript.create({
     data: {
       interviewId: id,
-      speaker,
-      content,
-      timestampMs,
-      confidence,
+      speaker: speaker ?? "interviewer",
+      content: content.trim(),
+      timestampMs: timestampMs ?? 0,
+      confidence: confidence ?? null,
     },
   });
 

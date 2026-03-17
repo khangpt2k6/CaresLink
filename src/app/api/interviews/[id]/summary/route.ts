@@ -50,17 +50,18 @@ Position: ${interview.position}
 Full transcript:
 ${fullTranscript}
 
+IMPORTANT: Do NOT make any hiring recommendations. Your role is to provide factual analysis only. The hiring decision is made entirely by humans.
+
 Return ONLY a JSON object with this exact structure (no extra text):
 {
-  "summary": "2-3 sentence overall narrative",
-  "strengths": ["strength 1", "strength 2"],
-  "concerns": ["concern 1"],
-  "recommendation": "strong_hire" | "hire" | "no_hire" | "strong_no_hire",
+  "summary": "2-3 sentence factual overview of the interview — what was discussed, candidate background, and key topics covered",
+  "strengths": ["observed strength 1", "observed strength 2"],
+  "concerns": ["observed concern or gap 1"],
   "technicalRating": 1-5,
   "communicationRating": 1-5,
   "cultureFitRating": 1-5,
   "overallRating": 1-5,
-  "nextSteps": ["next step 1", "next step 2"]
+  "nextSteps": ["suggested follow-up 1", "suggested follow-up 2"]
 }`,
       },
     ],
@@ -72,7 +73,6 @@ Return ONLY a JSON object with this exact structure (no extra text):
     summary: string;
     strengths: string[];
     concerns: string[];
-    recommendation: string;
     technicalRating: number;
     communicationRating: number;
     cultureFitRating: number;
@@ -96,7 +96,6 @@ Return ONLY a JSON object with this exact structure (no extra text):
       summary: parsed.summary,
       strengths: parsed.strengths,
       concerns: parsed.concerns,
-      recommendation: parsed.recommendation,
       technicalRating: parsed.technicalRating,
       communicationRating: parsed.communicationRating,
       cultureFitRating: parsed.cultureFitRating,
@@ -107,7 +106,6 @@ Return ONLY a JSON object with this exact structure (no extra text):
       summary: parsed.summary,
       strengths: parsed.strengths,
       concerns: parsed.concerns,
-      recommendation: parsed.recommendation,
       technicalRating: parsed.technicalRating,
       communicationRating: parsed.communicationRating,
       cultureFitRating: parsed.cultureFitRating,

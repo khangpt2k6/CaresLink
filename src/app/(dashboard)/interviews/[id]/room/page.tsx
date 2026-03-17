@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -31,6 +31,88 @@ interface Summary {
   cultureFitRating: number; overallRating: number; nextSteps: string[];
 }
 interface Interview { id: string; position: string; candidate: { name: string; email: string } }
+
+/* ─── Typewriter Effect ─── */
+function TypewriterText({ text, speed = 18, onDone }: { text: string; speed?: number; onDone?: () => void }) {
+  const [displayed, setDisplayed] = useState("");
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    setDisplayed("");
+    setDone(false);
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setDisplayed(text.slice(0, i));
+      if (i >= text.length) {
+        clearInterval(interval);
+        setDone(true);
+        onDone?.();
+      }
+    }, speed);
+    return () => clearInterval(interval);
+  }, [text, speed, onDone]);
+
+  return (
+    <span>
+      {displayed}
+      {!done && (
+        <motion.span
+          animate={{ opacity: [1, 0] }}
+          transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse" }}
+          className="inline-block w-[2px] h-3.5 bg-[#0090d9] ml-0.5 align-middle"
+        />
+      )}
+    </span>
+  );
+}
+
+/* ─── Live Waveform Visualizer ─── */
+function LiveWaveform({ stream }: { stream: MediaStream | null }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!stream || !canvasRef.current) return;
+    const ctx = canvasRef.current.getContext("2d");
+    if (!ctx) return;
+    const audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 128;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    const draw = () => {
+      animRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(data);
+      const w = canvasRef.current!.width;
+      const h = canvasRef.current!.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const barCount = 32;
+      const barW = w / barCount - 1;
+      for (let i = 0; i < barCount; i++) {
+        const val = data[i] / 255;
+        const barH = Math.max(2, val * h * 0.85);
+        const x = i * (barW + 1);
+        const y = (h - barH) / 2;
+        ctx.fillStyle = `rgba(0, 144, 217, ${0.3 + val * 0.7})`;
+        ctx.beginPath();
+        ctx.roundRect(x, y, barW, barH, 1);
+        ctx.fill();
+      }
+    };
+    draw();
+
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      audioCtx.close();
+    };
+  }, [stream]);
+
+  return <canvas ref={canvasRef} width={200} height={32} className="h-8 w-[200px]" />;
+}
 
 /* ─── Category config (platform-neutral icons, no colored backgrounds) ─── */
 const CATEGORY_ICONS: Record<string, { label: string; icon: React.ReactNode }> = {

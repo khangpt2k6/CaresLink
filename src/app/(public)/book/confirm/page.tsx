@@ -96,7 +96,7 @@ function ConfirmContent() {
             </div>
             <h2 className="text-lg font-semibold text-[#37352f]">Attendance Confirmed!</h2>
             <p className="text-sm text-[#73726e]">
-              You&apos;re all set. We look forward to speaking with you.
+              You&apos;re all set. Please complete a quick AI screening before your interview.
             </p>
             {interview && (
               <div className="mt-2 w-full rounded-lg border border-[#e8e8e5] bg-[#f7f7f5] px-4 py-3 text-left">
@@ -110,6 +110,17 @@ function ConfirmContent() {
                 </div>
               </div>
             )}
+
+            {/* AI Screening CTA */}
+            <a
+              href={`/screening/${interviewId}?email=${encodeURIComponent(email || "")}`}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[#0090d9] px-4 py-3 text-sm font-medium text-white hover:bg-[#0077b6] transition-colors"
+            >
+              <Bot className="h-4 w-4" />
+              Start AI Screening
+              <ArrowRight className="h-4 w-4" />
+            </a>
+            <p className="text-[11px] text-[#b4b4b0]">Takes about 5 minutes</p>
           </div>
         ) : step === "error" ? (
           <div className="flex flex-col items-center gap-4 p-8 text-center">

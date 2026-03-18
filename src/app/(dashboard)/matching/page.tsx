@@ -266,7 +266,7 @@ export default function MatchingPage() {
     }) ?? [];
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-5">
       {/* Breadcrumb */}
       <motion.div
         initial={{ opacity: 0, x: -8 }}

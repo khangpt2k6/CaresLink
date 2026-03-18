@@ -170,6 +170,7 @@ export function CandidateTable({
   templateLoading,
   onCancelAi,
   matchScores,
+  highlightId,
 }: {
   candidates: Candidate[];
   onContactAi?: (candidate: Candidate) => void;
@@ -184,10 +185,28 @@ export function CandidateTable({
   templateLoading?: string | null;
   onCancelAi?: () => void;
   matchScores?: Record<string, MatchScore>;
+  highlightId?: string | null;
 }) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", position: "" });
+  const highlightRef = useRef<HTMLTableRowElement>(null);
+  const [isHighlighted, setIsHighlighted] = useState(false);
+
+  // Auto-scroll to highlighted row and flash it
+  useEffect(() => {
+    if (highlightId && highlightRef.current) {
+      // Small delay so the page finishes rendering
+      const timer = setTimeout(() => {
+        highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        setIsHighlighted(true);
+        // Remove highlight after animation
+        const fadeTimer = setTimeout(() => setIsHighlighted(false), 3000);
+        return () => clearTimeout(fadeTimer);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightId, candidates]);
 
   const startEdit = (c: Candidate) => {
     setEditingId(c.id);
@@ -227,7 +246,18 @@ export function CandidateTable({
             const fit = c.fitStatus ? fitConfig[c.fitStatus as NonNullable<FitStatus>] : null;
 
             return (
-              <tr key={c.id} className="h-[72px] transition-colors hover:bg-[#fafbfc] group">
+              <tr
+                key={c.id}
+                ref={c.id === highlightId ? highlightRef : undefined}
+                className={cn(
+                  "h-[72px] transition-all hover:bg-[#fafbfc] group",
+                  c.id === highlightId && isHighlighted
+                    ? "bg-[#e0f2fe] ring-2 ring-inset ring-[#0090d9] animate-pulse"
+                    : c.id === highlightId && !isHighlighted
+                    ? "bg-[#f0f7ff]"
+                    : ""
+                )}
+              >
                 <td className="px-5 py-3 align-middle">
                   {editingId === c.id ? (
                     <div className="flex flex-col gap-1.5" style={{ minWidth: 180 }}>

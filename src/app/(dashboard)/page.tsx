@@ -373,11 +373,11 @@ export default function DashboardPage() {
 
                 // Parse the report into structured sections
                 const parseReport = (report: string) => {
-                  const headlineMatch = report.match(/^(.*?)(?:\*\*Task Completion Summary:\*\*|$)/s);
+                  const headlineMatch = new RegExp("^(.*?)(?:\\*\\*Task Completion Summary:\\*\\*|$)", "s").exec(report);
                   const headline = headlineMatch?.[1]?.replace(/\*\*/g, "").trim() || "";
 
                   const tasks: { name: string; detail: string; success: boolean }[] = [];
-                  const taskRegex = /\*\*TASK\s*\d+\s*[-–]\s*(.*?):\*\*\s*(.*?)(?=\*\*TASK|\*\*Total|$)/gs;
+                  const taskRegex = new RegExp("\\*\\*TASK\\s*\\d+\\s*[-–]\\s*(.*?):\\*\\*\\s*(.*?)(?=\\*\\*TASK|\\*\\*Total|$)", "gs");
                   let match;
                   while ((match = taskRegex.exec(report)) !== null) {
                     tasks.push({
@@ -387,7 +387,7 @@ export default function DashboardPage() {
                     });
                   }
 
-                  const totalsMatch = report.match(/\*\*Total Actions Completed:\*\*(.*?)$/s);
+                  const totalsMatch = new RegExp("\\*\\*Total Actions Completed:\\*\\*(.*?)$", "s").exec(report);
                   const totalsRaw = totalsMatch?.[1]?.replace(/\*\*/g, "").trim() || "";
                   const totals: { label: string; value: string }[] = [];
                   const totalParts = totalsRaw.split(/\s*[-–]\s*/);

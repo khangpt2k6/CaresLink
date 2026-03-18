@@ -17,6 +17,7 @@ import {
   LogOut,
   UserCircle,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { useUser, useClerk } from "@clerk/nextjs";
 
@@ -24,6 +25,7 @@ const employerNav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/candidates", label: "Candidates", icon: Users },
+  { href: "/matching", label: "Matching", icon: Sparkles },
   { href: "/interviews", label: "Interviews", icon: Calendar },
   { href: "/calendar", label: "Calendar", icon: CalendarClock },
   { href: "/insights", label: "Insights", icon: Lightbulb },

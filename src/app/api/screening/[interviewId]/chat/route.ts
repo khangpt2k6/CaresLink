@@ -70,7 +70,7 @@ export async function POST(
     });
   }
 
-  const existingMessages = (screening.messages as ChatMessage[]) || [];
+  const existingMessages = (screening.messages as unknown as ChatMessage[]) || [];
 
   // If this is the first message (empty conversation), generate the greeting
   const isFirstMessage = existingMessages.length === 0 && !message;

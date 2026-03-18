@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { CandidateTable, type FitStatus } from "@/components/candidate-table";
-import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X, CheckCircle2, Calendar, Hash, Info } from "lucide-react";
+import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X, CheckCircle2, Calendar, Hash, Info, Sparkles, ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 interface Candidate {
   id: string;
@@ -83,6 +85,8 @@ function AiResponseBody({ text }: { text: string }) {
 }
 
 export default function CandidatesPage() {
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get("highlight");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -215,6 +219,24 @@ export default function CandidatesPage() {
 
   return (
     <div className="p-6">
+      {/* Back to matching banner when coming from matching */}
+      {highlightId && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-[#0090d9]/20 bg-[#f0f7ff] px-4 py-2.5">
+          <div className="flex items-center gap-2 text-sm text-[#0090d9]">
+            <Sparkles className="h-4 w-4" />
+            <span className="font-medium">Viewing from AI Matching</span>
+            <span className="text-[#64748b]">— candidate highlighted below</span>
+          </div>
+          <Link
+            href="/matching"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#007bbd] transition-colors"
+          >
+            <ArrowRight className="h-3.5 w-3.5 rotate-180" />
+            Back to Matching
+          </Link>
+        </div>
+      )}
+
       <div className="mb-5">
         <h1 className="text-xl font-bold text-[#1a2b3c]">Candidates</h1>
         <p className="text-sm text-[#5a6b7c]">Manage candidates and AI outreach</p>
@@ -329,6 +351,23 @@ export default function CandidatesPage() {
         </div>
       )}
 
+      {/* AI Job Matching link */}
+      <Link
+        href="/matching"
+        className="card mb-4 flex items-center justify-between p-4 transition-colors hover:border-[#0090d9]/30 group"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#0090d9] to-[#6366f1] shadow-sm">
+            <Sparkles className="h-4 w-4 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-[#1a2b3c]">AI Job Matching</p>
+            <p className="text-[10px] text-[#8a95a3]">Pre-computed candidate scores — results load instantly</p>
+          </div>
+        </div>
+        <ArrowRight className="h-4 w-4 text-[#94a3b8] transition-transform group-hover:translate-x-1 group-hover:text-[#0090d9]" />
+      </Link>
+
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -346,6 +385,7 @@ export default function CandidatesPage() {
           bookingLinkLoading={bookingLinkLoading}
           deleteLoading={deleteLoading}
           templateLoading={templateLoading}
+          highlightId={highlightId}
         />
       )}
     </div>

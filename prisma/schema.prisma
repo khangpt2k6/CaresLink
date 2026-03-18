@@ -148,6 +148,8 @@ model Job {
   status      String   @default("open") // open, closed, paused
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  matches     JobMatch[]
 }
 
 model Candidate {
@@ -162,6 +164,7 @@ model Candidate {
 
   interviews Interview[]
   events     Event[]
+  matches    JobMatch[]
 }
 
 model Interview {
@@ -333,6 +336,22 @@ model InterviewSummary {
   nextSteps      Json?    // string[] — suggested actions
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// ─── Job Matching (pre-computed AI scores) ──────────────────
+model JobMatch {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  score       Int       // 0-100
+  label       String    // "Excellent fit" | "Good fit" | "Partial fit" | "Weak fit" | "Not a fit"
+  reason      String    // 1-2 sentence explanation
+  computedAt  DateTime  @default(now())
+
+  @@unique([jobId, candidateId])
+  @@index([jobId, score(sort: Desc)])
 }
 
 // AI Screening — automated pre-interview screening chat

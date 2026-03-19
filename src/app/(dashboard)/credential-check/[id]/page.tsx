@@ -39,7 +39,8 @@ interface NursysLicense { nameOnLicense: string; type: string; licenseState: str
 interface NursysReport { ncsbnId: string; fullName: string; reportDate: string; licenses: NursysLicense[]; boardMessages: string[]; authorizedStates: string[]; }
 
 interface OIGResult {
-  status: string; searchedName: string; matches: OIGExclusion[];
+  status: string; searchedName: string;
+  matches: OIGExclusion[]; exactMatches: OIGExclusion[]; partialMatches: OIGExclusion[];
   error?: string; manualUrl: string; checkedAt: string;
 }
 interface OIGExclusion { lastName: string; firstName: string; middleName: string; exclusionType: string; exclusionDate: string; specialty: string; state: string; }
@@ -72,6 +73,7 @@ const NURSYS_STATUS: Record<string, { label: string; color: string; icon: React.
 const OIG_STATUS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   clear: { label: "Not Excluded — Clear", color: "text-emerald-700 bg-emerald-50 border-emerald-200", icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
   excluded: { label: "EXCLUDED — DO NOT HIRE", color: "text-red-700 bg-red-100 border-red-300", icon: <XCircle className="h-3.5 w-3.5" /> },
+  partial_match: { label: "Partial Match — Review Required", color: "text-amber-700 bg-amber-50 border-amber-200", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
   manual_required: { label: "Manual Required", color: "text-amber-700 bg-amber-50 border-amber-200", icon: <AlertCircle className="h-3.5 w-3.5" /> },
   error: { label: "Error — Verify Manually", color: "text-amber-700 bg-amber-50 border-amber-200", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
 };
@@ -656,6 +658,37 @@ function OIGSection({ data }: { data: OIGResult }) {
             <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0" />
             <p className="text-sm font-semibold text-emerald-800">No exclusions found. This individual does not appear on the OIG exclusion list.</p>
           </div>
+        ) : data.status === "partial_match" ? (
+          <>
+            <div className="mb-3 rounded-lg bg-amber-50 border border-amber-300 p-3">
+              <div className="flex items-center gap-2.5 mb-1">
+                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                <p className="text-sm font-bold text-amber-800">Partial name matches found — manual review required.</p>
+              </div>
+              <p className="text-xs text-amber-700 ml-7">These are similar but NOT exact name matches. Verify these are different individuals before proceeding.</p>
+            </div>
+            {data.partialMatches && data.partialMatches.length > 0 && (
+              <table className="w-full text-sm border-collapse mb-3">
+                <thead><tr className="bg-amber-50">
+                  {["Last Name","First Name","Middle","Exclusion Type","Specialty","State"].map(h => (
+                    <th key={h} className="border border-amber-200 px-3 py-2 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {data.partialMatches.map((m, i) => (
+                    <tr key={i} className="bg-amber-50/30">
+                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs font-semibold">{m.lastName}</td>
+                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.firstName}</td>
+                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.middleName}</td>
+                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.exclusionType}</td>
+                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.specialty}</td>
+                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.state}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
         ) : data.status === "excluded" ? (
           <>
             <div className="mb-3 flex items-center gap-2.5 rounded-lg bg-red-50 border border-red-300 p-3">

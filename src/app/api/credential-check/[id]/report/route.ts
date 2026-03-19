@@ -56,6 +56,8 @@ export async function GET(
 
   let nursysScreenshots: VerificationScreenshot[] = [];
   let floridaDohScreenshots: VerificationScreenshot[] = [];
+  // floridaDohData may be overridden with live Puppeteer results if fetch returned not_found
+  let floridaDohData = check.floridaDohData as ReportCheckData["floridaDohData"];
 
   if (roleType === "NURSE") {
     nursysScreenshots = await captureNursysScreenshots(
@@ -63,8 +65,30 @@ export async function GET(
     );
     console.log(`[report] Nursys screenshots: ${nursysScreenshots.length}`);
   } else if (roleType === "CNA") {
-    floridaDohScreenshots = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
-    console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}`);
+    const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
+    floridaDohScreenshots = dohResult.screenshots;
+    console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}, matches: ${dohResult.matches.length}`);
+
+    // If fetch-based search returned not_found but Puppeteer found results, use browser data
+    const dbStatus = (floridaDohData as { status?: string } | null)?.status;
+    if (dohResult.found && (!floridaDohData || dbStatus === "not_found")) {
+      floridaDohData = {
+        status: "found",
+        searchedName: `${firstName} ${lastName}`.toUpperCase(),
+        licenseType: "Certified Nursing Assistant",
+        matches: dohResult.matches.map((m) => ({
+          name: m.name,
+          licenseNumber: m.licenseNumber,
+          licenseType: m.licenseType || "CNA",
+          status: m.status,
+          expirationDate: m.expirationDate,
+          county: m.county || undefined,
+        })),
+        manualUrl: "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders",
+        checkedAt: new Date().toISOString(),
+      };
+      console.log(`[report] Used Puppeteer FL DOH data — ${dohResult.matches.length} matches`);
+    }
   }
 
   const screenshots: AllScreenshots = {
@@ -89,7 +113,7 @@ export async function GET(
     aiRecommendation: check.aiRecommendation,
     aiSummary: check.aiSummary,
     nursysData: check.nursysData as ReportCheckData["nursysData"],
-    floridaDohData: check.floridaDohData as ReportCheckData["floridaDohData"],
+    floridaDohData,
     oigData: check.oigData as ReportCheckData["oigData"],
     samGovData: check.samGovData as ReportCheckData["samGovData"],
     updatedAt: check.updatedAt.toISOString(),

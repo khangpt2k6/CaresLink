@@ -219,11 +219,22 @@ export async function captureOIGScreenshots(
 // ─────────────────────────────────────────────────────────────
 // 3.  Florida DOH — CNA License Verification
 // ─────────────────────────────────────────────────────────────
+interface FloridaDOHRow {
+  name: string; licenseNumber: string; licenseType: string;
+  status: string; expirationDate: string; county: string;
+}
+
+export interface FloridaDOHBrowserResult {
+  screenshots: VerificationScreenshot[];
+  matches: FloridaDOHRow[];
+  found: boolean;
+}
+
 export async function captureFloridaDOHScreenshots(
   firstName: string,
   lastName: string,
   licenseNumber?: string | null
-): Promise<VerificationScreenshot[]> {
+): Promise<FloridaDOHBrowserResult> {
   const shots: VerificationScreenshot[] = [];
   const browser = await launchBrowser();
 
@@ -285,22 +296,47 @@ export async function captureFloridaDOHScreenshots(
       return false;
     });
 
+    let matches: FloridaDOHRow[] = [];
+
     if (submitted) {
       await new Promise((r) => setTimeout(r, 3000));
       shots.push(await snap(page, "Florida DOH — Search Results"));
 
-      // Scroll to show results
+      // Extract table data from the results page
+      matches = await page.evaluate(() => {
+        const rows: FloridaDOHRow[] = [];
+        document.querySelectorAll("table tr").forEach((tr, idx) => {
+          if (idx === 0) return; // skip header
+          const cells = Array.from(tr.querySelectorAll("td")).map((td) =>
+            td.innerText.replace(/\s+/g, " ").trim()
+          );
+          if (cells.length >= 4 && cells[0] && cells[1]) {
+            rows.push({
+              licenseNumber: cells[0] || "",
+              name: cells[1] || "",
+              licenseType: cells[2] || "",
+              status: cells[4] || cells[3] || "",
+              expirationDate: cells[5] || cells[4] || "",
+              county: cells[6] || cells[5] || "",
+            });
+          }
+        });
+        return rows;
+      });
+
+      // Scroll to show results detail
       await page.evaluate(() => window.scrollBy(0, 300));
       await new Promise((r) => setTimeout(r, 600));
       shots.push(await snap(page, "Florida DOH — License Details"));
     }
+
+    await browser.close();
+    return { screenshots: shots, matches, found: matches.length > 0 };
   } catch (err) {
     console.error("[browser-verify] Florida DOH error:", err);
-  } finally {
     await browser.close();
+    return { screenshots: shots, matches: [], found: false };
   }
-
-  return shots;
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ interface NursysLicense {
 interface NursysReport { ncsbnId: string; fullName: string; reportDate: string; licenses: NursysLicense[]; boardMessages: string[]; authorizedStates: string[]; }
 interface NursysResult { status: string; matches: { ncsbnId: string; displayName: string }[]; selectedMatch?: { ncsbnId: string; displayName: string }; report?: NursysReport; error?: string; manualUrl: string; }
 interface OIGExclusion { lastName: string; firstName: string; middleName: string; exclusionType: string; exclusionDate: string; specialty: string; state: string; }
-interface OIGResult { status: string; searchedName: string; matches: OIGExclusion[]; checkedAt: string; manualUrl: string; }
+interface OIGResult { status: string; searchedName: string; matches: OIGExclusion[]; exactMatches?: OIGExclusion[]; partialMatches?: OIGExclusion[]; checkedAt: string; manualUrl: string; }
 interface SAMGovResult { status: string; searchedName: string; message: string; details?: string; manualUrl: string; checkedAt: string; }
 interface FloridaLicense { name: string; licenseNumber: string; licenseType: string; status: string; expirationDate: string; county?: string; }
 interface FloridaDOHResult { status: string; searchedName: string; licenseType: string; matches: FloridaLicense[]; error?: string; manualUrl: string; checkedAt: string; }
@@ -44,6 +44,7 @@ function badge(status: string) {
     not_found: ["#991b1b", "#fee2e2"],
     clear: ["#065f46", "#d1fae5"],
     excluded: ["#991b1b", "#fee2e2"],
+    partial_match: ["#92400e", "#fef3c7"],
     manual_required: ["#92400e", "#fef3c7"],
     error: ["#92400e", "#fef3c7"],
   };
@@ -139,7 +140,35 @@ function oigSection(data: OIGResult, shots: VerificationScreenshot[]) {
   const isClear = data.status === "clear";
   const isExcluded = data.status === "excluded";
 
-  const alert = isExcluded ? `
+  const isPartial = data.status === "partial_match";
+
+  const alert = isPartial ? `
+    <div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:6px;padding:10px 14px;margin-bottom:10px;">
+      <p style="margin:0;font-weight:700;color:#92400e;">⚠️ PARTIAL NAME MATCHES — These are similar but NOT exact matches. Manual review required before making a hiring decision.</p>
+      <p style="margin:4px 0 0;font-size:11px;color:#78350f;">Verify these are different individuals from the candidate. None of these are confirmed exclusions.</p>
+    </div>
+    ${(data.partialMatches ?? data.matches).length > 0 ? `
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <thead><tr style="background:#fef3c7;">
+          ${["Last Name","First Name","Middle","Exclusion Type","Specialty","State"].map(h =>
+            `<th style="border:1px solid #fcd34d;padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#92400e;">${h}</th>`
+          ).join("")}
+        </tr></thead>
+        <tbody>
+          ${(data.partialMatches ?? data.matches).map(m => `
+            <tr style="background:#fffbeb;">
+              <td style="border:1px solid #fcd34d;padding:6px 8px;font-weight:700;">${m.lastName}</td>
+              <td style="border:1px solid #fcd34d;padding:6px 8px;">${m.firstName}</td>
+              <td style="border:1px solid #fcd34d;padding:6px 8px;">${m.middleName}</td>
+              <td style="border:1px solid #fcd34d;padding:6px 8px;">${m.exclusionType}</td>
+              <td style="border:1px solid #fcd34d;padding:6px 8px;">${m.specialty}</td>
+              <td style="border:1px solid #fcd34d;padding:6px 8px;">${m.state}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    ` : ""}
+  ` : isExcluded ? `
     <div style="background:#fee2e2;border:2px solid #dc2626;border-radius:6px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px;">
       <span style="font-size:18px;">⛔</span>
       <p style="margin:0;font-weight:700;color:#991b1b;">EXCLUDED — This individual appears on the OIG Exclusion List. DO NOT HIRE.</p>

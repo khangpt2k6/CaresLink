@@ -67,3 +67,19 @@ export async function requireEmployer(req: NextRequest) {
   }
   return { user };
 }
+
+/** Require candidate role. Returns 401 if not signed in, 403 if not candidate. */
+export async function requireCandidate(req: NextRequest) {
+  const result = await requireUser(req);
+  if (result.error) return result;
+  const { user } = result;
+  if (user.role !== "CANDIDATE") {
+    return {
+      error: NextResponse.json(
+        { error: "Only candidates can perform this action." },
+        { status: 403 }
+      ),
+    };
+  }
+  return { user };
+}

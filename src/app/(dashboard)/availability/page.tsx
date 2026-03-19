@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   isSameMonth, isToday, isSameDay, addMonths, subMonths, getDay,
@@ -187,6 +188,22 @@ function TimeSelect({
 }
 
 export default function CandidateAvailabilityPage() {
+  const [role, setRole] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d || d.role !== "CANDIDATE") {
+          router.replace("/");
+        } else {
+          setRole(d.role);
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [schedule, setSchedule] = useState<AvailabilityDay[]>([]);
   const [slotGrid, setSlotGrid] = useState<boolean[][]>(
     () => Array.from({ length: 7 }, () => Array(TOTAL_SLOTS).fill(false))
@@ -201,7 +218,7 @@ export default function CandidateAvailabilityPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   const [timezone, setTimezone] = useState("America/New_York");
   const [showTimezoneDropdown, setShowTimezoneDropdown] = useState(false);
   const [dateOverrides, setDateOverrides] = useState<DateOverride[]>([]);
@@ -465,6 +482,14 @@ export default function CandidateAvailabilityPage() {
       return total + (day.endHour - day.startHour);
     }, 0);
   }, [schedule]);
+
+  if (!role) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[#0090d9]" />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -491,15 +491,18 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
   }
 }
 
-export async function runAgent(userMessage: string, sessionId?: string): Promise<string> {
+export async function runAgent(userMessage: string, sessionId?: string, userId?: string): Promise<string> {
   if (!anthropic || !apiKey) {
     return "AI agent is not configured. Set ANTHROPIC_API_KEY in .env.local";
   }
 
   let messages: MessageParam[] = [{ role: "user", content: userMessage }];
 
-  if (sessionId) {
-    const memory = await prisma.agentMemory.findUnique({ where: { sessionId } });
+  if (sessionId && userId) {
+    // Only load memory that belongs to this user — prevents cross-user session access
+    const memory = await prisma.agentMemory.findFirst({
+      where: { sessionId, userId },
+    });
     if (memory?.history && Array.isArray(memory.history)) {
       const stored = memory.history as unknown as MessageParam[];
       if (stored.length > 0) {
@@ -513,12 +516,12 @@ export async function runAgent(userMessage: string, sessionId?: string): Promise
   let lastText = "";
 
   const saveHistory = async (history: MessageParam[]) => {
-    if (!sessionId) return;
+    if (!sessionId || !userId) return;
     const trimmed = history.slice(-20);
     await prisma.agentMemory.upsert({
       where: { sessionId },
       update: { history: trimmed as object },
-      create: { sessionId, history: trimmed as object },
+      create: { sessionId, userId, history: trimmed as object },
     });
   };
 

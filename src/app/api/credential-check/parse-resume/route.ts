@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
 
     if (mimeType === "application/pdf" || file.name.endsWith(".pdf")) {
       // Use pdf-parse to extract text
-      const pdfParse = (await import("pdf-parse")).default;
+      const pdfParseModule = await import("pdf-parse");
+      const pdfParse = typeof pdfParseModule.default === "function"
+        ? pdfParseModule.default
+        : (pdfParseModule as unknown as typeof pdfParseModule.default);
       const data = await pdfParse(buffer);
       textContent = data.text;
     } else if (

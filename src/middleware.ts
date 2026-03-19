@@ -12,6 +12,8 @@ const isPublicRoute = createRouteMatcher([
   "/api/agent/cron",
   "/screening(.*)",
   "/api/screening(.*)",
+  "/onboarding(.*)",
+  "/role-select(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

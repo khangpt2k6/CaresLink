@@ -7,7 +7,12 @@ interface RoleGateProps {
   requireRole?: "EMPLOYER" | "CANDIDATE" | null;
 }
 
-/** Server component: redirects to /role-select if user has no role, or to / if candidate tries employer routes. */
+/**
+ * Server component that enforces role-based access.
+ * - No role → /role-select
+ * - CANDIDATE hitting employer dashboard → /profile
+ * - EMPLOYER hitting candidate-only route → /
+ */
 export async function RoleGate({ children, requireRole }: RoleGateProps) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
@@ -15,12 +20,22 @@ export async function RoleGate({ children, requireRole }: RoleGateProps) {
   const user = await getOrCreateUser(userId);
   if (!user) redirect("/sign-in");
 
+  // No role assigned yet — must complete role selection
   if (!user.role) {
     redirect("/role-select");
   }
 
+  // Explicit requireRole check
   if (requireRole === "EMPLOYER" && user.role !== "EMPLOYER") {
+    redirect("/profile");
+  }
+  if (requireRole === "CANDIDATE" && user.role !== "CANDIDATE") {
     redirect("/");
+  }
+
+  // Default (no requireRole): if candidate lands on employer dashboard, redirect away
+  if (!requireRole && user.role === "CANDIDATE") {
+    redirect("/profile");
   }
 
   return <>{children}</>;

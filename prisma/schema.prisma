@@ -51,6 +51,19 @@ model CandidateProfile {
   educations     Education[]
   skills         Skill[]
   certifications Certification[]
+  preferences    JobPreferences?
+}
+
+model JobPreferences {
+  id            String           @id @default(cuid())
+  profileId     String           @unique
+  profile       CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  roles         String[]         // ["CNA", "LPN", "RN", ...]
+  businessUnits String[]         // ["Home Care", "Assisted Living", ...]
+  jobTypes      String[]         // ["Full-time", "Contract", "PRN", ...]
+  shifts        String[]         // ["Weekday", "Night", ...]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }
 
 model Experience {

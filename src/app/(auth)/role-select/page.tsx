@@ -26,7 +26,7 @@ export default function RoleSelectPage() {
       if (selected === "EMPLOYER") {
         router.push("/");
       } else {
-        router.push("/book");
+        router.push("/onboarding");
       }
       router.refresh();
     } else {

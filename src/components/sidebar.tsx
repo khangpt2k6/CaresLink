@@ -21,6 +21,7 @@ import {
   SlidersHorizontal,
   LayoutList,
   FileText,
+  ClipboardCheck,
 } from "lucide-react";
 import { useUser, useClerk } from "@clerk/nextjs";
 
@@ -33,6 +34,7 @@ const employerNav = [
   { href: "/calendar", label: "Calendar", icon: CalendarClock },
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/verification", label: "Verification", icon: ShieldCheck },
+  { href: "/credential-check", label: "Credential Check", icon: ClipboardCheck },
 ];
 
 const candidateNav = [

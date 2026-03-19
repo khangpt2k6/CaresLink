@@ -48,7 +48,7 @@ export async function POST(
             licenseNumber ?? undefined,
             licenseState ?? undefined
           )
-        : searchFloridaDOH(firstName, lastName, "CNA"),
+        : searchFloridaDOH(firstName, lastName, "CNA", licenseNumber ?? undefined),
     ]);
 
     const nursysData = roleType === "NURSE" ? licenseResult : null;

@@ -142,7 +142,8 @@ function parseDOHResults(html: string): FloridaLicense[] {
 export async function searchFloridaDOH(
   firstName: string,
   lastName: string,
-  roleType: "CNA" | "NURSE" | "RN" | "LPN" = "CNA"
+  roleType: "CNA" | "NURSE" | "RN" | "LPN" = "CNA",
+  licenseNumber?: string
 ): Promise<FloridaDOHResult> {
   const profConfig = PROFESSION_MAP[roleType] ?? PROFESSION_MAP.CNA;
   const searchedName = `${firstName} ${lastName}`.toUpperCase();
@@ -175,7 +176,7 @@ export async function searchFloridaDOH(
       "SearchDto.Profession":    profConfig.profession,
       "SearchDto.LastName":      lastName.toUpperCase(),
       "SearchDto.FirstName":     firstName.toUpperCase(),
-      "SearchDto.LicenseNumber": "",
+      "SearchDto.LicenseNumber": licenseNumber?.trim() ?? "",
       "SearchDto.BusinessName":  "",
       "SearchDto.City":          "",
       "SearchDto.ZipCode":       "",

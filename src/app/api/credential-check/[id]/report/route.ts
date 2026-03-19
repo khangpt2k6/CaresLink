@@ -63,7 +63,7 @@ export async function GET(
     );
     console.log(`[report] Nursys screenshots: ${nursysScreenshots.length}`);
   } else if (roleType === "CNA") {
-    floridaDohScreenshots = await captureFloridaDOHScreenshots(firstName, lastName);
+    floridaDohScreenshots = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
     console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}`);
   }
 

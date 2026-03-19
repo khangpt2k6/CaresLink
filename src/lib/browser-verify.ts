@@ -221,7 +221,8 @@ export async function captureOIGScreenshots(
 // ─────────────────────────────────────────────────────────────
 export async function captureFloridaDOHScreenshots(
   firstName: string,
-  lastName: string
+  lastName: string,
+  licenseNumber?: string | null
 ): Promise<VerificationScreenshot[]> {
   const shots: VerificationScreenshot[] = [];
   const browser = await launchBrowser();
@@ -260,6 +261,17 @@ export async function captureFloridaDOHScreenshots(
         firstName.toUpperCase()
       );
     } catch {}
+
+    // Fill license number if provided (more precise match)
+    if (licenseNumber) {
+      try {
+        await page.$eval(
+          'input[name="SearchDto.LicenseNumber"]',
+          (el, v) => ((el as HTMLInputElement).value = v),
+          licenseNumber.trim()
+        );
+      } catch {}
+    }
 
     await new Promise((r) => setTimeout(r, 500));
     shots.push(await snap(page, "Florida DOH — Form Filled"));

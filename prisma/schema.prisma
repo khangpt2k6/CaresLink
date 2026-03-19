@@ -30,6 +30,7 @@ model User {
   candidateAvailability CandidateAvailability[]
   profile               CandidateProfile?
   agentMemories         AgentMemory[]
+  credentialChecks      CredentialCheck[]
 }
 
 // Candidate profile (LinkedIn-style)
@@ -372,6 +373,57 @@ model JobMatch {
 
   @@unique([jobId, candidateId])
   @@index([jobId, score(sort: Desc)])
+}
+
+// ─── Credential Verification ─────────────────────────────────
+
+enum CredentialRoleType {
+  NURSE
+  CNA
+}
+
+enum CredentialCheckStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model CredentialCheck {
+  id            String                @id @default(cuid())
+  employerId    String
+  employer      User                  @relation(fields: [employerId], references: [id], onDelete: Cascade)
+
+  // Candidate info (parsed from resume or CSV)
+  firstName     String
+  middleName    String?
+  lastName      String
+  email         String?
+  phone         String?
+  address       String?
+  licenseNumber String?
+  licenseState  String?
+
+  roleType      CredentialRoleType
+  targetState   String               @default("FLORIDA")
+
+  // Raw verification data (JSON per source)
+  nursysData     Json?    // NursysResult
+  oigData        Json?    // OIGResult
+  floridaDohData Json?    // FloridaDOHResult
+  samGovData     Json?    // SAMGovResult
+
+  // AI employability analysis
+  aiRecommendation String?   // "EMPLOYABLE" | "REVIEW_REQUIRED" | "NOT_EMPLOYABLE"
+  aiSummary        String?
+
+  status        CredentialCheckStatus @default(PENDING)
+  errorMessage  String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([employerId])
 }
 
 // AI Screening — automated pre-interview screening chat

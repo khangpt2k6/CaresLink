@@ -328,39 +328,6 @@ export default function VerificationPage() {
         </motion.div>
       )}
 
-      {/* Info */}
-      {!searched && (
-        <motion.div {...fadeUp(0.12)} className="mt-4">
-          <div className="card p-5">
-            <h2 className="mb-2 text-sm font-semibold text-[#1a2b3c]">
-              About License Verification
-            </h2>
-            <div className="space-y-2 text-xs text-[#5a6b7c] leading-relaxed">
-              <p>
-                This tool queries the <strong>Florida Department of Health</strong>{" "}
-                MQA (Medical Quality Assurance) public database to verify nursing
-                licenses and credentials.
-              </p>
-              <p>You can search by:</p>
-              <ul className="ml-4 list-disc space-y-1">
-                <li>
-                  <strong>Name</strong> &mdash; Enter the candidate&apos;s first
-                  and/or last name
-                </li>
-                <li>
-                  <strong>License number</strong> &mdash; Enter the license number
-                  directly for an exact match
-                </li>
-              </ul>
-              <p>
-                Results include license type, status (Active/Inactive),
-                expiration date, and registered city. You can also verify licenses
-                through the AI assistant by asking it directly.
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      )}
     </div>
   );
 }

@@ -33,10 +33,5 @@ export async function RoleGate({ children, requireRole }: RoleGateProps) {
     redirect("/");
   }
 
-  // Default (no requireRole): if candidate lands on employer dashboard, redirect away
-  if (!requireRole && user.role === "CANDIDATE") {
-    redirect("/profile");
-  }
-
   return <>{children}</>;
 }

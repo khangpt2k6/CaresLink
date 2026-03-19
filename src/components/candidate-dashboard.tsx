@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Calendar, Clock, Video, CheckCircle, Loader2, XCircle, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Calendar, Video, CheckCircle, Loader2, XCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 interface Interview {
@@ -100,7 +100,7 @@ export function CandidateDashboard() {
           Welcome back, {user?.firstName || "there"}
         </h1>
         <p className="text-sm text-[#5a6b7c]">
-          View your upcoming interviews and book new ones
+          View your upcoming interviews
         </p>
       </div>
 
@@ -124,15 +124,6 @@ export function CandidateDashboard() {
             <div className="text-xs text-[#5a6b7c]">Completed</div>
           </div>
         </div>
-        <Link href="/book" className="card flex items-center gap-4 p-5 hover:shadow-md transition-shadow">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e8f4fd]">
-            <Clock className="h-5 w-5 text-[#0090d9]" />
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-[#0090d9]">Book Interview</div>
-            <div className="text-xs text-[#5a6b7c]">Schedule a new one</div>
-          </div>
-        </Link>
       </div>
 
       {/* Upcoming Interviews */}
@@ -144,12 +135,6 @@ export function CandidateDashboard() {
           <div className="py-8 text-center">
             <Calendar className="mx-auto mb-3 h-10 w-10 text-[#c4cdd8]" />
             <p className="text-sm text-[#5a6b7c]">No upcoming interviews</p>
-            <Link
-              href="/book"
-              className="mt-3 inline-block rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0077b6]"
-            >
-              Book an Interview
-            </Link>
           </div>
         ) : (
           <div className="space-y-3">

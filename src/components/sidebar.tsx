@@ -39,7 +39,6 @@ const candidateNav = [
   { href: "/preferences", label: "Job Preferences", icon: SlidersHorizontal },
   { href: "/interviews", label: "My Interviews", icon: Calendar },
   { href: "/availability", label: "My Availability", icon: Clock },
-  { href: "/book", label: "Book Interview", icon: CalendarClock },
 ];
 
 export function Sidebar() {

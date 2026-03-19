@@ -115,7 +115,7 @@ function HealthcarePro({ user, profile }: { user: User; profile: Profile }) {
                   <div key={c.id}>
                     <p className="font-semibold text-[#0f172a]">{c.name}</p>
                     {c.issuer && <p className="text-xs text-[#475569]">{c.issuer}</p>}
-                    {c.expiryDate && <p className="text-xs text-[#94a3b8]">Exp: {c.expiryDate}</p>}
+                    {c.expiryDate && <p className="text-xs text-[#94a3b8]">Exp: {fmtDate(c.expiryDate)}</p>}
                   </div>
                 ))}
               </div>
@@ -322,7 +322,7 @@ function Classic({ user, profile }: { user: User; profile: Profile }) {
                 <p key={c.id} className="text-xs text-[#374151]">
                   <span className="font-semibold">{c.name}</span>
                   {c.issuer && ` — ${c.issuer}`}
-                  {c.expiryDate && ` (Exp: ${c.expiryDate})`}
+                  {c.expiryDate && ` (Exp: ${fmtDate(c.expiryDate)})`}
                 </p>
               ))}
             </div>
@@ -412,7 +412,7 @@ function Minimal({ user, profile }: { user: User; profile: Profile }) {
             <div className="space-y-1.5">
               {profile.certifications.map((c) => (
                 <p key={c.id} className="text-xs text-[#52525b] font-light">
-                  {c.name}{c.issuer && ` · ${c.issuer}`}{c.expiryDate && ` · Exp ${c.expiryDate}`}
+                  {c.name}{c.issuer && ` · ${c.issuer}`}{c.expiryDate && ` · Exp ${fmtDate(c.expiryDate)}`}
                 </p>
               ))}
             </div>

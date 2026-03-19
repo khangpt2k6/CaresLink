@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "seed:jobs": "tsx scripts/seed-jobs.ts",
+    "seed:auto-apply-test": "tsx scripts/seed-auto-apply-test.ts",
     "seed:candidates": "tsx scripts/seed-candidates.ts",
     "seed:profiles": "tsx scripts/seed-candidate-profiles.ts",
     "update:healthcare": "tsx scripts/update-candidates-to-healthcare.ts",

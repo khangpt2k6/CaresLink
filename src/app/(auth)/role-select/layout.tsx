@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getOrCreateUser } from "@/lib/clerk-auth";
 
-/** If user already has a role, redirect to dashboard or book. */
+/** If user already has a role, redirect to dashboard. */
 export default async function RoleSelectLayout({
   children,
 }: {
@@ -13,7 +13,6 @@ export default async function RoleSelectLayout({
 
   const user = await getOrCreateUser(userId);
   if (user?.role) {
-    if (user.role === "CANDIDATE") redirect("/book");
     redirect("/");
   }
 

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
+import { requireUser } from "@/lib/clerk-auth";
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(request);
+  if (auth.error) return auth.error;
+
   try {
     const body = await request.json();
     const message = body.message ?? body.prompt ?? "";
@@ -13,7 +17,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await runAgent(message, sessionId);
+    const response = await runAgent(message, sessionId, auth.user.id);
     return NextResponse.json({ response });
   } catch (e) {
     console.error(e);

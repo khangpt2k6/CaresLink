@@ -29,6 +29,7 @@ model User {
   sessions              Session[]
   candidateAvailability CandidateAvailability[]
   profile               CandidateProfile?
+  agentMemories         AgentMemory[]
 }
 
 // Candidate profile (LinkedIn-style)
@@ -287,9 +288,13 @@ model AgentRun {
 model AgentMemory {
   id        String   @id @default(cuid())
   sessionId String   @unique
-  history   Json     // Gemini Content[] format
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  history   Json     // Anthropic MessageParam[] format
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Event {

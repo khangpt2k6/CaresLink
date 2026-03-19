@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useUser } from "@clerk/nextjs";
 import {
   X,
   Send,
@@ -116,21 +117,25 @@ interface ChatSession {
   updatedAt: number;
 }
 
-const STORAGE_KEY = "careslink-chat-sessions";
-const ACTIVE_KEY = "careslink-chat-active-session";
+function storageKey(userId: string) {
+  return `careslink-chat-sessions-${userId}`;
+}
+function activeKey(userId: string) {
+  return `careslink-chat-active-${userId}`;
+}
 
-function loadSessions(): ChatSession[] {
+function loadSessions(userId: string): ChatSession[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(userId));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-function saveSessions(sessions: ChatSession[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, 30)));
+function saveSessions(sessions: ChatSession[], userId: string) {
+  localStorage.setItem(storageKey(userId), JSON.stringify(sessions.slice(0, 30)));
 }
 
 function getTitle(messages: ChatMessage[]): string {
@@ -151,12 +156,11 @@ function timeAgo(ts: number): string {
 
 export function AiChatBubble() {
   const { open, expanded, setOpen, toggle, toggleExpand, panelWidth } = useAiChat();
+  const { user } = useUser();
+  const userId = user?.id ?? "";
   const [input, setInput] = useState("");
-  const [sessions, setSessions] = useState<ChatSession[]>(loadSessions);
-  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem(ACTIVE_KEY) || "";
-  });
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [showHistory, setShowHistory] = useState(false);
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -167,40 +171,24 @@ export function AiChatBubble() {
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
   const messages = activeSession?.messages || [];
 
+  // Load sessions from localStorage once userId is available
   useEffect(() => {
-    saveSessions(sessions);
-  }, [sessions]);
+    if (!userId) return;
+    const saved = loadSessions(userId);
+    setSessions(saved);
+    const savedActive = localStorage.getItem(activeKey(userId));
+    if (savedActive) setActiveSessionId(savedActive);
+  }, [userId]);
 
   useEffect(() => {
-    if (activeSessionId) {
-      localStorage.setItem(ACTIVE_KEY, activeSessionId);
-    }
-  }, [activeSessionId]);
+    if (!userId) return;
+    saveSessions(sessions, userId);
+  }, [sessions, userId]);
 
-  // Migrate old single-session storage
   useEffect(() => {
-    if (sessions.length === 0) {
-      const oldMessages = localStorage.getItem("careslink-chat-messages");
-      const oldSession = localStorage.getItem("careslink-chat-session");
-      if (oldMessages && oldSession) {
-        try {
-          const msgs = JSON.parse(oldMessages) as ChatMessage[];
-          if (msgs.length > 0) {
-            const migrated: ChatSession = {
-              id: oldSession,
-              title: getTitle(msgs),
-              messages: msgs,
-              updatedAt: Date.now(),
-            };
-            setSessions([migrated]);
-            setActiveSessionId(oldSession);
-          }
-        } catch { /* ignore */ }
-        localStorage.removeItem("careslink-chat-messages");
-        localStorage.removeItem("careslink-chat-session");
-      }
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!userId || !activeSessionId) return;
+    localStorage.setItem(activeKey(userId), activeSessionId);
+  }, [activeSessionId, userId]);
 
   useEffect(() => {
     if (scrollRef.current) {

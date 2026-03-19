@@ -255,6 +255,52 @@ export default function CredentialCheckDetailPage() {
           </div>
         )}
 
+        {generatingReport && (
+          <div className="mb-4 rounded-xl border border-purple-200 bg-purple-50 p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <Loader2 className="h-5 w-5 animate-spin text-purple-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-purple-800">Generating full report with live browser verification</p>
+                <p className="text-xs text-purple-600">{reportStep || "Launching browsers..."}</p>
+              </div>
+            </div>
+            <p className="text-xs text-purple-500 pl-8">
+              Chrome windows will open on your screen showing the verification in real time.
+              Nursys®, OIG Exclusion List, and SAM.gov will be checked with screenshots.
+              This takes 1–3 minutes.
+            </p>
+          </div>
+        )}
+
+        {/* ─── FULL REPORT PDF VIEWER ────────────────────────── */}
+        {reportUrl && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 rounded-2xl overflow-hidden shadow-sm border border-[#e2e8f0] bg-white"
+          >
+            <div className="flex items-center justify-between border-b border-[#e2e8f0] bg-[#f8fafc] px-5 py-3">
+              <div className="flex items-center gap-2">
+                <FileCheck className="h-4 w-4 text-[#0090d9]" />
+                <p className="text-sm font-semibold text-[#1a2b3c]">Full Verification Report with Live Screenshots</p>
+              </div>
+              <a
+                href={reportUrl}
+                download={`CredentialReport_${check.lastName}_${check.firstName}_${new Date().toISOString().slice(0, 10)}.pdf`}
+                className="flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0077b6] transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" /> Download PDF
+              </a>
+            </div>
+            <iframe
+              src={reportUrl}
+              className="w-full"
+              style={{ height: "900px", border: "none" }}
+              title="Credential Verification Report"
+            />
+          </motion.div>
+        )}
+
         {/* ─── REPORT (captured for PDF) ─────────────────────── */}
         <div ref={reportRef} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-[#e2e8f0]">
 

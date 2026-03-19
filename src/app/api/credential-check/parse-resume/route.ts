@@ -25,11 +25,9 @@ export async function POST(req: NextRequest) {
 
     if (mimeType === "application/pdf" || file.name.endsWith(".pdf")) {
       // Use pdf-parse to extract text
-      const pdfParseModule = await import("pdf-parse");
-      const pdfParse = typeof pdfParseModule.default === "function"
-        ? pdfParseModule.default
-        : (pdfParseModule as unknown as typeof pdfParseModule.default);
-      const data = await pdfParse(buffer);
+      const { PDFParse } = await import("pdf-parse");
+      const parser = new PDFParse({ data: buffer });
+      const data = await parser.getText();
       textContent = data.text;
     } else if (
       mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||

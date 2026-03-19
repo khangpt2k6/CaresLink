@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { SlidersHorizontal, Check, Save, Loader2 } from "lucide-react";
+import { SlidersHorizontal, Check, Save, Loader2, Zap } from "lucide-react";
 
 const ROLES = [
   "HHA (Caregiver)", "CNA", "LPN", "RN (Staff Nurse)", "APRN",
@@ -59,6 +59,8 @@ export default function PreferencesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [autoApplying, setAutoApplying] = useState(false);
+  const [autoResult, setAutoResult] = useState<{ applied: string[]; skipped: string[]; total: number } | null>(null);
 
   useEffect(() => {
     fetch("/api/preferences")
@@ -68,6 +70,22 @@ export default function PreferencesPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleAutoApply() {
+    setAutoApplying(true);
+    setAutoResult(null);
+    // Save preferences first, then auto-apply
+    await fetch("/api/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(prefs),
+    });
+    const res = await fetch("/api/jobs/auto-apply", { method: "POST" });
+    const data = await res.json();
+    setAutoApplying(false);
+    setAutoResult(data);
+    setTimeout(() => setAutoResult(null), 6000);
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -101,14 +119,24 @@ export default function PreferencesPage() {
           </div>
           <p className="mt-1 text-sm text-[#64748b]">Tell us what you&apos;re looking for — we&apos;ll match you with the right roles.</p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-60 transition-colors"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-          {saving ? "Saving…" : saved ? "Saved!" : "Save preferences"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleAutoApply}
+            disabled={autoApplying || saving}
+            className="flex items-center gap-2 rounded-lg border border-[#0090d9] bg-white px-4 py-2 text-sm font-semibold text-[#0090d9] hover:bg-[#e8f4fd] disabled:opacity-60 transition-colors"
+          >
+            {autoApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            {autoApplying ? "Applying…" : "Auto-Apply to Matching Jobs"}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-60 transition-colors"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            {saving ? "Saving…" : saved ? "Saved!" : "Save preferences"}
+          </button>
+        </div>
       </div>
 
       <motion.div
@@ -129,6 +157,19 @@ export default function PreferencesPage() {
           className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2.5 text-sm text-green-700">
           <Check className="h-4 w-4" />
           Preferences saved successfully.
+        </motion.div>
+      )}
+
+      {autoResult && (
+        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+          className={`flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm ${autoResult.total > 0 ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-600"}`}>
+          <Zap className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>
+            {autoResult.total > 0
+              ? <>Auto-applied to <strong>{autoResult.total}</strong> matching job{autoResult.total !== 1 ? "s" : ""}: {autoResult.applied.join(", ")}.</>
+              : "No new matching jobs found to apply to."}
+            {autoResult.skipped.length > 0 && <> ({autoResult.skipped.length} already applied.)</>}
+          </span>
         </motion.div>
       )}
     </div>

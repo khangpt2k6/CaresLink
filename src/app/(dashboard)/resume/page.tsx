@@ -558,6 +558,27 @@ export default function ResumePage() {
       ]);
 
       const el = resumeRef.current;
+
+      // html2canvas can't parse Tailwind v4's oklch()/oklab() color functions.
+      // Strip them from all <style> tags in the cloned document before capture.
+      function stripModernColors(doc: Document) {
+        doc.querySelectorAll("style").forEach((s) => {
+          s.textContent = (s.textContent ?? "")
+            .replace(/oklch\([^)]*\)/g, (m) => {
+              // Approximate lightness → hex so backgrounds/text still render
+              const l = parseFloat(m.replace("oklch(", ""));
+              if (l >= 0.95) return "#ffffff";
+              if (l >= 0.85) return "#f1f5f9";
+              if (l >= 0.70) return "#e2e8f0";
+              if (l >= 0.55) return "#94a3b8";
+              if (l >= 0.40) return "#64748b";
+              if (l >= 0.25) return "#334155";
+              return "#0f172a";
+            })
+            .replace(/oklab\([^)]*\)/g, "transparent");
+        });
+      }
+
       const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
@@ -567,6 +588,9 @@ export default function ResumePage() {
         height: el.scrollHeight,
         windowWidth: el.scrollWidth,
         windowHeight: el.scrollHeight,
+        onclone: (_clonedDoc, clonedEl) => {
+          stripModernColors(clonedEl.ownerDocument);
+        },
       });
 
       const imgData = canvas.toDataURL("image/jpeg", 0.95);

@@ -432,7 +432,14 @@ export default function ProfilePage() {
                       {formatDate(exp.startDate)} - {exp.current ? "Present" : formatDate(exp.endDate)}
                     </p>
                     {exp.description && (
-                      <p className="text-sm text-gray-500 mt-2 whitespace-pre-wrap">{exp.description}</p>
+                      <ul className="mt-2 space-y-1">
+                        {exp.description.split("\n").filter(Boolean).map((line, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-gray-500">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0090d9]" />
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -787,10 +794,12 @@ function ExperienceForm({
       </FormField>
       <FormField label="Description">
         <textarea
-          className={inputClass + " min-h-[80px] resize-none"}
+          className={inputClass + " min-h-[110px] resize-none"}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          placeholder={"One bullet point per line, e.g.:\nAdministered medications to 12+ patients daily\nMaintained zero incident reports over 2 years"}
         />
+        <p className="mt-1 text-[10px] text-gray-400">Each line becomes a bullet point on your resume</p>
       </FormField>
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Start Date *">

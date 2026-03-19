@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+// useRef kept for resumeRef (preview div)
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Download, Check, Briefcase, GraduationCap, Award,
@@ -39,6 +40,21 @@ function fmtDate(d?: string) {
   if (!d) return "";
   try { return new Date(d).toLocaleDateString("en-US", { month: "short", year: "numeric" }); }
   catch { return d.slice(0, 7); }
+}
+
+function BulletDesc({ text, className = "" }: { text: string; className?: string }) {
+  const lines = text.split("\n").filter(Boolean);
+  if (lines.length === 0) return null;
+  return (
+    <ul className={`mt-1 space-y-0.5 ${className}`}>
+      {lines.map((line, i) => (
+        <li key={i} className="flex items-start gap-1.5">
+          <span className="mt-[5px] h-1 w-1 shrink-0 rounded-full bg-current opacity-50" />
+          <span>{line}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 // ─── Template: Healthcare Pro ────────────────────────────────
@@ -83,7 +99,7 @@ function HealthcarePro({ user, profile }: { user: User; profile: Profile }) {
                       {fmtDate(e.startDate)} — {e.current ? "Present" : fmtDate(e.endDate)}
                     </p>
                   </div>
-                  {e.description && <p className="mt-1 text-[#475569] text-xs leading-relaxed">{e.description}</p>}
+                  {e.description && <BulletDesc text={e.description} className="text-xs text-[#475569] leading-relaxed" />}
                 </div>
               ))}
             </div>
@@ -216,7 +232,7 @@ function Modern({ user, profile }: { user: User; profile: Profile }) {
                       {fmtDate(e.startDate)} — {e.current ? "Present" : fmtDate(e.endDate)}
                     </p>
                   </div>
-                  {e.description && <p className="mt-1 text-xs text-[#475569] leading-relaxed">{e.description}</p>}
+                  {e.description && <BulletDesc text={e.description} className="text-xs text-[#475569] leading-relaxed" />}
                 </div>
               ))}
             </div>
@@ -284,7 +300,7 @@ function Classic({ user, profile }: { user: User; profile: Profile }) {
                       {fmtDate(e.startDate)} – {e.current ? "Present" : fmtDate(e.endDate)}
                     </p>
                   </div>
-                  {e.description && <p className="mt-1 text-xs text-[#374151] leading-relaxed">{e.description}</p>}
+                  {e.description && <BulletDesc text={e.description} className="text-xs text-[#374151] leading-relaxed" />}
                 </div>
               ))}
             </div>
@@ -367,7 +383,7 @@ function Minimal({ user, profile }: { user: User; profile: Profile }) {
                   <div>
                     <p className="font-semibold text-[#18181b]">{e.title}</p>
                     <p className="text-xs text-[#52525b]">{e.company}</p>
-                    {e.description && <p className="mt-1.5 text-xs text-[#71717a] leading-relaxed font-light">{e.description}</p>}
+                    {e.description && <BulletDesc text={e.description} className="text-xs text-[#71717a] leading-relaxed font-light" />}
                   </div>
                   <p className="text-right text-xs text-[#a1a1aa] whitespace-nowrap">
                     {fmtDate(e.startDate)}<br />{e.current ? "Present" : fmtDate(e.endDate)}
@@ -519,7 +535,6 @@ export default function ResumePage() {
   const [template, setTemplate] = useState<TemplateId>("healthcare-pro");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const resumeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -548,85 +563,8 @@ export default function ResumePage() {
     }
   }
 
-  async function handleDownloadPDF() {
-    if (!resumeRef.current || exporting) return;
-    setExporting(true);
-    try {
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-        import("html2canvas"),
-        import("jspdf"),
-      ]);
-
-      const el = resumeRef.current;
-
-      // html2canvas can't parse Tailwind v4's oklch()/oklab() color functions.
-      // Strip them from all <style> tags in the cloned document before capture.
-      function stripModernColors(doc: Document) {
-        doc.querySelectorAll("style").forEach((s) => {
-          s.textContent = (s.textContent ?? "")
-            .replace(/oklch\([^)]*\)/g, (m) => {
-              // Approximate lightness → hex so backgrounds/text still render
-              const l = parseFloat(m.replace("oklch(", ""));
-              if (l >= 0.95) return "#ffffff";
-              if (l >= 0.85) return "#f1f5f9";
-              if (l >= 0.70) return "#e2e8f0";
-              if (l >= 0.55) return "#94a3b8";
-              if (l >= 0.40) return "#64748b";
-              if (l >= 0.25) return "#334155";
-              return "#0f172a";
-            })
-            .replace(/oklab\([^)]*\)/g, "transparent");
-        });
-      }
-
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-        width: el.scrollWidth,
-        height: el.scrollHeight,
-        windowWidth: el.scrollWidth,
-        windowHeight: el.scrollHeight,
-        onclone: (_clonedDoc, clonedEl) => {
-          stripModernColors(clonedEl.ownerDocument);
-        },
-      });
-
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-
-      const pageW = 210;
-      const pageH = 297;
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
-
-      let yPos = 0;
-      let remainingH = imgH;
-      let firstPage = true;
-
-      while (remainingH > 0) {
-        if (!firstPage) pdf.addPage();
-        const sliceH = Math.min(pageH, remainingH);
-        pdf.addImage(imgData, "JPEG", 0, -yPos, imgW, imgH);
-        // Clip the page by drawing a white rectangle over the overflow
-        if (remainingH > pageH) {
-          pdf.setFillColor(255, 255, 255);
-          pdf.rect(0, sliceH, pageW, pageH - sliceH, "F");
-        }
-        yPos += pageH;
-        remainingH -= pageH;
-        firstPage = false;
-      }
-
-      const name = userData?.name?.replace(/\s+/g, "_") ?? "Resume";
-      pdf.save(`${name}_Resume.pdf`);
-    } catch (e) {
-      console.error("PDF export failed", e);
-      alert("PDF export failed. Please try again.");
-    } finally {
-      setExporting(false);
-    }
+  function handleDownloadPDF() {
+    window.open(`/resume-print?template=${template}`, "_blank");
   }
 
   if (loading) {
@@ -704,14 +642,9 @@ export default function ResumePage() {
         {/* Download button */}
         <button
           onClick={handleDownloadPDF}
-          disabled={exporting}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0090d9] py-2.5 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-70 transition-colors mb-2"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0090d9] py-2.5 text-sm font-semibold text-white hover:bg-[#0077b6] transition-colors mb-2"
         >
-          {exporting ? (
-            <><Loader2 className="h-4 w-4 animate-spin" /> Generating PDF…</>
-          ) : (
-            <><Download className="h-4 w-4" /> Download PDF</>
-          )}
+          <Download className="h-4 w-4" /> Download PDF
         </button>
         <a
           href="/profile"
@@ -730,14 +663,9 @@ export default function ResumePage() {
           </p>
           <button
             onClick={handleDownloadPDF}
-            disabled={exporting}
-            className="flex items-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5 text-xs font-medium text-[#1a2b3c] shadow-sm hover:bg-[#f8fafc] disabled:opacity-60 transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white px-3 py-1.5 text-xs font-medium text-[#1a2b3c] shadow-sm hover:bg-[#f8fafc] transition-colors"
           >
-            {exporting ? (
-              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
-            ) : (
-              <><Download className="h-3.5 w-3.5 text-[#0090d9]" /> Download PDF</>
-            )}
+            <Download className="h-3.5 w-3.5 text-[#0090d9]" /> Download PDF
           </button>
         </div>
 

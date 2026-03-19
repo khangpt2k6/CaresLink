@@ -238,10 +238,15 @@ export async function captureFloridaDOHScreenshots(
     await page.goto(SEARCH_URL, { waitUntil: "networkidle2", timeout: 30000 });
     shots.push(await snap(page, "Florida DOH — MQA Search Form"));
 
+    // Select Board of Nursing (17) and Certified Nursing Assistant profession (4401)
+    try { await page.select('select[name="SearchDto.Board"]', "17"); } catch {}
+    await new Promise((r) => setTimeout(r, 500)); // wait for profession list to update
+    try { await page.select('select[name="SearchDto.Profession"]', "4401"); } catch {}
+
     // Fill last name
     try {
       await page.$eval(
-        'input[name="LastName"], #LastName, input[id*="LastName"]',
+        'input[name="SearchDto.LastName"]',
         (el, v) => ((el as HTMLInputElement).value = v),
         lastName.toUpperCase()
       );
@@ -250,15 +255,10 @@ export async function captureFloridaDOHScreenshots(
     // Fill first name
     try {
       await page.$eval(
-        'input[name="FirstName"], #FirstName, input[id*="FirstName"]',
+        'input[name="SearchDto.FirstName"]',
         (el, v) => ((el as HTMLInputElement).value = v),
         firstName.toUpperCase()
       );
-    } catch {}
-
-    // Select CNA license type
-    try {
-      await page.select('select[name="LicenseType"], #LicenseType', "CNA");
     } catch {}
 
     await new Promise((r) => setTimeout(r, 500));

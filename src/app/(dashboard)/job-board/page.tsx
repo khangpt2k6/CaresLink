@@ -87,6 +87,8 @@ export default function JobBoardPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [hoveredApplied, setHoveredApplied] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [showFilters, setShowFilters] = useState(false);
@@ -248,6 +250,25 @@ export default function JobBoardPage() {
 
   const openCount = jobs.filter(j => !j.applied).length;
   const appliedCount = jobs.filter(j => j.applied).length;
+
+  async function handleCancel(job: Job) {
+    setCancelling(job.id);
+    try {
+      const res = await fetch("/api/jobs/board/apply", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      if (res.ok) {
+        setJobs(prev => prev.map(j =>
+          j.id === job.id ? { ...j, applied: false, applicantCount: Math.max(0, j.applicantCount - 1) } : j
+        ));
+        setHoveredApplied(null);
+      }
+    } finally {
+      setCancelling(null);
+    }
+  }
 
   async function handleApply(job: Job) {
     setApplying(job.id);
@@ -533,13 +554,27 @@ export default function JobBoardPage() {
                               </button>
                             )}
                             {job.applied ? (
-                              <motion.span
+                              <motion.button
                                 initial={false}
-                                animate={job.applied ? { scale: [1.2, 1] } : {}}
-                                className="flex items-center gap-1.5 rounded-lg bg-[#f0fdf4] px-3 py-1.5 text-xs font-semibold text-[#16a34a]"
+                                animate={{ scale: [1.2, 1] }}
+                                onClick={() => handleCancel(job)}
+                                onMouseEnter={() => setHoveredApplied(job.id)}
+                                onMouseLeave={() => setHoveredApplied(null)}
+                                disabled={!!cancelling}
+                                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-60 ${
+                                  hoveredApplied === job.id
+                                    ? "bg-red-50 text-red-600 border border-red-200"
+                                    : "bg-[#f0fdf4] text-[#16a34a]"
+                                }`}
                               >
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Applied
-                              </motion.span>
+                                {cancelling === job.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : hoveredApplied === job.id ? (
+                                  <><X className="h-3.5 w-3.5" /> Cancel</>
+                                ) : (
+                                  <><CheckCircle2 className="h-3.5 w-3.5" /> Applied</>
+                                )}
+                              </motion.button>
                             ) : (
                               <motion.button
                                 ref={(el) => {

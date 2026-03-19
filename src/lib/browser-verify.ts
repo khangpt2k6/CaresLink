@@ -217,7 +217,82 @@ export async function captureOIGScreenshots(
 }
 
 // ─────────────────────────────────────────────────────────────
-// 3.  SAM.gov — Excluded Parties
+// 3.  Florida DOH — CNA License Verification
+// ─────────────────────────────────────────────────────────────
+export async function captureFloridaDOHScreenshots(
+  firstName: string,
+  lastName: string
+): Promise<VerificationScreenshot[]> {
+  const shots: VerificationScreenshot[] = [];
+  const browser = await launchBrowser();
+
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    );
+
+    const SEARCH_URL =
+      "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders";
+
+    await page.goto(SEARCH_URL, { waitUntil: "networkidle2", timeout: 30000 });
+    shots.push(await snap(page, "Florida DOH — MQA Search Form"));
+
+    // Fill last name
+    try {
+      await page.$eval(
+        'input[name="LastName"], #LastName, input[id*="LastName"]',
+        (el, v) => ((el as HTMLInputElement).value = v),
+        lastName.toUpperCase()
+      );
+    } catch {}
+
+    // Fill first name
+    try {
+      await page.$eval(
+        'input[name="FirstName"], #FirstName, input[id*="FirstName"]',
+        (el, v) => ((el as HTMLInputElement).value = v),
+        firstName.toUpperCase()
+      );
+    } catch {}
+
+    // Select CNA license type
+    try {
+      await page.select('select[name="LicenseType"], #LicenseType', "CNA");
+    } catch {}
+
+    await new Promise((r) => setTimeout(r, 500));
+    shots.push(await snap(page, "Florida DOH — Form Filled"));
+
+    // Submit the form
+    const submitted = await page.evaluate(() => {
+      const btn = document.querySelector<HTMLElement>(
+        'input[type="submit"][name*="Search"], input[type="submit"][value*="Search"], button[type="submit"]'
+      );
+      if (btn) { btn.click(); return true; }
+      return false;
+    });
+
+    if (submitted) {
+      await new Promise((r) => setTimeout(r, 3000));
+      shots.push(await snap(page, "Florida DOH — Search Results"));
+
+      // Scroll to show results
+      await page.evaluate(() => window.scrollBy(0, 300));
+      await new Promise((r) => setTimeout(r, 600));
+      shots.push(await snap(page, "Florida DOH — License Details"));
+    }
+  } catch (err) {
+    console.error("[browser-verify] Florida DOH error:", err);
+  } finally {
+    await browser.close();
+  }
+
+  return shots;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4.  SAM.gov — Excluded Parties
 // ─────────────────────────────────────────────────────────────
 export async function captureSAMGovScreenshots(
   firstName: string,

@@ -9,6 +9,8 @@ interface NursysResult { status: string; matches: { ncsbnId: string; displayName
 interface OIGExclusion { lastName: string; firstName: string; middleName: string; exclusionType: string; exclusionDate: string; specialty: string; state: string; }
 interface OIGResult { status: string; searchedName: string; matches: OIGExclusion[]; checkedAt: string; manualUrl: string; }
 interface SAMGovResult { status: string; searchedName: string; message: string; details?: string; manualUrl: string; checkedAt: string; }
+interface FloridaLicense { name: string; licenseNumber: string; licenseType: string; status: string; expirationDate: string; county?: string; }
+interface FloridaDOHResult { status: string; searchedName: string; licenseType: string; matches: FloridaLicense[]; error?: string; manualUrl: string; checkedAt: string; }
 
 export interface ReportCheckData {
   firstName: string; middleName?: string | null; lastName: string;
@@ -19,6 +21,7 @@ export interface ReportCheckData {
   aiRecommendation?: string | null;
   aiSummary?: string | null;
   nursysData?: NursysResult | null;
+  floridaDohData?: FloridaDOHResult | null;
   oigData?: OIGResult | null;
   samGovData?: SAMGovResult | null;
   updatedAt: string;
@@ -26,6 +29,7 @@ export interface ReportCheckData {
 
 export interface AllScreenshots {
   nursys: VerificationScreenshot[];
+  floridaDoh: VerificationScreenshot[];
   oig: VerificationScreenshot[];
   samGov: VerificationScreenshot[];
 }
@@ -192,6 +196,68 @@ function oigSection(data: OIGResult, shots: VerificationScreenshot[]) {
   `;
 }
 
+function floridaDohSection(data: FloridaDOHResult, shots: VerificationScreenshot[]) {
+  const isFound = data.status === "found";
+  const licTable = isFound && data.matches.length > 0 ? `
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:10px;">
+      <thead>
+        <tr style="background:#f3f4f6;">
+          ${["Name","License #","Type","Status","Expiration","County"].map(h =>
+            `<th style="border:1px solid #e5e7eb;padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#6b7280;">${h}</th>`
+          ).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${data.matches.map(m => `
+          <tr>
+            <td style="border:1px solid #e5e7eb;padding:6px 8px;font-weight:600;">${m.name}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px 8px;font-family:monospace;">${m.licenseNumber}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px 8px;color:#0090d9;font-weight:700;">${m.licenseType}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px 8px;">
+              <span style="background:${m.status.toUpperCase().includes("ACTIV") ? "#d1fae5" : "#fee2e2"};color:${m.status.toUpperCase().includes("ACTIV") ? "#065f46" : "#991b1b"};padding:2px 8px;border-radius:8px;font-weight:700;font-size:10px;">${m.status}</span>
+            </td>
+            <td style="border:1px solid #e5e7eb;padding:6px 8px;">${m.expirationDate}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px 8px;color:#6b7280;">${m.county || "—"}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  ` : isFound ? "" : `
+    <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;">
+      <p style="margin:0;color:#92400e;">${data.error || "No CNA license found in Florida DOH database."} Manual verification: <a href="${data.manualUrl}">${data.manualUrl}</a></p>
+    </div>
+  `;
+
+  const statusAlert = !isFound && data.status !== "manual_required" ? `
+    <div style="background:#fee2e2;border:2px solid #dc2626;border-radius:6px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px;">
+      <span style="font-size:18px;">⚠️</span>
+      <p style="margin:0;font-weight:700;color:#991b1b;">CNA license NOT FOUND in Florida DOH database. Verify manually.</p>
+    </div>
+  ` : isFound ? `
+    <div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:16px;">✅</span>
+      <p style="margin:0;font-weight:600;color:#065f46;">CNA license found and active in Florida DOH database.</p>
+    </div>
+  ` : "";
+
+  return `
+    <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:20px;page-break-inside:avoid;">
+      <div style="background:#f9fafb;border-bottom:1px solid #e5e7eb;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <p style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;margin:0;">1. Florida DOH — CNA License Verification · MQA Health Care Provider Search</p>
+          <p style="font-size:11px;color:#374151;margin:2px 0 0;">Searched: ${data.searchedName} · License Type: ${data.licenseType} · ${data.checkedAt ? new Date(data.checkedAt).toLocaleString() : ""}</p>
+        </div>
+        ${badge(data.status)}
+      </div>
+      <div style="padding:14px 16px;">
+        ${statusAlert}
+        ${licTable}
+        ${screenshotGrid(shots, "Florida DOH")}
+      </div>
+    </div>
+  `;
+}
+
 function samGovSection(data: SAMGovResult, shots: VerificationScreenshot[]) {
   return `
     <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:20px;page-break-inside:avoid;">
@@ -300,6 +366,10 @@ export function buildReportHTML(check: ReportCheckData, screenshots: AllScreensh
 
     ${check.roleType === "NURSE" && check.nursysData
       ? nursysSection(check.nursysData, screenshots.nursys)
+      : ""}
+
+    ${check.roleType === "CNA" && check.floridaDohData
+      ? floridaDohSection(check.floridaDohData, screenshots.floridaDoh)
       : ""}
 
     ${check.samGovData ? samGovSection(check.samGovData, screenshots.samGov) : ""}

@@ -5,6 +5,7 @@ import {
   captureNursysScreenshots,
   captureOIGScreenshots,
   captureSAMGovScreenshots,
+  captureFloridaDOHScreenshots,
   type VerificationScreenshot,
 } from "@/lib/browser-verify";
 import { buildReportHTML, type AllScreenshots, type ReportCheckData } from "@/lib/report-html";
@@ -54,15 +55,21 @@ export async function GET(
   console.log(`[report] SAM.gov screenshots: ${samGovScreenshots.length}`);
 
   let nursysScreenshots: VerificationScreenshot[] = [];
+  let floridaDohScreenshots: VerificationScreenshot[] = [];
+
   if (roleType === "NURSE") {
     nursysScreenshots = await captureNursysScreenshots(
       firstName, lastName, licenseState, licenseNumber
     );
     console.log(`[report] Nursys screenshots: ${nursysScreenshots.length}`);
+  } else if (roleType === "CNA") {
+    floridaDohScreenshots = await captureFloridaDOHScreenshots(firstName, lastName);
+    console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}`);
   }
 
   const screenshots: AllScreenshots = {
     nursys: nursysScreenshots,
+    floridaDoh: floridaDohScreenshots,
     oig: oigScreenshots,
     samGov: samGovScreenshots,
   };
@@ -82,6 +89,7 @@ export async function GET(
     aiRecommendation: check.aiRecommendation,
     aiSummary: check.aiSummary,
     nursysData: check.nursysData as ReportCheckData["nursysData"],
+    floridaDohData: check.floridaDohData as ReportCheckData["floridaDohData"],
     oigData: check.oigData as ReportCheckData["oigData"],
     samGovData: check.samGovData as ReportCheckData["samGovData"],
     updatedAt: check.updatedAt.toISOString(),

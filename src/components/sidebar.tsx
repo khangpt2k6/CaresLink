@@ -20,6 +20,7 @@ import {
   Sparkles,
   SlidersHorizontal,
   LayoutList,
+  FileText,
 } from "lucide-react";
 import { useUser, useClerk } from "@clerk/nextjs";
 
@@ -38,6 +39,7 @@ const candidateNav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/job-board", label: "Job Board", icon: LayoutList },
   { href: "/profile", label: "My Profile", icon: UserCircle },
+  { href: "/resume", label: "My Resume", icon: FileText },
   { href: "/preferences", label: "Job Preferences", icon: SlidersHorizontal },
   { href: "/interviews", label: "My Interviews", icon: Calendar },
   { href: "/availability", label: "My Availability", icon: Clock },

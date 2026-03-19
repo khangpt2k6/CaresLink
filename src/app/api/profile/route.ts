@@ -31,7 +31,7 @@ export async function PUT(req: NextRequest) {
   const { user } = result;
 
   const body = await req.json();
-  const { name, headline, summary, phone, city, state, country } = body;
+  const { name, headline, summary, phone, city, state, country, resumeTemplate } = body;
 
   // Update user name if provided
   if (name !== undefined) {
@@ -59,6 +59,7 @@ export async function PUT(req: NextRequest) {
       ...(city !== undefined && { city }),
       ...(state !== undefined && { state }),
       ...(country !== undefined && { country }),
+      ...(resumeTemplate !== undefined && { resumeTemplate }),
     },
     include: {
       experiences: { orderBy: { startDate: "desc" } },

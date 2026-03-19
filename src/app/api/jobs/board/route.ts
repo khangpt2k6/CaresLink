@@ -29,10 +29,18 @@ export async function GET(req: NextRequest) {
     });
     const appliedPositions = new Set(applied.map(a => a.position.toLowerCase()));
 
+    // Count total applicants per job title
+    const counts = await prisma.candidate.groupBy({
+      by: ["position"],
+      _count: { id: true },
+    });
+    const countMap = new Map(counts.map(c => [c.position.toLowerCase(), c._count.id]));
+
     return NextResponse.json(
       jobs.map(job => ({
         ...job,
         applied: appliedPositions.has(job.title.toLowerCase()),
+        applicantCount: countMap.get(job.title.toLowerCase()) ?? 0,
       }))
     );
   } catch (e) {

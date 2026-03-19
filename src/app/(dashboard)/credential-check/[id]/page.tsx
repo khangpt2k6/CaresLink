@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import {
   ShieldCheck, ArrowLeft, Download, Loader2, CheckCircle2,
   AlertCircle, XCircle, ExternalLink, RefreshCw, AlertTriangle,
-  MapPin, User, Phone, Mail, FileText, Clock,
+  MapPin, User, Phone, Mail, FileText, Clock, FileCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -101,6 +101,9 @@ export default function CredentialCheckDetailPage() {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [reportUrl, setReportUrl] = useState<string | null>(null);
+  const [reportStep, setReportStep] = useState("");
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -124,6 +127,29 @@ export default function CredentialCheckDetailPage() {
       if (res.ok) setCheck(await res.json());
     } finally {
       setVerifying(false);
+    }
+  }
+
+  async function generateFullReport() {
+    if (generatingReport) return;
+    setGeneratingReport(true);
+    setReportUrl(null);
+    setReportStep("Opening browsers for live verification...");
+    try {
+      const res = await fetch(`/api/credential-check/${id}/report`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to generate report" }));
+        alert(err.error || "Failed to generate report");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setReportUrl(url);
+      setReportStep("Report ready!");
+    } catch {
+      alert("Failed to generate report. Make sure verification has been run first.");
+    } finally {
+      setGeneratingReport(false);
     }
   }
 
@@ -203,11 +229,18 @@ export default function CredentialCheckDetailPage() {
               </button>
             )}
             {check.status === "COMPLETED" && (
-              <button onClick={downloadPDF} disabled={exporting}
-                className="flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-50 transition-colors shadow-sm">
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                Download PDF Report
-              </button>
+              <>
+                <button onClick={generateFullReport} disabled={generatingReport}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#0090d9] bg-white px-4 py-2 text-sm font-semibold text-[#0090d9] hover:bg-[#eff8ff] disabled:opacity-50 transition-colors shadow-sm">
+                  {generatingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
+                  {generatingReport ? "Opening browsers..." : "Generate Full Report"}
+                </button>
+                <button onClick={downloadPDF} disabled={exporting}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-50 transition-colors shadow-sm">
+                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  Quick PDF
+                </button>
+              </>
             )}
           </div>
         </div>

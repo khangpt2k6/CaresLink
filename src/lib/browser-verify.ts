@@ -250,37 +250,21 @@ export async function captureFloridaDOHScreenshots(
     await page.goto(SEARCH_URL, { waitUntil: "networkidle2", timeout: 30000 });
     shots.push(await snap(page, "Florida DOH — MQA Search Form"));
 
-    // Select Board of Nursing (17) and Certified Nursing Assistant profession (4401)
-    try { await page.select('select[name="SearchDto.Board"]', "17"); } catch {}
-    await new Promise((r) => setTimeout(r, 500)); // wait for profession list to update
-    try { await page.select('select[name="SearchDto.Profession"]', "4401"); } catch {}
-
-    // Fill last name
+    // Fill only: Last Name, First Name, License Number (no board/profession/status filters)
     try {
-      await page.$eval(
-        'input[name="SearchDto.LastName"]',
-        (el, v) => ((el as HTMLInputElement).value = v),
-        lastName.toUpperCase()
-      );
+      await page.$eval('input[name="SearchDto.LastName"]',
+        (el, v) => ((el as HTMLInputElement).value = v), lastName.toUpperCase());
     } catch {}
 
-    // Fill first name
     try {
-      await page.$eval(
-        'input[name="SearchDto.FirstName"]',
-        (el, v) => ((el as HTMLInputElement).value = v),
-        firstName.toUpperCase()
-      );
+      await page.$eval('input[name="SearchDto.FirstName"]',
+        (el, v) => ((el as HTMLInputElement).value = v), firstName.toUpperCase());
     } catch {}
 
-    // Fill license number if provided (more precise match)
     if (licenseNumber) {
       try {
-        await page.$eval(
-          'input[name="SearchDto.LicenseNumber"]',
-          (el, v) => ((el as HTMLInputElement).value = v),
-          licenseNumber.trim()
-        );
+        await page.$eval('input[name="SearchDto.LicenseNumber"]',
+          (el, v) => ((el as HTMLInputElement).value = v), licenseNumber.trim());
       } catch {}
     }
 

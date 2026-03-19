@@ -44,14 +44,16 @@ export async function GET(
   // ── 1. Take live browser screenshots ─────────────────────────────────
   console.log(`[report] Starting browser verification for ${firstName} ${lastName}`);
 
-  const oigScreenshots: VerificationScreenshot[] = await captureOIGScreenshots(
-    firstName, lastName
-  );
+  // For CNAs: OIG and SAM.gov are temporarily disabled — only Florida DOH runs.
+  // For RNs: all checks run as normal.
+  const oigScreenshots: VerificationScreenshot[] = roleType === "NURSE"
+    ? await captureOIGScreenshots(firstName, lastName)
+    : [];
   console.log(`[report] OIG screenshots: ${oigScreenshots.length}`);
 
-  const samGovScreenshots: VerificationScreenshot[] = await captureSAMGovScreenshots(
-    firstName, lastName
-  );
+  const samGovScreenshots: VerificationScreenshot[] = roleType === "NURSE"
+    ? await captureSAMGovScreenshots(firstName, lastName)
+    : [];
   console.log(`[report] SAM.gov screenshots: ${samGovScreenshots.length}`);
 
   let nursysScreenshots: VerificationScreenshot[] = [];

@@ -145,7 +145,7 @@ export async function searchFloridaDOH(
   roleType: "CNA" | "NURSE" | "RN" | "LPN" = "CNA",
   licenseNumber?: string
 ): Promise<FloridaDOHResult> {
-  const profConfig = PROFESSION_MAP[roleType] ?? PROFESSION_MAP.CNA;
+  const profConfig = PROFESSION_MAP[roleType] ?? PROFESSION_MAP.CNA; // label only
   const searchedName = `${firstName} ${lastName}`.toUpperCase();
   const checkedAt = new Date().toISOString();
 
@@ -169,19 +169,12 @@ export async function searchFloridaDOH(
       throw new Error("Could not load Florida DOH search page");
     }
 
-    // Step 2: POST the search with correct SearchDto.* field names
+    // Step 2: POST — only First Name, Last Name, License Number
     const body = new URLSearchParams({
       __RequestVerificationToken: csrf,
-      "SearchDto.Board":         profConfig.board,
-      "SearchDto.Profession":    profConfig.profession,
       "SearchDto.LastName":      lastName.toUpperCase(),
       "SearchDto.FirstName":     firstName.toUpperCase(),
       "SearchDto.LicenseNumber": licenseNumber?.trim() ?? "",
-      "SearchDto.BusinessName":  "",
-      "SearchDto.City":          "",
-      "SearchDto.ZipCode":       "",
-      "SearchDto.County":        "",
-      "SearchDto.LicenseStatus": "ACT", // Practicing statuses (Active)
     });
 
     const r2 = await fetch(SEARCH_URL, {

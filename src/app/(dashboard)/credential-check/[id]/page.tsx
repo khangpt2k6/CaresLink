@@ -252,7 +252,7 @@ export default function CredentialCheckDetailPage() {
             <Loader2 className="h-5 w-5 animate-spin text-blue-600 flex-shrink-0" />
             <div>
               <p className="text-sm font-semibold text-blue-800">Running verifications...</p>
-              <p className="text-xs text-blue-600">Checking Nursys®, OIG Exclusion List, and Florida DOH. This may take up to 30 seconds.</p>
+              <p className="text-xs text-blue-600">{check?.roleType === "CNA" ? "Checking Florida DOH MQA license database." : "Checking Nursys®, OIG Exclusion List, and SAM.gov."} This may take up to 30 seconds.</p>
             </div>
           </div>
         )}
@@ -267,9 +267,9 @@ export default function CredentialCheckDetailPage() {
               </div>
             </div>
             <p className="text-xs text-purple-500 pl-8">
-              Chrome windows will open on your screen showing the verification in real time.
-              Nursys®, OIG Exclusion List, and SAM.gov will be checked with screenshots.
-              This takes 1–3 minutes.
+              {check?.roleType === "CNA"
+                ? "Chrome will open showing the Florida DOH MQA license verification in real time. This takes about 30–60 seconds."
+                : "Chrome windows will open on your screen showing the verification in real time. Nursys®, OIG Exclusion List, and SAM.gov will be checked with screenshots. This takes 1–3 minutes."}
             </p>
           </div>
         )}
@@ -389,13 +389,13 @@ export default function CredentialCheckDetailPage() {
                   <FloridaDOHSection data={check.floridaDohData} />
                 )}
 
-                {/* ── 4. SAM.gov ── */}
-                {check.samGovData && (
+                {/* ── 4. SAM.gov (NURSE only) ── */}
+                {check.roleType === "NURSE" && check.samGovData && (
                   <SAMGovSection data={check.samGovData} />
                 )}
 
-                {/* ── 5. OIG Exclusion ── */}
-                {check.oigData && (
+                {/* ── 5. OIG Exclusion (NURSE only) ── */}
+                {check.roleType === "NURSE" && check.oigData && (
                   <OIGSection data={check.oigData} />
                 )}
               </>

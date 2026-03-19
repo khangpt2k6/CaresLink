@@ -36,23 +36,37 @@ export async function POST(
   try {
     const { firstName, middleName, lastName, licenseNumber, licenseState, roleType } = check;
 
-    // Run all verifications in parallel
-    const [oigResult, samGovResult, licenseResult] = await Promise.all([
-      checkOIGExclusion(firstName, lastName, middleName ?? undefined),
-      checkSAMGov(firstName, lastName, licenseNumber ?? undefined, licenseState ?? undefined),
-      roleType === "NURSE"
-        ? searchNursysRN(
-            firstName,
-            lastName,
-            middleName ?? undefined,
-            licenseNumber ?? undefined,
-            licenseState ?? undefined
-          )
-        : searchFloridaDOH(firstName, lastName, "CNA", licenseNumber ?? undefined),
-    ]);
+    // ── TEMPORARY: Florida DOH only mode for CNA testing ──────────────────
+    // OIG and SAM.gov are disabled for CNA until Florida DOH is fully verified.
+    // Re-enable by restoring the parallel Promise.all block below.
+    // ─────────────────────────────────────────────────────────────────────
 
-    const nursysData = roleType === "NURSE" ? licenseResult : null;
-    const floridaDohData = roleType === "CNA" ? licenseResult : null;
+    let nursysData = null;
+    let floridaDohData = null;
+    let oigResult = null;
+    let samGovResult = null;
+
+    if (roleType === "NURSE") {
+      // RNs: run all three checks in parallel (unchanged)
+      const [oig, sam, nursys] = await Promise.all([
+        checkOIGExclusion(firstName, lastName, middleName ?? undefined),
+        checkSAMGov(firstName, lastName, licenseNumber ?? undefined, licenseState ?? undefined),
+        searchNursysRN(
+          firstName, lastName,
+          middleName ?? undefined,
+          licenseNumber ?? undefined,
+          licenseState ?? undefined
+        ),
+      ]);
+      oigResult = oig;
+      samGovResult = sam;
+      nursysData = nursys;
+    } else {
+      // CNAs: Florida DOH only for now
+      floridaDohData = await searchFloridaDOH(
+        firstName, lastName, "CNA", licenseNumber ?? undefined
+      );
+    }
 
     // AI analysis
     const { aiRecommendation, aiSummary } = await analyzeWithAI({
@@ -69,10 +83,10 @@ export async function POST(
       where: { id },
       data: {
         status: "COMPLETED",
-        nursysData: nursysData ? (nursysData as object) : undefined,
+        nursysData: nursysData ? (nursysData as object) : roleType === "CNA" ? null : undefined,
         floridaDohData: floridaDohData ? (floridaDohData as object) : undefined,
-        oigData: oigResult as object,
-        samGovData: samGovResult as object,
+        oigData: oigResult ? (oigResult as object) : roleType === "CNA" ? null : undefined,
+        samGovData: samGovResult ? (samGovResult as object) : roleType === "CNA" ? null : undefined,
         aiRecommendation,
         aiSummary,
       },
@@ -113,16 +127,16 @@ async function analyzeWithAI({
 2. A concise 2-3 sentence summary explaining the recommendation
 
 Verification Results:
-${roleType === "NURSE" ? `Nursys License Verification: ${JSON.stringify(nursysData, null, 2)}` : ""}
-${roleType === "CNA" ? `Florida DOH CNA Verification: ${JSON.stringify(floridaDohData, null, 2)}` : ""}
-OIG Exclusion List: ${JSON.stringify(oigResult, null, 2)}
-SAM.gov: ${JSON.stringify(samGovResult, null, 2)}
+${roleType === "NURSE" && nursysData ? `Nursys License Verification: ${JSON.stringify(nursysData, null, 2)}` : ""}
+${roleType === "CNA" && floridaDohData ? `Florida DOH CNA Verification: ${JSON.stringify(floridaDohData, null, 2)}` : ""}
+${oigResult ? `OIG Exclusion List: ${JSON.stringify(oigResult, null, 2)}` : "OIG Exclusion List: not checked yet"}
+${samGovResult ? `SAM.gov: ${JSON.stringify(samGovResult, null, 2)}` : "SAM.gov: not checked yet"}
 
 Rules:
 - NOT_EMPLOYABLE if: OIG status is "excluded", or license is revoked/suspended/surrendered
-- REVIEW_REQUIRED if: license is expired, probation, restriction, or manual verification needed
-- EMPLOYABLE if: license is active/unencumbered, not on OIG exclusion list
-- If any check is "manual_required", default to REVIEW_REQUIRED unless other checks are clearly negative
+- REVIEW_REQUIRED if: license is expired, probation, restriction, manual verification needed, or OIG/SAM not yet checked
+- EMPLOYABLE if: license is active/unencumbered AND OIG clear AND SAM clear
+- For CNA with only Florida DOH checked so far: base recommendation on license status, note OIG/SAM pending
 
 Respond in JSON format: {"recommendation": "EMPLOYABLE|REVIEW_REQUIRED|NOT_EMPLOYABLE", "summary": "..."}`;
 

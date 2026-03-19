@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Sparkles,
   SlidersHorizontal,
+  LayoutList,
 } from "lucide-react";
 import { useUser, useClerk } from "@clerk/nextjs";
 
@@ -35,6 +36,7 @@ const employerNav = [
 
 const candidateNav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/job-board", label: "Job Board", icon: LayoutList },
   { href: "/profile", label: "My Profile", icon: UserCircle },
   { href: "/preferences", label: "Job Preferences", icon: SlidersHorizontal },
   { href: "/interviews", label: "My Interviews", icon: Calendar },
@@ -145,8 +147,22 @@ export function Sidebar() {
                 {user.firstName?.charAt(0).toUpperCase() || "U"}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-medium text-[#1a2b3c] truncate">
-                  {user.firstName || "User"}
+                <div className="flex items-center gap-1.5">
+                  <div className="text-[12px] font-medium text-[#1a2b3c] truncate">
+                    {user.firstName || "User"}
+                  </div>
+                  {role && (
+                    <span
+                      className={cn(
+                        "shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+                        role === "CANDIDATE"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-blue-100 text-blue-700"
+                      )}
+                    >
+                      {role === "CANDIDATE" ? "Candidate" : "Employer"}
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] text-[#475569] truncate">
                   {user.primaryEmailAddress?.emailAddress?.replace(/^(.{2}).*(@.*)$/, "$1***$2")}

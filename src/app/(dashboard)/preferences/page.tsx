@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { SlidersHorizontal, Check, Save, Loader2, Zap } from "lucide-react";
 
@@ -55,12 +56,12 @@ function CheckboxGroup({
 }
 
 export default function PreferencesPage() {
+  const router = useRouter();
   const [prefs, setPrefs] = useState({ roles: [] as string[], businessUnits: [] as string[], jobTypes: [] as string[], shifts: [] as string[] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [autoApplying, setAutoApplying] = useState(false);
-  const [autoResult, setAutoResult] = useState<{ applied: string[]; skipped: string[]; total: number } | null>(null);
 
   useEffect(() => {
     fetch("/api/preferences")
@@ -73,18 +74,13 @@ export default function PreferencesPage() {
 
   async function handleAutoApply() {
     setAutoApplying(true);
-    setAutoResult(null);
-    // Save preferences first, then auto-apply
+    // Save preferences first, then hand off to job board for the animation
     await fetch("/api/preferences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(prefs),
     });
-    const res = await fetch("/api/jobs/auto-apply", { method: "POST" });
-    const data = await res.json();
-    setAutoApplying(false);
-    setAutoResult(data);
-    setTimeout(() => setAutoResult(null), 6000);
+    router.push("/job-board?autoApply=true");
   }
 
   async function handleSave() {
@@ -160,18 +156,6 @@ export default function PreferencesPage() {
         </motion.div>
       )}
 
-      {autoResult && (
-        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-          className={`flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm ${autoResult.total > 0 ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-600"}`}>
-          <Zap className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>
-            {autoResult.total > 0
-              ? <>Auto-applied to <strong>{autoResult.total}</strong> matching job{autoResult.total !== 1 ? "s" : ""}: {autoResult.applied.join(", ")}.</>
-              : "No new matching jobs found to apply to."}
-            {autoResult.skipped.length > 0 && <> ({autoResult.skipped.length} already applied.)</>}
-          </span>
-        </motion.div>
-      )}
     </div>
   );
 }

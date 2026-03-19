@@ -101,12 +101,13 @@ export async function GET(
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0", timeout: 60000 });
 
-    const pdfBuffer = await page.pdf({
+    const pdfUint8 = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: { top: "0", bottom: "12mm", left: "0", right: "0" },
     });
 
+    const pdfBuffer = Buffer.from(pdfUint8);
     const name = `${lastName}_${firstName}`;
     const date = new Date().toISOString().slice(0, 10);
 

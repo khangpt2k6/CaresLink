@@ -123,6 +123,7 @@ interface MergedCandidate {
   phone: string | null;
   position: string | null;
   roleType: "NURSE" | "CNA";
+  licenseNumber: string | null;
   licenseState: string | null;
 }
 

@@ -226,18 +226,18 @@ export function CandidateTable({
     "w-full rounded-lg border border-[#e2e8f0] bg-white px-2.5 py-1.5 text-sm text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20";
 
   return (
-    <div className="card overflow-hidden">
+    <div className="overflow-hidden">
       <table className="min-w-full">
         <thead>
           <tr className="border-b border-[#e2e8f0]">
-            <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Candidate</th>
-            <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Position</th>
-            {matchScores && <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Match</th>}
-            <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Fit</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Candidate</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Position</th>
+            {matchScores && <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Match</th>}
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Fit</th>
             <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Send</th>
             <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Profile</th>
-            <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Status</th>
-            <th className="px-5 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Actions</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Status</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#f1f5f9]">

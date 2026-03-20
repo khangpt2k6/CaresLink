@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       educations: { orderBy: { endDate: "desc" } },
       skills: { orderBy: { createdAt: "asc" } },
       certifications: { orderBy: { issueDate: "desc" } },
+      licenses: { orderBy: { createdAt: "desc" } },
     },
   });
 
@@ -66,6 +67,7 @@ export async function PUT(req: NextRequest) {
       educations: { orderBy: { endDate: "desc" } },
       skills: { orderBy: { createdAt: "asc" } },
       certifications: { orderBy: { issueDate: "desc" } },
+      licenses: { orderBy: { createdAt: "desc" } },
     },
   });
 

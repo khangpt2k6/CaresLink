@@ -19,6 +19,7 @@ import {
   X,
   Phone,
   Mail,
+  ShieldCheck,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -55,6 +56,17 @@ interface Certification {
   expiryDate: string | null;
 }
 
+interface License {
+  id: string;
+  type: string;
+  licenseNumber: string;
+  licenseState: string;
+  boardName: string | null;
+  status: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+}
+
 interface Profile {
   id: string;
   headline: string | null;
@@ -68,6 +80,7 @@ interface Profile {
   educations: Education[];
   skills: Skill[];
   certifications: Certification[];
+  licenses: License[];
 }
 
 interface ProfileData {
@@ -155,6 +168,7 @@ export default function ProfilePage() {
   const [editingExperience, setEditingExperience] = useState<Experience | "new" | null>(null);
   const [editingEducation, setEditingEducation] = useState<Education | "new" | null>(null);
   const [editingCert, setEditingCert] = useState<Certification | "new" | null>(null);
+  const [editingLicense, setEditingLicense] = useState<License | "new" | null>(null);
   const [newSkill, setNewSkill] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -299,6 +313,30 @@ export default function ProfilePage() {
 
   async function deleteCert(id: string) {
     await fetch("/api/profile/certifications", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    fetchProfile();
+  }
+
+  // ─── Licenses CRUD ────────────────────────────────────────────────────
+
+  async function saveLicense(form: Record<string, unknown>) {
+    setSaving(true);
+    const isEdit = typeof editingLicense === "object" && editingLicense?.id;
+    await fetch("/api/profile/licenses", {
+      method: isEdit ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(isEdit ? { id: editingLicense.id, ...form } : form),
+    });
+    await fetchProfile();
+    setSaving(false);
+    setEditingLicense(null);
+  }
+
+  async function deleteLicense(id: string) {
+    await fetch("/api/profile/licenses", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -595,6 +633,66 @@ export default function ProfilePage() {
         )}
       </SectionCard>
 
+      {/* ── Licenses ─────────────────────────────────────────────────── */}
+      <SectionCard
+        title="Licenses"
+        icon={<ShieldCheck className="w-5 h-5 text-[#00b4d8]" />}
+        onAdd={() => setEditingLicense("new")}
+        delay={0.3}
+      >
+        {(!profile?.licenses || profile.licenses.length === 0) ? (
+          <EmptyState text="No licenses added yet" />
+        ) : (
+          <div className="divide-y">
+            {profile.licenses.map((lic) => (
+              <div key={lic.id} className="py-4 first:pt-0 last:pb-0 group">
+                <div className="flex justify-between">
+                  <div>
+                    <h4 className="font-semibold text-gray-900">{lic.type}</h4>
+                    {lic.boardName && <p className="text-sm text-gray-600">{lic.boardName}</p>}
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-600 bg-gray-100 rounded px-2 py-0.5 font-mono">
+                        #{lic.licenseNumber}
+                      </span>
+                      <span className="text-xs text-gray-500">{lic.licenseState}</span>
+                      {lic.status && (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          lic.status.toLowerCase() === "active"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}>
+                          {lic.status}
+                        </span>
+                      )}
+                    </div>
+                    {lic.issueDate && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Issued {formatDate(lic.issueDate)}
+                        {lic.expiryDate && ` · Expires ${formatDate(lic.expiryDate)}`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => setEditingLicense(lic)}
+                      className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <Pencil className="w-4 h-4 text-gray-400" />
+                    </button>
+                    <button
+                      onClick={() => deleteLicense(lic.id)}
+                      className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-400" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
       {/* ═══ Modals ═══════════════════════════════════════════════════════ */}
 
       {/* Edit Profile Modal */}
@@ -654,6 +752,20 @@ export default function ProfilePage() {
           saving={saving}
           onSave={saveCert}
           onCancel={() => setEditingCert(null)}
+        />
+      </Modal>
+
+      {/* License Modal */}
+      <Modal
+        open={editingLicense !== null}
+        onClose={() => setEditingLicense(null)}
+        title={editingLicense === "new" ? "Add License" : "Edit License"}
+      >
+        <LicenseForm
+          initial={typeof editingLicense === "object" ? editingLicense ?? undefined : undefined}
+          saving={saving}
+          onSave={saveLicense}
+          onCancel={() => setEditingLicense(null)}
         />
       </Modal>
     </div>
@@ -925,6 +1037,80 @@ function CertificationForm({
         <button
           onClick={() => onSave({ name, issuer, issueDate: issueDate || null, expiryDate: expiryDate || null })}
           disabled={saving || !name}
+          className={btnPrimary}
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LicenseForm({
+  initial,
+  saving,
+  onSave,
+  onCancel,
+}: {
+  initial?: License;
+  saving: boolean;
+  onSave: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+}) {
+  const [type, setType] = useState(initial?.type || "");
+  const [licenseNumber, setLicenseNumber] = useState(initial?.licenseNumber || "");
+  const [licenseState, setLicenseState] = useState(initial?.licenseState || "");
+  const [boardName, setBoardName] = useState(initial?.boardName || "");
+  const [status, setStatus] = useState(initial?.status || "Active");
+  const [issueDate, setIssueDate] = useState(toInputDate(initial?.issueDate || null));
+  const [expiryDate, setExpiryDate] = useState(toInputDate(initial?.expiryDate || null));
+
+  return (
+    <div className="space-y-4">
+      <FormField label="License Type *">
+        <select className={inputClass} value={type} onChange={(e) => setType(e.target.value)}>
+          <option value="">Select type...</option>
+          <option value="RN">Registered Nurse (RN)</option>
+          <option value="LPN">Licensed Practical Nurse (LPN)</option>
+          <option value="CNA">Certified Nursing Assistant (CNA)</option>
+          <option value="APRN">Advanced Practice Registered Nurse (APRN)</option>
+        </select>
+      </FormField>
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="License Number *">
+          <input className={inputClass} value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} placeholder="e.g. RN9876543" />
+        </FormField>
+        <FormField label="License State *">
+          <input className={inputClass} value={licenseState} onChange={(e) => setLicenseState(e.target.value.toUpperCase())} placeholder="e.g. FL" maxLength={2} />
+        </FormField>
+      </div>
+      <FormField label="Board Name">
+        <input className={inputClass} value={boardName} onChange={(e) => setBoardName(e.target.value)} placeholder="e.g. Florida Board of Nursing" />
+      </FormField>
+      <FormField label="Status">
+        <select className={inputClass} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+          <option value="Expired">Expired</option>
+          <option value="Pending">Pending</option>
+        </select>
+      </FormField>
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Issue Date">
+          <input type="date" className={inputClass} value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+        </FormField>
+        <FormField label="Expiry Date">
+          <input type="date" className={inputClass} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+        </FormField>
+      </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <button onClick={onCancel} className={btnSecondary}>Cancel</button>
+        <button
+          onClick={() => onSave({
+            type, licenseNumber, licenseState, boardName,
+            status, issueDate: issueDate || null, expiryDate: expiryDate || null,
+          })}
+          disabled={saving || !type || !licenseNumber || !licenseState}
           className={btnPrimary}
         >
           {saving ? "Saving..." : "Save"}

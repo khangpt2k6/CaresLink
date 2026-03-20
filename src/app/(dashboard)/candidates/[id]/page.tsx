@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Mail, Phone, Briefcase, Calendar, Clock, MapPin, Video,
   CheckCircle2, XCircle, AlertCircle, GraduationCap, Award, Wrench,
-  Building2, User,
+  Building2, User, ShieldCheck,
 } from "lucide-react";
 
 interface Experience {
@@ -40,6 +40,17 @@ interface Certification {
   expiryDate: string | null;
 }
 
+interface License {
+  id: string;
+  type: string;
+  licenseNumber: string;
+  licenseState: string;
+  boardName: string | null;
+  status: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+}
+
 interface Profile {
   headline: string | null;
   summary: string | null;
@@ -52,6 +63,7 @@ interface Profile {
   educations: Education[];
   skills: Skill[];
   certifications: Certification[];
+  licenses: License[];
 }
 
 interface Interview {
@@ -294,6 +306,49 @@ export default function CandidateProfilePage() {
                   <span key={s.id} className="inline-flex items-center rounded-full bg-[#f1f5f9] px-3 py-1 text-xs font-medium text-[#475569]">
                     {s.name}
                   </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Licenses */}
+          {p.licenses && p.licenses.length > 0 && (
+            <div className="card p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1a2b3c] mb-4">
+                <ShieldCheck className="h-4 w-4 text-[#94a3b8]" />
+                Licenses
+              </h2>
+              <div className="space-y-4">
+                {p.licenses.map((lic, i) => (
+                  <div key={lic.id} className={i > 0 ? "border-t border-[#f1f5f9] pt-4" : ""}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-medium text-[#1a2b3c]">{lic.type}</h3>
+                        {lic.boardName && <p className="text-xs text-[#64748b]">{lic.boardName}</p>}
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="inline-flex items-center gap-1 text-xs text-[#475569] bg-[#f1f5f9] rounded px-2 py-0.5 font-mono">
+                            #{lic.licenseNumber}
+                          </span>
+                          <span className="text-xs text-[#64748b]">{lic.licenseState}</span>
+                        </div>
+                        {lic.issueDate && (
+                          <p className="text-xs text-[#94a3b8] mt-1">
+                            Issued {formatDate(lic.issueDate)}
+                            {lic.expiryDate ? ` — Expires ${formatDate(lic.expiryDate)}` : ""}
+                          </p>
+                        )}
+                      </div>
+                      {lic.status && (
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          lic.status.toLowerCase() === "active"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-amber-50 text-amber-700 border border-amber-200"
+                        }`}>
+                          {lic.status}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

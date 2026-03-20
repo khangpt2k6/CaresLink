@@ -39,6 +39,7 @@ export async function GET(
             educations: { orderBy: { startDate: "desc" } },
             skills: true,
             certifications: { orderBy: { issueDate: "desc" } },
+            licenses: { orderBy: { createdAt: "desc" } },
           },
         },
       },

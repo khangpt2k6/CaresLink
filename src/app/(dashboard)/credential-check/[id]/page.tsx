@@ -165,23 +165,66 @@ export default function CredentialCheckDetailPage() {
         import("jspdf"),
       ]);
       const el = reportRef.current;
+
       function stripModernColors(doc: Document) {
+        const mapOklch = (m: string) => {
+          const l = parseFloat(m.split("(")[1] ?? "0");
+          if (isNaN(l)) return "#808080";
+          if (l >= 0.95) return "#ffffff";
+          if (l >= 0.85) return "#f1f5f9";
+          if (l >= 0.70) return "#e2e8f0";
+          if (l >= 0.55) return "#94a3b8";
+          if (l >= 0.40) return "#64748b";
+          if (l >= 0.25) return "#334155";
+          return "#0f172a";
+        };
+        const fixCSS = (css: string) =>
+          css
+            .replace(/oklch\([^)]*\)/g, mapOklch)
+            .replace(/oklab\([^)]*\)/g, "#808080")
+            .replace(/color-mix\([^)]*oklch[^)]*\)/gi, "#808080")
+            .replace(/color-mix\([^)]*oklab[^)]*\)/gi, "#808080")
+            .replace(/color-mix\([^)]*\)/gi, "#808080");
+
+        // Fix all <style> tags
         doc.querySelectorAll("style").forEach((s) => {
-          s.textContent = (s.textContent ?? "")
-            .replace(/oklch\([^)]*\)/g, (m) => {
-              const l = parseFloat(m.replace("oklch(", ""));
-              if (l >= 0.95) return "#ffffff"; if (l >= 0.85) return "#f1f5f9";
-              if (l >= 0.70) return "#e2e8f0"; if (l >= 0.55) return "#94a3b8";
-              if (l >= 0.40) return "#64748b"; if (l >= 0.25) return "#334155";
-              return "#0f172a";
-            }).replace(/oklab\([^)]*\)/g, "transparent");
+          s.textContent = fixCSS(s.textContent ?? "");
         });
+
+        // Fix inline styles on any element
+        doc.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+          const s = el.getAttribute("style") ?? "";
+          if (s.includes("oklch") || s.includes("oklab") || s.includes("color-mix")) {
+            el.setAttribute("style", fixCSS(s));
+          }
+        });
+
+        // Fix SVG presentation attributes — set explicit colors so no CSS parsing needed
+        doc.querySelectorAll<SVGElement>("svg").forEach((svg) => {
+          const walk = (el: Element) => {
+            const st = (el as HTMLElement).style;
+            if (st) {
+              if (!st.color || st.color.includes("oklch") || st.color.includes("oklab")) {
+                st.color = "#1e293b";
+              }
+            }
+            // If no explicit fill/stroke attr, don't override (let currentColor flow)
+            Array.from(el.children).forEach(walk);
+          };
+          walk(svg);
+        });
+
+        // Safety: inject a global fallback that suppresses unsupported functions
+        const safety = doc.createElement("style");
+        safety.textContent = `*, *::before, *::after { color-scheme: light !important; }`;
+        doc.head.appendChild(safety);
       }
+
       const canvas = await html2canvas(el, {
         scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff",
         width: el.scrollWidth, height: el.scrollHeight,
         windowWidth: el.scrollWidth, windowHeight: el.scrollHeight,
-        onclone: (_doc, el) => stripModernColors(el.ownerDocument),
+        onclone: (_doc, clonedEl) => stripModernColors(clonedEl.ownerDocument),
       });
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });

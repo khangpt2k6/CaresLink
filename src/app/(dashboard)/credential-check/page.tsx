@@ -138,7 +138,7 @@ export default function CredentialCheckPage() {
       email: c.email,
       phone: c.phone,
       roleType: c.roleType,
-      licenseNumber: null,
+      licenseNumber: c.licenseNumber,
       licenseState: c.licenseState,
     });
     setCandidateSearch("");

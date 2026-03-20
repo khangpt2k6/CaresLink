@@ -2,6 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireCandidate } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 
+export async function DELETE(req: NextRequest) {
+  const auth = await requireCandidate(req);
+  if ("error" in auth) return auth.error;
+
+  try {
+    const { jobId } = await req.json();
+    if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
+
+    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+
+    const existing = await prisma.candidate.findFirst({
+      where: { email: auth.user.email, position: job.title },
+    });
+    if (!existing) return NextResponse.json({ error: "No application found" }, { status: 404 });
+
+    await prisma.candidate.delete({ where: { id: existing.id } });
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: "Failed to cancel application" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireCandidate(req);
   if ("error" in auth) return auth.error;

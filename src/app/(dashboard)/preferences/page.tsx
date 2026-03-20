@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { SlidersHorizontal, Check, Save, Loader2 } from "lucide-react";
+import { SlidersHorizontal, Check, Save, Loader2, Zap } from "lucide-react";
 
 const ROLES = [
   "HHA (Caregiver)", "CNA", "LPN", "RN (Staff Nurse)", "APRN",
@@ -55,10 +56,12 @@ function CheckboxGroup({
 }
 
 export default function PreferencesPage() {
+  const router = useRouter();
   const [prefs, setPrefs] = useState({ roles: [] as string[], businessUnits: [] as string[], jobTypes: [] as string[], shifts: [] as string[] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [autoApplying, setAutoApplying] = useState(false);
 
   useEffect(() => {
     fetch("/api/preferences")
@@ -68,6 +71,17 @@ export default function PreferencesPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleAutoApply() {
+    setAutoApplying(true);
+    // Save preferences first, then hand off to job board for the animation
+    await fetch("/api/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(prefs),
+    });
+    router.push("/job-board?autoApply=true");
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -101,14 +115,24 @@ export default function PreferencesPage() {
           </div>
           <p className="mt-1 text-sm text-[#64748b]">Tell us what you&apos;re looking for — we&apos;ll match you with the right roles.</p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-60 transition-colors"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-          {saving ? "Saving…" : saved ? "Saved!" : "Save preferences"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleAutoApply}
+            disabled={autoApplying || saving}
+            className="flex items-center gap-2 rounded-lg border border-[#0090d9] bg-white px-4 py-2 text-sm font-semibold text-[#0090d9] hover:bg-[#e8f4fd] disabled:opacity-60 transition-colors"
+          >
+            {autoApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            {autoApplying ? "Applying…" : "Auto-Apply to Matching Jobs"}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-60 transition-colors"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            {saving ? "Saving…" : saved ? "Saved!" : "Save preferences"}
+          </button>
+        </div>
       </div>
 
       <motion.div
@@ -131,6 +155,7 @@ export default function PreferencesPage() {
           Preferences saved successfully.
         </motion.div>
       )}
+
     </div>
   );
 }

@@ -16,7 +16,6 @@ import {
   Briefcase,
   LogOut,
   UserCircle,
-  ShieldCheck,
   Sparkles,
   SlidersHorizontal,
   LayoutList,
@@ -33,7 +32,6 @@ const employerNav = [
   { href: "/interviews", label: "Interviews", icon: Calendar },
   { href: "/calendar", label: "Calendar", icon: CalendarClock },
   { href: "/insights", label: "Insights", icon: Lightbulb },
-  { href: "/verification", label: "Verification", icon: ShieldCheck },
   { href: "/credential-check", label: "Credential Check", icon: ClipboardCheck },
 ];
 

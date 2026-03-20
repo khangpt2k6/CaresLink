@@ -17,12 +17,14 @@ export interface OIGExclusion {
   state: string;
 }
 
-export type OIGStatus = "clear" | "excluded" | "error" | "manual_required";
+export type OIGStatus = "clear" | "excluded" | "partial_match" | "error" | "manual_required";
 
 export interface OIGResult {
   status: OIGStatus;
   searchedName: string;
   matches: OIGExclusion[];
+  exactMatches: OIGExclusion[];   // confirmed exact first+last name hits
+  partialMatches: OIGExclusion[]; // fuzzy hits that need human review
   error?: string;
   manualUrl: string;
   checkedAt: string;
@@ -134,19 +136,42 @@ export async function checkOIGExclusion(
 
     const lastN = normalize(lastName);
     const firstN = normalize(firstName);
+    const midN = middleName ? normalize(middleName) : "";
 
-    const matches = leie.filter((r) => {
-      const lMatch = normalize(r.lastName) === lastN;
-      if (!lMatch) return false;
-      // Fuzzy first name: must start with same first 2 chars
-      const fMatch = normalize(r.firstName).startsWith(firstN.slice(0, 2));
-      return fMatch;
+    // Exact: last name matches AND first name matches exactly (or near-exactly)
+    const exactMatches = leie.filter((r) => {
+      if (normalize(r.lastName) !== lastN) return false;
+      const rFirst = normalize(r.firstName);
+      // Exact first name match
+      if (rFirst === firstN) return true;
+      // Middle-initial disambiguation: if we have a middle name, check it
+      if (midN && normalize(r.middleName) === midN && rFirst === firstN) return true;
+      return false;
     });
 
+    // Partial: last name matches AND first name starts with same 4+ chars (min 4 to avoid false positives)
+    const partialMatches = leie.filter((r) => {
+      if (normalize(r.lastName) !== lastN) return false;
+      const rFirst = normalize(r.firstName);
+      // Skip already captured exact matches
+      if (rFirst === firstN) return false;
+      // Require at least 4-char prefix match to reduce noise (e.g. "MARI" not just "MA")
+      const prefixLen = Math.max(4, Math.min(firstN.length, 5));
+      return firstN.length >= 4 && rFirst.startsWith(firstN.slice(0, prefixLen));
+    });
+
+    const allMatches = [...exactMatches, ...partialMatches];
+    const status: OIGStatus =
+      exactMatches.length > 0 ? "excluded" :
+      partialMatches.length > 0 ? "partial_match" :
+      "clear";
+
     return {
-      status: matches.length > 0 ? "excluded" : "clear",
+      status,
       searchedName,
-      matches,
+      matches: allMatches,
+      exactMatches,
+      partialMatches,
       manualUrl: MANUAL_URL,
       checkedAt,
     };
@@ -160,6 +185,8 @@ export async function checkOIGExclusion(
         status: "manual_required",
         searchedName,
         matches: [],
+        exactMatches: [],
+        partialMatches: [],
         error: msg,
         manualUrl: MANUAL_URL,
         checkedAt,
@@ -205,15 +232,26 @@ async function checkOIGViaWeb(
       const rows = parseLeieCSV(text);
       const lastN = normalize(lastName);
       const firstN = normalize(firstName);
-      const matches = rows.filter(
-        (r) =>
-          normalize(r.lastName) === lastN &&
-          normalize(r.firstName).startsWith(firstN.slice(0, 2))
+      const exactMatches = rows.filter(
+        (r) => normalize(r.lastName) === lastN && normalize(r.firstName) === firstN
       );
+      const prefixLen = Math.max(4, Math.min(firstN.length, 5));
+      const partialMatches = rows.filter(
+        (r) => normalize(r.lastName) === lastN &&
+          normalize(r.firstName) !== firstN &&
+          firstN.length >= 4 &&
+          normalize(r.firstName).startsWith(firstN.slice(0, prefixLen))
+      );
+      const allMatches = [...exactMatches, ...partialMatches];
+      const status: OIGStatus =
+        exactMatches.length > 0 ? "excluded" :
+        partialMatches.length > 0 ? "partial_match" : "clear";
       return {
-        status: matches.length > 0 ? "excluded" : "clear",
+        status,
         searchedName,
-        matches,
+        matches: allMatches,
+        exactMatches,
+        partialMatches,
         manualUrl: MANUAL_URL,
         checkedAt,
       };
@@ -224,6 +262,8 @@ async function checkOIGViaWeb(
       status: "manual_required",
       searchedName,
       matches: [],
+      exactMatches: [],
+      partialMatches: [],
       error: "Could not parse OIG response",
       manualUrl: MANUAL_URL,
       checkedAt,

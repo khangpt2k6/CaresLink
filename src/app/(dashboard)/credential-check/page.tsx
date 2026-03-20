@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, Upload, FileText, Users, Plus, Loader2,
   CheckCircle2, AlertCircle, Clock, XCircle, ChevronRight,
-  Download, Trash2, FileSpreadsheet, X, FileCheck,
+  Download, Trash2, FileSpreadsheet, X, FileCheck, Search,
+  UserCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -37,6 +38,18 @@ interface ParsedCandidate {
   licenseNumber?: string | null;
   licenseState?: string | null;
   roleType: RoleType;
+}
+
+interface ExistingCandidate {
+  source: "pipeline" | "registered" | "both";
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  position: string | null;
+  roleType: RoleType;
+  licenseState: string | null;
 }
 
 // Inline result after verify runs
@@ -73,6 +86,13 @@ export default function CredentialCheckPage() {
   const [parsing, setParsing]               = useState(false);
   const [parseError, setParseError]         = useState("");
 
+  // Candidate selector state
+  const [existingCandidates, setExistingCandidates] = useState<ExistingCandidate[]>([]);
+  const [candidateSearch, setCandidateSearch]       = useState("");
+  const [showCandidateDropdown, setShowCandidateDropdown] = useState(false);
+  const [loadingCandidates, setLoadingCandidates]   = useState(false);
+  const candidateDropdownRef = useRef<HTMLDivElement>(null);
+
   // Inline results (shown right after "Run Verification" is clicked)
   const [inlineResults, setInlineResults]   = useState<InlineResult[]>([]);
   const [runningAll, setRunningAll]         = useState(false);
@@ -80,7 +100,18 @@ export default function CredentialCheckPage() {
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef    = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { loadChecks(); }, []);
+  useEffect(() => { loadChecks(); loadExistingCandidates(); }, []);
+
+  // Close candidate dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (candidateDropdownRef.current && !candidateDropdownRef.current.contains(e.target as Node)) {
+        setShowCandidateDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function loadChecks() {
     setLoading(true);
@@ -89,6 +120,36 @@ export default function CredentialCheckPage() {
       if (res.ok) setChecks(await res.json());
     } finally { setLoading(false); }
   }
+
+  async function loadExistingCandidates() {
+    setLoadingCandidates(true);
+    try {
+      const res = await fetch("/api/credential-check/candidates");
+      if (res.ok) setExistingCandidates(await res.json());
+    } finally { setLoadingCandidates(false); }
+  }
+
+  function selectCandidate(c: ExistingCandidate) {
+    setManualForm({
+      firstName: c.firstName,
+      middleName: null,
+      lastName: c.lastName,
+      email: c.email,
+      phone: c.phone,
+      roleType: c.roleType,
+      licenseNumber: null,
+      licenseState: c.licenseState,
+    });
+    setCandidateSearch("");
+    setShowCandidateDropdown(false);
+  }
+
+  const filteredCandidates = existingCandidates.filter((c) => {
+    if (!candidateSearch.trim()) return true;
+    const q = candidateSearch.toLowerCase();
+    const fullName = `${c.firstName} ${c.lastName}`.toLowerCase();
+    return fullName.includes(q) || c.email.toLowerCase().includes(q) || (c.position?.toLowerCase().includes(q) ?? false);
+  });
 
   async function handleResumeUpload(files: FileList) {
     setParsing(true); setParseError("");
@@ -364,7 +425,58 @@ export default function CredentialCheckPage() {
                   <div className="mb-4 rounded-xl border border-[#e2e8f0] bg-white p-5">
                     {inputMode === "manual" && (
                       <div>
-                        <p className="mb-4 text-sm font-semibold text-[#1a2b3c]">Candidate Information</p>
+                        {/* Candidate selector */}
+                        <div className="mb-4" ref={candidateDropdownRef}>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-semibold text-[#1a2b3c]">Candidate Information</p>
+                            {existingCandidates.length > 0 && (
+                              <span className="text-xs text-[#8a95a3]">{existingCandidates.length} candidate{existingCandidates.length !== 1 ? "s" : ""} available</span>
+                            )}
+                          </div>
+                          <div className="relative mb-3">
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94a3b8]" />
+                              <input
+                                value={candidateSearch}
+                                onChange={(e) => { setCandidateSearch(e.target.value); setShowCandidateDropdown(true); }}
+                                onFocus={() => setShowCandidateDropdown(true)}
+                                placeholder="Search existing candidates by name or email..."
+                                className="w-full rounded-lg border border-[#e2e8f0] pl-9 pr-3 py-2 text-sm outline-none focus:border-[#0090d9] focus:ring-1 focus:ring-[#0090d9]/20 bg-[#f8fafc]"
+                              />
+                              {loadingCandidates && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-[#94a3b8]" />}
+                            </div>
+                            {showCandidateDropdown && filteredCandidates.length > 0 && (
+                              <div className="absolute z-20 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-[#e2e8f0] bg-white shadow-lg">
+                                {filteredCandidates.map((c) => (
+                                  <button key={c.id + c.source} onClick={() => selectCandidate(c)}
+                                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[#f0f4f8] transition-colors border-b border-[#f1f5f9] last:border-0">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f4fd] text-[#0090d9] flex-shrink-0">
+                                      <UserCheck className="h-3.5 w-3.5" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-[#1a2b3c] truncate">{c.firstName} {c.lastName}</p>
+                                      <p className="text-xs text-[#8a95a3] truncate">{c.email}{c.position ? ` · ${c.position}` : ""}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${c.roleType === "NURSE" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
+                                        {c.roleType === "NURSE" ? "RN" : "CNA"}
+                                      </span>
+                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${c.source === "both" ? "bg-emerald-100 text-emerald-700" : c.source === "registered" ? "bg-sky-100 text-sky-700" : "bg-gray-100 text-gray-600"}`}>
+                                        {c.source === "both" ? "Matched" : c.source === "registered" ? "Profile" : "Pipeline"}
+                                      </span>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {showCandidateDropdown && candidateSearch && filteredCandidates.length === 0 && !loadingCandidates && (
+                              <div className="absolute z-20 mt-1 w-full rounded-lg border border-[#e2e8f0] bg-white p-4 text-center shadow-lg">
+                                <p className="text-xs text-[#8a95a3]">No candidates found. Enter details manually below.</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-3 gap-3 mb-3">
                           {(["firstName", "middleName", "lastName"] as const).map((f) => (
                             <div key={f}>

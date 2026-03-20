@@ -349,7 +349,7 @@ const TOOLS: Tool[] = [
   },
 ];
 
-async function executeFunction(name: string, args: Record<string, unknown>): Promise<object> {
+async function executeFunction(name: string, args: Record<string, unknown>, userId?: string): Promise<object> {
   switch (name) {
     case "verify_nursing_license": {
       return scrapeFLMQA({
@@ -555,8 +555,10 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
     }
     case "run_credential_check": {
       try {
+        if (!userId) return { error: "User context required for credential checks" };
         const record = await prisma.credentialCheck.create({
           data: {
+            employerId: userId,
             firstName: String(args.first_name),
             lastName: String(args.last_name),
             roleType: String(args.role_type) === "NURSE" ? "NURSE" : "CNA",
@@ -680,7 +682,7 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
       const where = args.status ? { status: String(args.status) } : {};
       const jobsList = await prisma.job.findMany({
         where,
-        select: { id: true, title: true, location: true, type: true, status: true, _count: { select: { candidates: true } } },
+        select: { id: true, title: true, location: true, type: true, status: true, _count: { select: { matches: true } } },
         orderBy: { createdAt: "desc" },
       });
       return {
@@ -690,7 +692,7 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
           location: j.location,
           type: j.type,
           status: j.status,
-          candidateCount: j._count.candidates,
+          candidateCount: j._count.matches,
         })),
         count: jobsList.length,
       };
@@ -764,7 +766,7 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
 
       for (const block of toolUseBlocks) {
         if (block.type !== "tool_use") continue;
-        const result = await executeFunction(block.name, (block.input ?? {}) as Record<string, unknown>);
+        const result = await executeFunction(block.name, (block.input ?? {}) as Record<string, unknown>, userId);
         toolResults.push({
           type: "tool_result",
           tool_use_id: block.id,

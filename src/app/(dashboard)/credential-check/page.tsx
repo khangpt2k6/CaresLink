@@ -372,7 +372,7 @@ export default function CredentialCheckPage() {
                                 {f === "firstName" ? "First Name *" : f === "middleName" ? "Middle Name" : "Last Name *"}
                               </label>
                               <input
-                                value={(manualForm as Record<string, string | null | undefined>)[f] ?? ""}
+                                value={(manualForm as unknown as Record<string, string | null | undefined>)[f] ?? ""}
                                 onChange={(e) => setManualForm((p) => ({ ...p, [f]: e.target.value }))}
                                 className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9] focus:ring-1 focus:ring-[#0090d9]/20"
                               />

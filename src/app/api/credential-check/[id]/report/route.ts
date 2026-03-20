@@ -3,8 +3,6 @@ import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 import {
   captureNursysScreenshots,
-  captureOIGScreenshots,
-  captureSAMGovScreenshots,
   captureFloridaDOHScreenshots,
   type VerificationScreenshot,
 } from "@/lib/browser-verify";
@@ -42,23 +40,10 @@ export async function GET(
   const { firstName, middleName, lastName, licenseNumber, licenseState, roleType } = check;
 
   // ── 1. Take live browser screenshots ─────────────────────────────────
-  console.log(`[report] Starting browser verification for ${firstName} ${lastName}`);
-
-  // For CNAs: OIG and SAM.gov are temporarily disabled — only Florida DOH runs.
-  // For RNs: all checks run as normal.
-  const oigScreenshots: VerificationScreenshot[] = roleType === "NURSE"
-    ? await captureOIGScreenshots(firstName, lastName)
-    : [];
-  console.log(`[report] OIG screenshots: ${oigScreenshots.length}`);
-
-  const samGovScreenshots: VerificationScreenshot[] = roleType === "NURSE"
-    ? await captureSAMGovScreenshots(firstName, lastName)
-    : [];
-  console.log(`[report] SAM.gov screenshots: ${samGovScreenshots.length}`);
+  console.log(`[report] Starting browser verification for ${firstName} ${lastName} (${roleType})`);
 
   let nursysScreenshots: VerificationScreenshot[] = [];
   let floridaDohScreenshots: VerificationScreenshot[] = [];
-  // floridaDohData may be overridden with live Puppeteer results if fetch returned not_found
   let floridaDohData = check.floridaDohData as ReportCheckData["floridaDohData"];
 
   if (roleType === "NURSE") {
@@ -66,7 +51,8 @@ export async function GET(
       firstName, lastName, licenseState, licenseNumber
     );
     console.log(`[report] Nursys screenshots: ${nursysScreenshots.length}`);
-  } else if (roleType === "CNA") {
+  } else {
+    // CNA: Florida DOH only — NO other browsers open
     const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
     floridaDohScreenshots = dohResult.screenshots;
     console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}, matches: ${dohResult.matches.length}`);
@@ -96,8 +82,8 @@ export async function GET(
   const screenshots: AllScreenshots = {
     nursys: nursysScreenshots,
     floridaDoh: floridaDohScreenshots,
-    oig: oigScreenshots,
-    samGov: samGovScreenshots,
+    oig: [],
+    samGov: [],
   };
 
   // ── 2. Build HTML report ──────────────────────────────────────────────

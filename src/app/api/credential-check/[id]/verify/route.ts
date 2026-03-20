@@ -3,11 +3,13 @@ import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 import { searchNursysRN } from "@/lib/nursys";
 import { checkOIGExclusion } from "@/lib/oig-exclusion";
-import { searchFloridaDOH } from "@/lib/florida-doh";
 import { checkSAMGov } from "@/lib/sam-gov";
+import { captureFloridaDOHScreenshots } from "@/lib/browser-verify";
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic();
+
+export const maxDuration = 120; // Puppeteer for CNA needs extra time
 
 // POST /api/credential-check/[id]/verify — run all verifications + AI analysis
 export async function POST(
@@ -62,10 +64,25 @@ export async function POST(
       samGovResult = sam;
       nursysData = nursys;
     } else {
-      // CNAs: Florida DOH only for now
-      floridaDohData = await searchFloridaDOH(
-        firstName, lastName, "CNA", licenseNumber ?? undefined
-      );
+      // CNAs: use Puppeteer for accurate FL DOH verification + screenshot capture
+      const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber ?? undefined);
+      floridaDohData = {
+        status: dohResult.found ? "found" : "not_found",
+        searchedName: `${firstName} ${lastName}`.toUpperCase(),
+        licenseType: "Certified Nursing Assistant",
+        matches: dohResult.matches.map((m) => ({
+          name: m.name,
+          licenseNumber: m.licenseNumber,
+          licenseType: m.licenseType || "Certified Nursing Assistant",
+          status: m.status,
+          expirationDate: m.expirationDate,
+          county: m.county || undefined,
+        })),
+        manualUrl: "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders",
+        checkedAt: new Date().toISOString(),
+        // Store screenshots so the UI can display them without re-running Puppeteer
+        screenshots: dohResult.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
+      };
     }
 
     // AI analysis

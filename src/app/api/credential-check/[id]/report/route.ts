@@ -44,7 +44,7 @@ export async function GET(
 
   let nursysScreenshots: VerificationScreenshot[] = [];
   let floridaDohScreenshots: VerificationScreenshot[] = [];
-  let floridaDohData = check.floridaDohData as ReportCheckData["floridaDohData"];
+  let floridaDohData = check.floridaDohData as ReportCheckData["floridaDohData"] & { screenshots?: { label: string; dataUrl: string }[] };
 
   if (roleType === "NURSE") {
     nursysScreenshots = await captureNursysScreenshots(
@@ -52,30 +52,16 @@ export async function GET(
     );
     console.log(`[report] Nursys screenshots: ${nursysScreenshots.length}`);
   } else {
-    // CNA: Florida DOH only — NO other browsers open
-    const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
-    floridaDohScreenshots = dohResult.screenshots;
-    console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}, matches: ${dohResult.matches.length}`);
-
-    // If fetch-based search returned not_found but Puppeteer found results, use browser data
-    const dbStatus = (floridaDohData as { status?: string } | null)?.status;
-    if (dohResult.found && (!floridaDohData || dbStatus === "not_found")) {
-      floridaDohData = {
-        status: "found",
-        searchedName: `${firstName} ${lastName}`.toUpperCase(),
-        licenseType: "Certified Nursing Assistant",
-        matches: dohResult.matches.map((m) => ({
-          name: m.name,
-          licenseNumber: m.licenseNumber,
-          licenseType: m.licenseType || "CNA",
-          status: m.status,
-          expirationDate: m.expirationDate,
-          county: m.county || undefined,
-        })),
-        manualUrl: "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders",
-        checkedAt: new Date().toISOString(),
-      };
-      console.log(`[report] Used Puppeteer FL DOH data — ${dohResult.matches.length} matches`);
+    // CNA: check if verify step already stored screenshots — if so, reuse them (no extra browser)
+    const storedShots = floridaDohData?.screenshots;
+    if (storedShots && storedShots.length > 0) {
+      console.log(`[report] Using ${storedShots.length} stored FL DOH screenshots from verify step`);
+      floridaDohScreenshots = storedShots.map((s) => ({ label: s.label, url: "", dataUrl: s.dataUrl }));
+    } else {
+      // Fallback: run Puppeteer if no screenshots stored
+      const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
+      floridaDohScreenshots = dohResult.screenshots;
+      console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}`);
     }
   }
 

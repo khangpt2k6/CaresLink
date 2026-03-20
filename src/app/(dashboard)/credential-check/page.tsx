@@ -49,6 +49,7 @@ interface ExistingCandidate {
   phone: string | null;
   position: string | null;
   roleType: RoleType;
+  licenseNumber: string | null;
   licenseState: string | null;
 }
 

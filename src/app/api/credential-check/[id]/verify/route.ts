@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { searchNursysRN } from "@/lib/nursys";
 import { checkOIGExclusion } from "@/lib/oig-exclusion";
@@ -100,10 +101,10 @@ export async function POST(
       where: { id },
       data: {
         status: "COMPLETED",
-        nursysData: nursysData ? (nursysData as object) : roleType === "CNA" ? null : undefined,
-        floridaDohData: floridaDohData ? (floridaDohData as object) : undefined,
-        oigData: oigResult ? (oigResult as object) : roleType === "CNA" ? null : undefined,
-        samGovData: samGovResult ? (samGovResult as object) : roleType === "CNA" ? null : undefined,
+        nursysData: nursysData ? (nursysData as unknown as Prisma.InputJsonValue) : roleType === "CNA" ? Prisma.JsonNull : undefined,
+        floridaDohData: floridaDohData ? (floridaDohData as unknown as Prisma.InputJsonValue) : undefined,
+        oigData: oigResult ? (oigResult as unknown as Prisma.InputJsonValue) : roleType === "CNA" ? Prisma.JsonNull : undefined,
+        samGovData: samGovResult ? (samGovResult as unknown as Prisma.InputJsonValue) : roleType === "CNA" ? Prisma.JsonNull : undefined,
         aiRecommendation,
         aiSummary,
       },

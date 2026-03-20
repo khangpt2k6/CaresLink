@@ -17,6 +17,12 @@ import {
   MapPin,
   ArrowRight,
   Calendar,
+  ShieldCheck,
+  Sparkles,
+  ClipboardCheck,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -60,6 +66,25 @@ interface Metrics {
   hiresCount: number;
 }
 
+interface CredentialCheckSummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+  roleType: string;
+  status: string;
+  aiRecommendation: string | null;
+  createdAt: string;
+}
+
+interface TopMatch {
+  candidateName: string;
+  candidatePosition: string;
+  score: number;
+  label: string;
+  reason: string;
+  jobTitle: string;
+}
+
 function fadeUp(delay: number) {
   return {
     initial: { opacity: 0, y: 10 },
@@ -75,6 +100,8 @@ export default function DashboardPage() {
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [candidates, setCandidates] = useState<DashCandidate[]>([]);
+  const [credentialChecks, setCredentialChecks] = useState<CredentialCheckSummary[]>([]);
+  const [topMatches, setTopMatches] = useState<TopMatch[]>([]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -102,6 +129,14 @@ export default function DashboardPage() {
     fetch("/api/candidates")
       .then((r) => r.json())
       .then((d) => setCandidates(Array.isArray(d) ? d.slice(0, 5) : []))
+      .catch(console.error);
+    fetch("/api/credential-check")
+      .then((r) => r.json())
+      .then((d) => setCredentialChecks(Array.isArray(d) ? d.slice(0, 5) : []))
+      .catch(console.error);
+    fetch("/api/dashboard/top-matches")
+      .then((r) => r.json())
+      .then((d) => setTopMatches(Array.isArray(d) ? d : []))
       .catch(console.error);
   }, [isCandidate]);
 
@@ -193,11 +228,13 @@ export default function DashboardPage() {
         <div className="card p-5">
           <h2 className="text-sm font-semibold text-[#1a2b3c]">Quick Actions</h2>
           <p className="mb-3 text-xs text-[#8a95a3]">Navigate your workspace</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {[
               { href: "/jobs", label: "Job Postings", desc: "Create and manage open roles", icon: Briefcase },
               { href: "/candidates", label: "Candidate Pipeline", desc: "Track and review applicants", icon: Users },
               { href: "/interviews", label: "Interview Schedule", desc: "View upcoming interviews", icon: CalendarCheck },
+              { href: "/credential-check", label: "Credential Check", desc: "Verify nursing licenses", icon: ClipboardCheck },
+              { href: "/matching", label: "AI Job Matching", desc: "Match candidates to jobs", icon: Sparkles },
               { href: "/calendar", label: "Calendar Overview", desc: "Edit your availability", icon: Calendar },
             ].map((action, i) => (
               <motion.div
@@ -336,8 +373,140 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
+      {/* Credential Verification & AI Matching */}
+      <motion.div {...fadeUp(0.2)} className="mt-4 grid gap-4 lg:grid-cols-2">
+        {/* Recent Credential Checks */}
+        <div className="card p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[#1a2b3c]">Credential Verification</h2>
+              <p className="text-xs text-[#8a95a3]">Recent license checks</p>
+            </div>
+            <Link href="/credential-check" className="flex items-center gap-1 text-xs font-medium text-[#0090d9] hover:underline">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          {credentialChecks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <ShieldCheck className="mb-2 h-7 w-7 text-[#d0dbe6]" />
+              <p className="text-xs text-[#8a95a3]">No credential checks yet</p>
+              <Link href="/credential-check" className="mt-2 text-xs font-medium text-[#0090d9] hover:underline">Run your first check</Link>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {credentialChecks.map((check, i) => {
+                const recColors: Record<string, string> = {
+                  EMPLOYABLE: "bg-[#ecfdf5] text-[#059669]",
+                  REVIEW_REQUIRED: "bg-[#fffbeb] text-[#b45309]",
+                  NOT_EMPLOYABLE: "bg-[#fef2f2] text-[#dc2626]",
+                };
+                const recIcons: Record<string, React.ReactNode> = {
+                  EMPLOYABLE: <CheckCircle2 className="h-3 w-3" />,
+                  REVIEW_REQUIRED: <AlertTriangle className="h-3 w-3" />,
+                  NOT_EMPLOYABLE: <XCircle className="h-3 w-3" />,
+                };
+                const statusColors: Record<string, string> = {
+                  COMPLETED: "bg-[#ecfdf5] text-[#059669]",
+                  PENDING: "bg-[#fffbeb] text-[#b45309]",
+                  IN_PROGRESS: "bg-[#dbeafe] text-[#2563eb]",
+                  FAILED: "bg-[#fef2f2] text-[#dc2626]",
+                };
+                return (
+                  <motion.div
+                    key={check.id}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 + i * 0.06, duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <Link href={`/credential-check/${check.id}`} className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-[#f0f4f8] transition-colors">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e8f4fd]">
+                          <ShieldCheck className="h-3.5 w-3.5 text-[#0090d9]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-[#1a2b3c]">{check.firstName} {check.lastName}</p>
+                          <p className="text-[11px] text-[#8a95a3]">{check.roleType === "NURSE" ? "Nurse (RN)" : "CNA"}</p>
+                        </div>
+                      </div>
+                      {check.aiRecommendation ? (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${recColors[check.aiRecommendation] || ""}`}>
+                          {recIcons[check.aiRecommendation]}
+                          {check.aiRecommendation.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                        </span>
+                      ) : (
+                        <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusColors[check.status] || statusColors.PENDING}`}>
+                          {check.status.charAt(0) + check.status.slice(1).toLowerCase().replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </Link>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* AI Job Matching */}
+        <div className="card p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[#1a2b3c]">AI Job Matching</h2>
+              <p className="text-xs text-[#8a95a3]">Top candidate matches</p>
+            </div>
+            <Link href="/matching" className="flex items-center gap-1 text-xs font-medium text-[#0090d9] hover:underline">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          {topMatches.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <Sparkles className="mb-2 h-7 w-7 text-[#d0dbe6]" />
+              <p className="text-xs text-[#8a95a3]">No match analyses yet</p>
+              <Link href="/matching" className="mt-2 text-xs font-medium text-[#0090d9] hover:underline">Run AI matching</Link>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {topMatches.map((match, i) => {
+                const scoreColor = match.score >= 90
+                  ? "text-emerald-600 bg-emerald-50"
+                  : match.score >= 75
+                    ? "text-blue-600 bg-blue-50"
+                    : match.score >= 50
+                      ? "text-amber-600 bg-amber-50"
+                      : "text-red-600 bg-red-50";
+                return (
+                  <motion.div
+                    key={`${match.candidateName}-${i}`}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 + i * 0.06, duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <Link href="/matching" className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-[#f0f4f8] transition-colors">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#0090d9] text-[10px] font-medium text-white">
+                          {match.candidateName.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-[#1a2b3c]">{match.candidateName}</p>
+                          <p className="text-[11px] text-[#8a95a3]">{match.jobTitle}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-[#8a95a3]">{match.label}</span>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${scoreColor}`}>
+                          {match.score}
+                        </span>
+                      </div>
+                    </Link>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </motion.div>
+
       {/* Agent Activity Log */}
-      <motion.div {...fadeUp(0.22)} className="mt-4">
+      <motion.div {...fadeUp(0.25)} className="mt-4">
         <div className="card p-5">
           <div className="mb-3 flex items-center justify-between">
             <div>

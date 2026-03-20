@@ -18,6 +18,8 @@ import {
   ChevronsRight,
   Check,
   Link2,
+  ClipboardCheck,
+  Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAiChat } from "./ai-chat-context";
@@ -28,6 +30,8 @@ const quickActions = [
   { icon: CalendarCheck, label: "Show upcoming interviews", prompt: "List all upcoming interviews in the next 48 hours" },
   { icon: Clock, label: "Send reminders", prompt: "Send reminders for all interviews in the next 24 hours that haven't been reminded yet" },
   { icon: Settings, label: "Show my availability", prompt: "Show my current weekly availability schedule" },
+  { icon: ClipboardCheck, label: "Run credential check", prompt: "Run a credential verification for my latest candidates" },
+  { icon: Sparkles, label: "Match candidates to jobs", prompt: "Show me the top candidate matches for my open jobs" },
 ];
 
 const integrations = [
@@ -520,7 +524,7 @@ export function AiChatBubble() {
                     </div>
                     <p className="text-sm font-semibold text-[#1a2b3c]">Hi! How can I help?</p>
                     <p className="mt-1 text-xs text-[#8a95a3] max-w-[260px]">
-                      I can manage candidates, schedule interviews, update your availability, and more.
+                      I can manage candidates, schedule interviews, verify credentials, match candidates to jobs, and more.
                     </p>
 
                     {/* Quick Actions */}

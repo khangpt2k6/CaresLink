@@ -44,7 +44,7 @@ export async function GET(
 
   let nursysScreenshots: VerificationScreenshot[] = [];
   let floridaDohScreenshots: VerificationScreenshot[] = [];
-  let floridaDohData = check.floridaDohData as ReportCheckData["floridaDohData"] & { screenshots?: { label: string; dataUrl: string }[] };
+  let floridaDohData = check.floridaDohData as unknown as ReportCheckData["floridaDohData"] & { screenshots?: { label: string; dataUrl: string }[] };
 
   if (roleType === "NURSE") {
     nursysScreenshots = await captureNursysScreenshots(

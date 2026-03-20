@@ -53,10 +53,17 @@ export async function POST(req: NextRequest) {
     const candidates = rows.slice(1).map((row) => {
       const raw = (i: number) => (i >= 0 ? row[i]?.trim() || null : null);
 
-      // Auto-detect role type from text
-      let roleType = "NURSE";
-      const rawRole = raw(roleIdx)?.toUpperCase() ?? "";
-      if (rawRole.includes("CNA") || rawRole.includes("AIDE") || rawRole.includes("ASSISTANT")) {
+      // Auto-detect role type from role column or license number prefix
+      let roleType = "CNA"; // default to CNA
+      const rawRole    = raw(roleIdx)?.toUpperCase() ?? "";
+      const rawLicNum  = raw(licNumIdx)?.toUpperCase() ?? "";
+      if (rawRole.includes("RN") || rawRole.includes("NURSE") || rawRole.includes("REGISTERED")) {
+        roleType = "NURSE";
+      } else if (rawRole.includes("CNA") || rawRole.includes("AIDE") || rawRole.includes("ASSISTANT")) {
+        roleType = "CNA";
+      } else if (rawLicNum.startsWith("RN") || rawLicNum.startsWith("LPN") || rawLicNum.startsWith("APRN")) {
+        roleType = "NURSE";
+      } else if (rawLicNum.startsWith("CNA")) {
         roleType = "CNA";
       }
 

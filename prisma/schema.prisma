@@ -54,6 +54,7 @@ model CandidateProfile {
   educations     Education[]
   skills         Skill[]
   certifications Certification[]
+  licenses       License[]
   preferences    JobPreferences?
 }
 
@@ -116,6 +117,21 @@ model Certification {
   expiryDate  DateTime?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+}
+
+model License {
+  id                String            @id @default(cuid())
+  profileId         String
+  profile           CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  type              String            // e.g. "RN", "CNA", "LPN"
+  licenseNumber     String            // credential number for verification
+  licenseState      String            // e.g. "FL" — issuing state board
+  boardName         String?           // e.g. "Florida Board of Nursing"
+  status            String?           // e.g. "Active", "Inactive", "Expired"
+  issueDate         DateTime?
+  expiryDate        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 }
 
 model Account {

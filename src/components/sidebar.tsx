@@ -31,8 +31,8 @@ const employerNav = [
   { href: "/matching", label: "Matching", icon: Sparkles },
   { href: "/interviews", label: "Interviews", icon: Calendar },
   { href: "/calendar", label: "Calendar", icon: CalendarClock },
-  { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/credential-check", label: "Credential Check", icon: ClipboardCheck },
+  { href: "/insights", label: "Insights", icon: Lightbulb },
 ];
 
 const candidateNav = [

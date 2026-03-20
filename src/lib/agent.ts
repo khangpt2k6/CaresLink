@@ -11,7 +11,7 @@ if (!apiKey) {
 
 const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 
-const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant for healthcare. You help employers manage candidates, schedule interviews, and verify nursing licenses.
+const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant for healthcare. You help employers manage candidates, schedule interviews, verify nursing licenses, run credential checks, and match candidates to jobs.
 
 You specialize in auto-booking: finding a mutual time for recruiter and candidate, then scheduling the interview automatically. Use auto_book_interview when asked to schedule/contact a candidate — do NOT use send_email for booking links. Booking links are sent via the app UI (no AI).
 
@@ -22,6 +22,10 @@ When a function returns already_scheduled: true, tell the employer: "This candid
 You can manage the recruiter's weekly availability with get_availability and update_availability. When asked to change availability (e.g. "set Monday to Friday 9-5"), update all relevant days at once.
 
 You can verify nursing licenses by searching the Florida Department of Health (FL DOH) public database. Use verify_nursing_license when asked to verify, check, or look up a candidate's nursing license. You can search by name or license number. Present the results clearly: license type, status (Active/Inactive), expiration date, and city.
+
+You can run full credential verification checks using run_credential_check. This creates a record, verifies the candidate against FL DOH (for CNAs) and Nursys (for RNs), checks OIG exclusion lists and SAM.gov, and provides an AI recommendation (Employable, Review Required, or Not Employable). Use list_credential_checks to show recent checks and their results.
+
+You can match candidates to jobs using get_job_matches. This returns AI-scored matches (0-100) for a job, showing how well each candidate fits. Use run_job_matching to trigger a new AI analysis. Use list_jobs to find available job IDs first.
 
 Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`;
 
@@ -280,6 +284,69 @@ const TOOLS: Tool[] = [
       required: ["days"],
     },
   },
+  {
+    name: "run_credential_check",
+    description:
+      "Run a full credential verification check for a candidate. Checks FL DOH (CNA), Nursys (RN), OIG exclusion list, and SAM.gov. Returns an AI recommendation: EMPLOYABLE, REVIEW_REQUIRED, or NOT_EMPLOYABLE.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        first_name: { type: "string" as const, description: "Candidate's first name" },
+        last_name: { type: "string" as const, description: "Candidate's last name" },
+        role_type: { type: "string" as const, description: "Either 'CNA' or 'NURSE'" },
+        email: { type: "string" as const, description: "Candidate's email (optional)" },
+        license_number: { type: "string" as const, description: "License number (optional)" },
+      },
+      required: ["first_name", "last_name", "role_type"],
+    },
+  },
+  {
+    name: "list_credential_checks",
+    description: "List recent credential verification checks and their results (AI recommendation, status).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        limit: { type: "number" as const, description: "Number of results to return (default 10)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_job_matches",
+    description:
+      "Get AI-scored candidate matches for a specific job. Returns candidates ranked 0-100 with explanations. Use list_candidates or list_jobs to find job IDs first.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        job_id: { type: "string" as const, description: "The job ID to get matches for" },
+        min_score: { type: "number" as const, description: "Minimum match score to include (default 0)" },
+      },
+      required: ["job_id"],
+    },
+  },
+  {
+    name: "run_job_matching",
+    description:
+      "Trigger a new AI matching analysis for a specific job against all candidates. This re-computes scores using latest candidate data. Returns updated matches.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        job_id: { type: "string" as const, description: "The job ID to run matching for" },
+      },
+      required: ["job_id"],
+    },
+  },
+  {
+    name: "list_jobs",
+    description: "List all jobs, optionally filtered by status. Returns job IDs, titles, and candidate counts.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string" as const, description: "Filter by status: 'open' or 'closed' (default: all)" },
+      },
+      required: [],
+    },
+  },
 ];
 
 async function executeFunction(name: string, args: Record<string, unknown>): Promise<object> {
@@ -485,6 +552,148 @@ async function executeFunction(name: string, args: Record<string, unknown>): Pro
         create: { id: "default", scheduleVersion: 1 },
       });
       return { success: true, updated };
+    }
+    case "run_credential_check": {
+      try {
+        const record = await prisma.credentialCheck.create({
+          data: {
+            firstName: String(args.first_name),
+            lastName: String(args.last_name),
+            roleType: String(args.role_type) === "NURSE" ? "NURSE" : "CNA",
+            email: args.email ? String(args.email) : null,
+            targetState: "FLORIDA",
+            status: "PENDING",
+          },
+        });
+
+        // Trigger verification
+        const verifyRes = await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/credential-check/${record.id}/verify`,
+          { method: "POST" }
+        );
+
+        if (verifyRes.ok) {
+          const updated = await verifyRes.json();
+          return {
+            success: true,
+            id: updated.id,
+            name: `${updated.firstName} ${updated.lastName}`,
+            roleType: updated.roleType,
+            status: updated.status,
+            aiRecommendation: updated.aiRecommendation || "Pending",
+            aiSummary: updated.aiSummary || "Verification completed",
+          };
+        }
+
+        return {
+          success: false,
+          id: record.id,
+          error: "Verification request failed. Check can be retried from the Credential Check page.",
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Failed to run credential check" };
+      }
+    }
+    case "list_credential_checks": {
+      const limit = typeof args.limit === "number" ? args.limit : 10;
+      const checks = await prisma.credentialCheck.findMany({
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          roleType: true,
+          status: true,
+          aiRecommendation: true,
+          aiSummary: true,
+          createdAt: true,
+        },
+      });
+      return {
+        checks: checks.map((c) => ({
+          id: c.id,
+          name: `${c.firstName} ${c.lastName}`,
+          roleType: c.roleType,
+          status: c.status,
+          recommendation: c.aiRecommendation || "N/A",
+          summary: c.aiSummary || "N/A",
+          date: c.createdAt.toISOString(),
+        })),
+        count: checks.length,
+      };
+    }
+    case "get_job_matches": {
+      const jobId = String(args.job_id);
+      const minScore = typeof args.min_score === "number" ? args.min_score : 0;
+      const matches = await prisma.jobMatch.findMany({
+        where: { jobId, score: { gte: minScore } },
+        include: {
+          candidate: { select: { name: true, email: true, position: true, status: true } },
+          job: { select: { title: true } },
+        },
+        orderBy: { score: "desc" },
+        take: 10,
+      });
+      if (matches.length === 0) {
+        return {
+          matches: [],
+          count: 0,
+          message: "No matches found. Run AI matching first with run_job_matching.",
+        };
+      }
+      return {
+        jobTitle: matches[0].job.title,
+        matches: matches.map((m) => ({
+          candidateName: m.candidate.name,
+          candidateEmail: m.candidate.email,
+          candidatePosition: m.candidate.position,
+          candidateStatus: m.candidate.status,
+          score: m.score,
+          label: m.label,
+          reason: m.reason,
+        })),
+        count: matches.length,
+      };
+    }
+    case "run_job_matching": {
+      try {
+        const { computeAndStoreMatches } = await import("./matching-service");
+        const jobId = String(args.job_id);
+        const matches = await computeAndStoreMatches(jobId);
+        return {
+          success: true,
+          jobId,
+          matchesComputed: matches.length,
+          topMatches: matches.slice(0, 5).map((m) => ({
+            candidateName: m.candidate.name,
+            score: m.score,
+            label: m.label,
+            reason: m.reason,
+          })),
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Failed to run job matching" };
+      }
+    }
+    case "list_jobs": {
+      const where = args.status ? { status: String(args.status) } : {};
+      const jobsList = await prisma.job.findMany({
+        where,
+        select: { id: true, title: true, location: true, type: true, status: true, _count: { select: { candidates: true } } },
+        orderBy: { createdAt: "desc" },
+      });
+      return {
+        jobs: jobsList.map((j) => ({
+          id: j.id,
+          title: j.title,
+          location: j.location,
+          type: j.type,
+          status: j.status,
+          candidateCount: j._count.candidates,
+        })),
+        count: jobsList.length,
+      };
     }
     default:
       return { error: `Unknown function: ${name}` };

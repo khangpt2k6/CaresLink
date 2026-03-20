@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
         phone: c.phone || null,
         position: c.position,
         roleType: inferRoleType(c.position),
+        licenseNumber: null,
         licenseState: null,
       });
     }
@@ -79,13 +80,16 @@ export async function GET(request: NextRequest) {
       const { firstName, lastName } = splitName(u.name || "");
       const certNames = u.profile?.certifications.map((c) => c.name) || [];
       const roleType = inferRoleTypeFromCerts(certNames);
+      const license = u.profile?.licenses?.[0] || null;
 
       if (seen.has(key)) {
         // Enrich existing pipeline entry with profile data
         const existing = seen.get(key)!;
         existing.source = "both";
         if (!existing.phone && u.profile?.phone) existing.phone = u.profile.phone;
-        if (!existing.licenseState && u.profile?.state) existing.licenseState = u.profile.state;
+        if (!existing.licenseState && license?.licenseState) existing.licenseState = license.licenseState;
+        else if (!existing.licenseState && u.profile?.state) existing.licenseState = u.profile.state;
+        if (!existing.licenseNumber && license?.licenseNumber) existing.licenseNumber = license.licenseNumber;
         if (roleType) existing.roleType = roleType;
       } else {
         seen.set(key, {
@@ -97,7 +101,8 @@ export async function GET(request: NextRequest) {
           phone: u.profile?.phone || null,
           position: null,
           roleType: roleType || "CNA",
-          licenseState: u.profile?.state || null,
+          licenseNumber: license?.licenseNumber || null,
+          licenseState: license?.licenseState || u.profile?.state || null,
         });
       }
     }

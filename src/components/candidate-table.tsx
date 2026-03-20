@@ -230,14 +230,14 @@ export function CandidateTable({
       <table className="min-w-full">
         <thead>
           <tr className="border-b border-[#e2e8f0]">
-            <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Candidate</th>
-            <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Position</th>
-            {matchScores && <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Match</th>}
-            <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Fit</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Candidate</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Position</th>
+            {matchScores && <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Match</th>}
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Fit</th>
             <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Send</th>
             <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Profile</th>
-            <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Status</th>
-            <th className="px-5 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Actions</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Status</th>
+            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#f1f5f9]">

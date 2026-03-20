@@ -226,7 +226,7 @@ export function CandidateTable({
     "w-full rounded-lg border border-[#e2e8f0] bg-white px-2.5 py-1.5 text-sm text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20";
 
   return (
-    <div className="card overflow-hidden">
+    <div className="overflow-hidden">
       <table className="min-w-full">
         <thead>
           <tr className="border-b border-[#e2e8f0]">

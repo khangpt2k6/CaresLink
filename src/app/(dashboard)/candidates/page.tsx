@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { CandidateTable, type FitStatus } from "@/components/candidate-table";
-import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X, CheckCircle2, Calendar, Hash, Info, Sparkles, ArrowRight } from "lucide-react";
+import { Bot, Loader2, UserPlus, Link2, CalendarCheck, X, CheckCircle2, Calendar, Hash, Info, Sparkles, ArrowRight, Search, ChevronDown } from "lucide-react";
 import Link from "next/link";
 
 interface Candidate {
@@ -97,6 +97,10 @@ export default function CandidatesPage() {
   const [aiPrompt, setAiPrompt] = useState("");
   const [form, setForm] = useState({ name: "", email: "", phone: "", position: "" });
   const [contactModal, setContactModal] = useState<{ candidate: Candidate } | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [positionFilter, setPositionFilter] = useState<string>("all");
+  const [addOpen, setAddOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchCandidates = () => {
@@ -214,8 +218,32 @@ export default function CandidatesPage() {
     }
   };
 
+  // Derive unique positions and statuses for filters
+  const uniquePositions = [...new Set(candidates.map((c) => c.position))].sort();
+  const uniqueStatuses = [...new Set(candidates.map((c) => c.status))].sort();
+
+  // Filter candidates
+  const filteredCandidates = candidates.filter((c) => {
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const match = c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || (c.phone?.toLowerCase().includes(q) ?? false) || c.position.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    if (statusFilter !== "all" && c.status !== statusFilter) return false;
+    if (positionFilter !== "all" && c.position !== positionFilter) return false;
+    return true;
+  });
+
+  const hasActiveFilters = searchQuery.trim() || statusFilter !== "all" || positionFilter !== "all";
+
   const inputClass =
     "rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 text-sm text-[#1a2b3c] placeholder:text-[#8a95a3] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20";
+
+  const statusLabels: Record<string, string> = {
+    applied: "Applied", contacted: "Contacted", scheduled: "Scheduled",
+    interviewed: "Interviewed", offered: "Offered", hired: "Hired",
+    rejected: "Rejected", no_show: "No-show",
+  };
 
   return (
     <div className="p-6">
@@ -237,27 +265,50 @@ export default function CandidatesPage() {
         </div>
       )}
 
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-[#1a2b3c]">Candidates</h1>
-        <p className="text-sm text-[#5a6b7c]">Manage candidates and AI outreach</p>
+      {/* Header row: title + actions */}
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-[#1a2b3c]">Candidates</h1>
+          <p className="text-sm text-[#5a6b7c]">
+            {candidates.length} candidate{candidates.length !== 1 ? "s" : ""}
+            {hasActiveFilters ? ` · ${filteredCandidates.length} shown` : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/matching"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 text-xs font-medium text-[#5a6b7c] hover:border-[#0090d9] hover:text-[#0090d9] transition-colors"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            AI Matching
+          </Link>
+          <button
+            onClick={() => setAddOpen((o) => !o)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#0077b6] transition-colors"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Add Candidate
+          </button>
+        </div>
       </div>
 
-      {/* Add Candidate Form */}
-      <div className="card mb-4 p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <UserPlus className="h-4 w-4 text-[#0090d9]" />
-          <h2 className="text-sm font-semibold text-[#1a2b3c]">Add Candidate</h2>
+      {/* Collapsible Add Candidate Form */}
+      {addOpen && (
+        <div className="card mb-4 p-4">
+          <form onSubmit={handleAdd} className="flex items-center gap-3">
+            <input type="text" placeholder="Name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required className={inputClass + " flex-1"} />
+            <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required className={inputClass + " flex-1"} />
+            <input type="tel" placeholder="Phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className={inputClass + " w-36"} />
+            <input type="text" placeholder="Position" value={form.position} onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))} required className={inputClass + " flex-1"} />
+            <button type="submit" disabled={adding} className="rounded-lg bg-[#0090d9] px-5 py-2 text-sm font-medium text-white hover:bg-[#0077b6] transition-colors disabled:opacity-40 whitespace-nowrap">
+              {adding ? "Adding..." : "Add"}
+            </button>
+            <button type="button" onClick={() => setAddOpen(false)} className="rounded-lg p-2 text-[#94a3b8] hover:bg-[#f1f5f9] transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </form>
         </div>
-        <form onSubmit={handleAdd} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <input type="text" placeholder="Name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required className={inputClass} />
-          <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required className={inputClass} />
-          <input type="tel" placeholder="Phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className={inputClass} />
-          <input type="text" placeholder="Position" value={form.position} onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))} required className={inputClass} />
-          <button type="submit" disabled={adding} className="rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0077b6] transition-colors disabled:opacity-40">
-            {adding ? "Adding..." : "Add"}
-          </button>
-        </form>
-      </div>
+      )}
 
       {/* Contact AI modal */}
       {contactModal && (
@@ -301,7 +352,6 @@ export default function CandidatesPage() {
       {/* AI Response + Cancel during loading */}
       {(aiPrompt || aiLoading || bookingLinkLoading) && (
         <div className="card animate-in mb-4 overflow-hidden">
-          {/* Header */}
           <div className="flex items-center justify-between border-b border-[#e2e8f0] bg-gradient-to-r from-[#e8f4fd] to-white px-4 py-2.5">
             <div className="flex items-center gap-2.5">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0090d9] shadow-sm">
@@ -330,8 +380,6 @@ export default function CandidatesPage() {
               </button>
             )}
           </div>
-
-          {/* Body */}
           <div className="px-4 py-3.5">
             {bookingLinkLoading ? (
               <p className="text-sm text-[#5a6b7c]">Sending booking link to candidate...</p>
@@ -351,43 +399,73 @@ export default function CandidatesPage() {
         </div>
       )}
 
-      {/* AI Job Matching link */}
-      <Link
-        href="/matching"
-        className="card mb-4 flex items-center justify-between p-4 transition-colors hover:border-[#0090d9]/30 group"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#0090d9] to-[#6366f1] shadow-sm">
-            <Sparkles className="h-4 w-4 text-white" />
+      {/* Table card with integrated search/filters */}
+      <div className="card overflow-hidden">
+        {/* Search & Filter toolbar */}
+        {!loading && candidates.length > 0 && (
+          <div className="flex items-center gap-3 border-b border-[#f1f5f9] px-5 py-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#94a3b8]" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search candidates..."
+                className="w-full rounded-lg border border-[#e2e8f0] bg-[#f8fafc] pl-8 pr-3 py-1.5 text-sm placeholder:text-[#94a3b8] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]/20 focus:bg-white"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#0090d9]/20 transition-colors ${statusFilter !== "all" ? "border-[#0090d9] bg-[#e8f4fd] text-[#0090d9]" : "border-[#e2e8f0] bg-white text-[#5a6b7c]"}`}
+            >
+              <option value="all">All Statuses</option>
+              {uniqueStatuses.map((s) => (
+                <option key={s} value={s}>{statusLabels[s] || s}</option>
+              ))}
+            </select>
+            <select
+              value={positionFilter}
+              onChange={(e) => setPositionFilter(e.target.value)}
+              className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#0090d9]/20 transition-colors ${positionFilter !== "all" ? "border-[#0090d9] bg-[#e8f4fd] text-[#0090d9]" : "border-[#e2e8f0] bg-white text-[#5a6b7c]"}`}
+            >
+              <option value="all">All Positions</option>
+              {uniquePositions.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            {hasActiveFilters && (
+              <button
+                onClick={() => { setSearchQuery(""); setStatusFilter("all"); setPositionFilter("all"); }}
+                className="rounded-lg p-1.5 text-[#94a3b8] hover:bg-[#fee2e2] hover:text-[#dc2626] transition-colors"
+                title="Clear filters"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
-          <div>
-            <p className="text-sm font-semibold text-[#1a2b3c]">AI Job Matching</p>
-            <p className="text-[10px] text-[#8a95a3]">Pre-computed candidate scores — results load instantly</p>
-          </div>
-        </div>
-        <ArrowRight className="h-4 w-4 text-[#94a3b8] transition-transform group-hover:translate-x-1 group-hover:text-[#0090d9]" />
-      </Link>
+        )}
 
-      {/* Table */}
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-[#0090d9]" />
-        </div>
-      ) : (
-        <CandidateTable
-          candidates={candidates}
-          onContactAiClick={(c) => setContactModal({ candidate: c })}
-          onFitStatusChange={handleFitStatusChange}
-          onSendTemplate={handleSendTemplate}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          aiLoading={aiLoading}
-          bookingLinkLoading={bookingLinkLoading}
-          deleteLoading={deleteLoading}
-          templateLoading={templateLoading}
-          highlightId={highlightId}
-        />
-      )}
+        {/* Table content */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-5 w-5 animate-spin text-[#0090d9]" />
+          </div>
+        ) : (
+          <CandidateTable
+            candidates={filteredCandidates}
+            onContactAiClick={(c) => setContactModal({ candidate: c })}
+            onFitStatusChange={handleFitStatusChange}
+            onSendTemplate={handleSendTemplate}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            aiLoading={aiLoading}
+            bookingLinkLoading={bookingLinkLoading}
+            deleteLoading={deleteLoading}
+            templateLoading={templateLoading}
+            highlightId={highlightId}
+          />
+        )}
+      </div>
     </div>
   );
 }

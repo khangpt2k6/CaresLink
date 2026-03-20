@@ -248,7 +248,6 @@ export async function captureFloridaDOHScreenshots(
       "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders";
 
     await page.goto(SEARCH_URL, { waitUntil: "networkidle2", timeout: 30000 });
-    shots.push(await snap(page, "Florida DOH — MQA Search Form"));
 
     // Fill only: Last Name, First Name, License Number (no board/profession/status filters)
     try {
@@ -269,7 +268,6 @@ export async function captureFloridaDOHScreenshots(
     }
 
     await new Promise((r) => setTimeout(r, 500));
-    shots.push(await snap(page, "Florida DOH — Form Filled"));
 
     // Submit the form
     const submitted = await page.evaluate(() => {
@@ -286,13 +284,23 @@ export async function captureFloridaDOHScreenshots(
       await new Promise((r) => setTimeout(r, 3000));
       shots.push(await snap(page, "Florida DOH — Search Results"));
 
-      // Extract table data from the results page
-      matches = await page.evaluate(() => {
+      // Scroll to show full results, then take detail screenshot
+      await page.evaluate(() => window.scrollBy(0, 300));
+      await new Promise((r) => setTimeout(r, 600));
+      shots.push(await snap(page, "Florida DOH — License Details"));
+
+      // Extract license data — FL DOH uses a card/detail layout, not a plain table.
+      // Strategy 1: standard HTML table (fallback for list-view pages).
+      // Strategy 2: text parsing for the card-based detail view.
+      matches = await page.evaluate((): FloridaDOHRow[] => {
         const rows: FloridaDOHRow[] = [];
+        const bodyText = document.body.innerText;
+
+        // ── Strategy 1: HTML table ──────────────────────────────────
         document.querySelectorAll("table tr").forEach((tr, idx) => {
-          if (idx === 0) return; // skip header
+          if (idx === 0) return;
           const cells = Array.from(tr.querySelectorAll("td")).map((td) =>
-            td.innerText.replace(/\s+/g, " ").trim()
+            (td as HTMLElement).innerText.replace(/\s+/g, " ").trim()
           );
           if (cells.length >= 4 && cells[0] && cells[1]) {
             rows.push({
@@ -305,13 +313,32 @@ export async function captureFloridaDOHScreenshots(
             });
           }
         });
+        if (rows.length > 0) return rows;
+
+        // ── Strategy 2: FL DOH card/detail text parsing ─────────────
+        const get = (pattern: RegExp) => {
+          const m = bodyText.match(pattern);
+          return m ? m[1].trim() : "";
+        };
+
+        // License number: e.g. "CNA160586" or "License Number: CNA160586"
+        const licNum = get(/License(?:\s+Number)?[:\s]+([A-Z]{2,5}\d+)/i)
+          || get(/\b((?:CNA|RN|LPN|APRN|MA)\d{4,})\b/);
+
+        if (!licNum) return rows; // nothing found on this page
+
+        // Name: all-caps line near top of results
+        const nameMatch = bodyText.match(/([A-Z][A-Z]+(?:\s+[A-Z][A-Z]*\.?){1,4})\s*\n/);
+        const name = nameMatch ? nameMatch[1].trim() : "";
+
+        const licType = get(/Profession[:\s]+([^\n]+)/i) || "Certified Nursing Assistant";
+        const status  = get(/License\s+Status[:\s]+([^\n]+)/i);
+        const expDate = get(/(?:License\s+)?Expiration\s+Date[:\s]+([^\n]+)/i);
+        const county  = get(/County[:\s]+([^\n]+)/i);
+
+        rows.push({ name, licenseNumber: licNum, licenseType: licType, status, expirationDate: expDate, county });
         return rows;
       });
-
-      // Scroll to show results detail
-      await page.evaluate(() => window.scrollBy(0, 300));
-      await new Promise((r) => setTimeout(r, 600));
-      shots.push(await snap(page, "Florida DOH — License Details"));
     }
 
     await browser.close();

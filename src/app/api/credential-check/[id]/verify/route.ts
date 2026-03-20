@@ -122,21 +122,27 @@ async function analyzeWithAI({
   samGovResult: unknown;
 }): Promise<{ aiRecommendation: string; aiSummary: string }> {
   try {
+    const isCNA = roleType === "CNA";
     const prompt = `You are a healthcare compliance analyst. Analyze the following credential verification results for ${firstName} ${lastName} (Role: ${roleType}) and provide:
 1. An employability recommendation: "EMPLOYABLE", "REVIEW_REQUIRED", or "NOT_EMPLOYABLE"
 2. A concise 2-3 sentence summary explaining the recommendation
 
 Verification Results:
-${roleType === "NURSE" && nursysData ? `Nursys License Verification: ${JSON.stringify(nursysData, null, 2)}` : ""}
-${roleType === "CNA" && floridaDohData ? `Florida DOH CNA Verification: ${JSON.stringify(floridaDohData, null, 2)}` : ""}
-${oigResult ? `OIG Exclusion List: ${JSON.stringify(oigResult, null, 2)}` : "OIG Exclusion List: not checked yet"}
-${samGovResult ? `SAM.gov: ${JSON.stringify(samGovResult, null, 2)}` : "SAM.gov: not checked yet"}
+${!isCNA && nursysData ? `Nursys License Verification: ${JSON.stringify(nursysData, null, 2)}` : ""}
+${isCNA && floridaDohData ? `Florida DOH CNA License Verification: ${JSON.stringify(floridaDohData, null, 2)}` : ""}
+${!isCNA && oigResult ? `OIG Exclusion List: ${JSON.stringify(oigResult, null, 2)}` : ""}
+${!isCNA && samGovResult ? `SAM.gov: ${JSON.stringify(samGovResult, null, 2)}` : ""}
 
-Rules:
+Rules for CNA:
+- EMPLOYABLE if: Florida DOH license status is "Clear/Active" or "Active" (not expired)
+- REVIEW_REQUIRED if: license not found, expired, has restrictions, probation, or is unclear
+- NOT_EMPLOYABLE if: license is revoked, suspended, or surrendered
+- Do NOT mention OIG or SAM.gov — they are not checked for CNAs
+
+Rules for NURSE:
 - NOT_EMPLOYABLE if: OIG status is "excluded", or license is revoked/suspended/surrendered
-- REVIEW_REQUIRED if: license is expired, probation, restriction, manual verification needed, or OIG/SAM not yet checked
+- REVIEW_REQUIRED if: license is expired, probation, restriction, or manual verification needed
 - EMPLOYABLE if: license is active/unencumbered AND OIG clear AND SAM clear
-- For CNA with only Florida DOH checked so far: base recommendation on license status, note OIG/SAM pending
 
 Respond in JSON format: {"recommendation": "EMPLOYABLE|REVIEW_REQUIRED|NOT_EMPLOYABLE", "summary": "..."}`;
 

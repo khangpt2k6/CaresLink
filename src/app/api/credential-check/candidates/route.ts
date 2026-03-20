@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 2. Fetch registered candidate users with profiles + certifications
+    // 2. Fetch registered candidate users with profiles + certifications + licenses
     const registeredCandidates = await prisma.user.findMany({
       where: {
         role: "CANDIDATE",
@@ -42,6 +42,11 @@ export async function GET(request: NextRequest) {
             state: true,
             certifications: {
               select: { name: true },
+            },
+            licenses: {
+              select: { type: true, licenseNumber: true, licenseState: true },
+              take: 1,
+              orderBy: { createdAt: "desc" },
             },
           },
         },

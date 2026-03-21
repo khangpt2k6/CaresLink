@@ -234,6 +234,15 @@ export default function MatchingPage() {
     }
   }, [selectedJobId, loadMatches]);
 
+  // Auto-poll every 15 seconds for live score updates
+  useEffect(() => {
+    if (!selectedJobId) return;
+    const interval = setInterval(() => {
+      loadMatches(selectedJobId);
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [selectedJobId, loadMatches]);
+
   const runAnalysis = async () => {
     if (!selectedJobId) return;
     setComputing(true);
@@ -298,7 +307,7 @@ export default function MatchingPage() {
         <div>
           <h1 className="text-xl font-bold text-[#1a2b3c]">AI Job Matching</h1>
           <p className="mt-0.5 text-sm text-[#64748b]">
-            Pre-computed scores — results load instantly from cache
+            Live scores update automatically — deep analysis available on demand
           </p>
         </div>
         <Link
@@ -398,7 +407,7 @@ export default function MatchingPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#007bbd] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md active:scale-[0.97]"
             >
               <RefreshCw className={`h-4 w-4 ${computing ? "animate-spin" : ""}`} />
-              {computing ? "Analyzing..." : matchData?.matches.length ? "Re-analyze" : "Run Analysis"}
+              {computing ? "Deep analyzing..." : matchData?.matches.length ? "Deep Analysis (AI)" : "Deep Analysis (AI)"}
             </button>
           </div>
         </div>
@@ -529,9 +538,9 @@ export default function MatchingPage() {
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0090d9]/10 to-[#6366f1]/10">
                 <Sparkles className="h-8 w-8 text-[#0090d9]" />
               </div>
-              <p className="mt-4 text-sm font-semibold text-[#334155]">No matches computed yet</p>
+              <p className="mt-4 text-sm font-semibold text-[#334155]">Computing matches...</p>
               <p className="mt-1 text-xs text-[#94a3b8]">
-                Click &ldquo;Run Analysis&rdquo; to compute AI match scores for all candidates
+                Scores update automatically as candidates and jobs are added. Click &ldquo;Deep Analysis (AI)&rdquo; for detailed Claude-powered scoring.
               </p>
             </motion.div>
           )}

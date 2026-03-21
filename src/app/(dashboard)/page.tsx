@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { MetricCard, MetricsSection } from "@/components/metrics-cards";
 import { CandidateDashboard } from "@/components/candidate-dashboard";
@@ -85,6 +85,99 @@ interface TopMatch {
   label: string;
   reason: string;
   jobTitle: string;
+}
+
+// ── Parse agent report into structured lines ─────────────────
+interface ParsedReport {
+  headline: string | null;
+  lines: { type: "contact" | "followup" | "reminder" | "embed" | "info" | "error"; text: string }[];
+}
+
+function parseAgentReport(report: string): ParsedReport {
+  const clean = report.replace(/\*\*/g, "").replace(/##/g, "").replace(/✅/g, "").trim();
+  const lines: ParsedReport["lines"] = [];
+  let headline: string | null = null;
+
+  // Split by common delimiters in the reports
+  const parts = clean
+    .split(/(?:\.\s+(?=[A-Z])|\s*-\s+(?=[A-Z])|\s*(?:TASK\s*\d+\s*[-–]\s*))/g)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 5);
+
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+
+    // Detect type
+    if (/^contacted\s+\d+/i.test(part)) {
+      if (!headline) headline = part.endsWith(".") ? part : part + ".";
+      lines.push({ type: "contact", text: part });
+    } else if (/follow.?up/i.test(lower)) {
+      lines.push({ type: "followup", text: part });
+    } else if (/reminder/i.test(lower)) {
+      lines.push({ type: "reminder", text: part });
+    } else if (/embed/i.test(lower)) {
+      lines.push({ type: "embed", text: part });
+    } else if (/error|fail/i.test(lower)) {
+      lines.push({ type: "error", text: part });
+    } else if (part.length > 10) {
+      lines.push({ type: "info", text: part });
+    }
+  }
+
+  // If nothing parsed, fall back to sentence splitting
+  if (lines.length === 0) {
+    const sentences = clean.split(/(?<=\.)\s+/).filter((s) => s.length > 5);
+    for (const s of sentences) {
+      lines.push({ type: "info", text: s });
+    }
+  }
+
+  return { headline, lines };
+}
+
+// ── Typing animation component ──────────────────────────────
+function TypingLine({ text, delay, icon }: { text: string; delay: number; icon: React.ReactNode }) {
+  const [displayed, setDisplayed] = useState("");
+  const [done, setDone] = useState(false);
+  const indexRef = useRef(0);
+
+  useEffect(() => {
+    const startTimeout = setTimeout(() => {
+      const interval = setInterval(() => {
+        indexRef.current += 2; // 2 chars at a time for speed
+        if (indexRef.current >= text.length) {
+          setDisplayed(text);
+          setDone(true);
+          clearInterval(interval);
+        } else {
+          setDisplayed(text.slice(0, indexRef.current));
+        }
+      }, 12); // Fast typing
+      return () => clearInterval(interval);
+    }, delay);
+    return () => clearTimeout(startTimeout);
+  }, [text, delay]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: delay / 1000, duration: 0.25 }}
+      className="flex items-start gap-2 rounded-lg bg-[#f8fafc] px-3 py-2"
+    >
+      <div className="mt-0.5 flex-shrink-0">{icon}</div>
+      <p className="text-xs leading-relaxed text-[#5a6b7c]">
+        {displayed}
+        {!done && (
+          <motion.span
+            className="inline-block ml-0.5 h-3.5 w-[2px] bg-[#0090d9] align-middle"
+            animate={{ opacity: [1, 0] }}
+            transition={{ duration: 0.5, repeat: Infinity }}
+          />
+        )}
+      </p>
+    </motion.div>
+  );
 }
 
 // Stagger animation for children
@@ -624,9 +717,9 @@ export default function DashboardPage() {
                 <p className="mt-0.5 text-[11px] text-[#b0bec8]">The agent runs every weekday at 9 AM automatically</p>
               </div>
             ) : (
-              <motion.div className="space-y-2.5" variants={staggerContainer} initial="hidden" animate="show">
+              <motion.div className="space-y-3" variants={staggerContainer} initial="hidden" animate="show">
                 <AnimatePresence mode="sync">
-                  {visibleAgentRuns.map((run) => {
+                  {visibleAgentRuns.map((run, runIdx) => {
                     const isError = run.report.startsWith("ERROR:");
                     const date = new Date(run.createdAt);
                     const timeAgo = (() => {
@@ -639,6 +732,17 @@ export default function DashboardPage() {
                     const durationSec = Math.round(
                       (new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000
                     );
+
+                    const parsed = parseAgentReport(run.report);
+
+                    const lineIcons: Record<string, React.ReactNode> = {
+                      contact: <Mail className="h-3.5 w-3.5 text-[#0090d9]" />,
+                      followup: <Clock className="h-3.5 w-3.5 text-amber-500" />,
+                      reminder: <CalendarCheck className="h-3.5 w-3.5 text-violet-500" />,
+                      embed: <Sparkles className="h-3.5 w-3.5 text-emerald-500" />,
+                      info: <CheckCircle2 className="h-3.5 w-3.5 text-[#94a3b8]" />,
+                      error: <XCircle className="h-3.5 w-3.5 text-red-500" />,
+                    };
 
                     return (
                       <motion.div
@@ -672,11 +776,38 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {/* Report body — truncated */}
-                        <div className="px-4 py-2.5">
-                          <p className={`text-xs leading-relaxed line-clamp-2 ${isError ? "text-red-600" : "text-[#5a6b7c]"}`}>
-                            {run.report.replace(/\*\*/g, "").replace(/##/g, "").trim()}
-                          </p>
+                        {/* Structured report body with typing animation */}
+                        <div className="px-4 py-3 space-y-1.5">
+                          {parsed.lines.map((line, lineIdx) => (
+                            <TypingLine
+                              key={lineIdx}
+                              text={line.text}
+                              delay={runIdx === 0 ? 200 + lineIdx * 600 : 0}
+                              icon={lineIcons[line.type] || lineIcons.info}
+                            />
+                          ))}
+
+                          {/* Summary bar */}
+                          {parsed.lines.length > 0 && (
+                            <motion.div
+                              initial={{ opacity: 0, scaleX: 0 }}
+                              animate={{ opacity: 1, scaleX: 1 }}
+                              transition={{
+                                delay: runIdx === 0 ? (200 + parsed.lines.length * 600) / 1000 : 0.3,
+                                duration: 0.4,
+                                ease: [0.16, 1, 0.3, 1],
+                              }}
+                              className="mt-2 flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-[#f0f7ff] px-3 py-1.5 origin-left"
+                            >
+                              <CheckCircle2 className="h-3 w-3 text-[#059669]" />
+                              <span className="text-[10px] font-medium text-[#334155]">
+                                Completed in {durationSec}s
+                              </span>
+                              <span className="text-[10px] text-[#94a3b8]">
+                                {parsed.lines.length} task{parsed.lines.length !== 1 ? "s" : ""} processed
+                              </span>
+                            </motion.div>
+                          )}
                         </div>
                       </motion.div>
                     );

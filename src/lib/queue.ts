@@ -4,7 +4,7 @@
  * Replaces node-cron with durable, retryable job scheduling.
  * Jobs survive server restarts and automatically retry on failure.
  */
-import { Queue, Worker, QueueScheduler } from "bullmq";
+import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 
 // ── Redis connection ─────────────────────────────────────────
@@ -22,11 +22,12 @@ function createRedisConnection() {
 
 let connection: IORedis | null = null;
 
-function getConnection(): IORedis {
+function getConnection() {
   if (!connection) {
     connection = createRedisConnection();
   }
-  return connection;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return connection as any;
 }
 
 // ── Queue names ──────────────────────────────────────────────

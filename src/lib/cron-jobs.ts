@@ -246,5 +246,49 @@ Provide a brief summary: how many follow-ups sent, how many reminders sent.`;
     data: { trigger: "cron", report: parts.join("\n\n"), startedAt, completedAt },
   });
 
+  // TASK 3 — Self-healing: embed candidates/jobs missing embeddings
+  try {
+    const { embedCandidate, embedJob } = await import("./embeddings");
+    const EMBED_BATCH_LIMIT = 20;
+
+    const candidatesWithoutEmbedding = await prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT c.id FROM "Candidate" c
+       LEFT JOIN "CandidateEmbedding" ce ON c.id = ce."candidateId"
+       WHERE ce.id IS NULL
+       LIMIT $1`,
+      EMBED_BATCH_LIMIT
+    );
+
+    let candidatesEmbedded = 0;
+    for (const c of candidatesWithoutEmbedding) {
+      try {
+        await embedCandidate(c.id);
+        candidatesEmbedded++;
+      } catch { /* skip failures */ }
+    }
+
+    const jobsWithoutEmbedding = await prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT j.id FROM "Job" j
+       LEFT JOIN "JobEmbedding" je ON j.id = je."jobId"
+       WHERE je.id IS NULL
+       LIMIT $1`,
+      EMBED_BATCH_LIMIT
+    );
+
+    let jobsEmbedded = 0;
+    for (const j of jobsWithoutEmbedding) {
+      try {
+        await embedJob(j.id);
+        jobsEmbedded++;
+      } catch { /* skip failures */ }
+    }
+
+    if (candidatesEmbedded > 0 || jobsEmbedded > 0) {
+      console.log(`[BullMQ] Embedding health check: embedded ${candidatesEmbedded} candidates, ${jobsEmbedded} jobs`);
+    }
+  } catch (e) {
+    console.error("[BullMQ] Embedding health check error:", e);
+  }
+
   console.log(`[BullMQ] Agent cron completed in ${(completedAt.getTime() - startedAt.getTime()) / 1000}s`);
 }

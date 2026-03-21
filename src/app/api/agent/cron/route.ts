@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runAgent } from "@/lib/agent";
-import { sendBookingLinkToCandidate } from "@/lib/send-booking-link";
-import { prisma } from "@/lib/db";
-import { embedCandidate, embedJob } from "@/lib/embeddings";
+import { runAgentCronJob } from "@/lib/cron-jobs";
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
@@ -15,104 +12,36 @@ export async function POST(request: NextRequest) {
   }
 
   const startedAt = new Date();
-  const parts: string[] = [];
 
   try {
-    // TASK 1 — Contact new applicants: direct send, no AI
-    const applied = await prisma.candidate.findMany({
-      where: { status: "applied" },
-      select: { id: true, name: true },
-    });
-    let contacted = 0;
-    for (const c of applied) {
-      const result = await sendBookingLinkToCandidate(c.id);
-      if (result.success) contacted++;
-    }
-    if (applied.length > 0) {
-      parts.push(`Contacted ${contacted}/${applied.length} new applicants with booking links (no AI).`);
-    }
-
-    // TASK 2 & 3 — Follow-ups and reminders: use AI agent
-    const goal = `You are running autonomously. Today is ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}.
-
-Complete ALL without asking for confirmation:
-
-TASK 1 — Follow up on stale candidates:
-Get candidates who haven't replied in 5+ days (get_stale_candidates). For each, send a follow-up email with subject "Following Up — [position] Interview at CaresLink" and a friendly message reminding them to book their interview.
-
-TASK 2 — Send interview reminders:
-List upcoming interviews in the next 24 hours where reminder_not_sent is true. Send a reminder for each one (send_reminder).
-
-Provide a brief summary: how many follow-ups sent, how many reminders sent.`;
-
-    const agentReport = await runAgent(goal);
-    parts.push(agentReport);
-
-    // TASK 3 — Self-healing: embed candidates/jobs missing embeddings
-    try {
-      const EMBED_BATCH_LIMIT = 20;
-
-      const candidatesWithoutEmbedding = await prisma.$queryRawUnsafe<{ id: string }[]>(
-        `SELECT c.id FROM "Candidate" c
-         LEFT JOIN "CandidateEmbedding" ce ON c.id = ce."candidateId"
-         WHERE ce.id IS NULL
-         LIMIT $1`,
-        EMBED_BATCH_LIMIT
-      );
-
-      let candidatesEmbedded = 0;
-      for (const c of candidatesWithoutEmbedding) {
-        try {
-          await embedCandidate(c.id);
-          candidatesEmbedded++;
-        } catch { /* skip failures */ }
-      }
-
-      const jobsWithoutEmbedding = await prisma.$queryRawUnsafe<{ id: string }[]>(
-        `SELECT j.id FROM "Job" j
-         LEFT JOIN "JobEmbedding" je ON j.id = je."jobId"
-         WHERE je.id IS NULL
-         LIMIT $1`,
-        EMBED_BATCH_LIMIT
-      );
-
-      let jobsEmbedded = 0;
-      for (const j of jobsWithoutEmbedding) {
-        try {
-          await embedJob(j.id);
-          jobsEmbedded++;
-        } catch { /* skip failures */ }
-      }
-
-      if (candidatesEmbedded > 0 || jobsEmbedded > 0) {
-        parts.push(`Embedding health check: embedded ${candidatesEmbedded} candidates, ${jobsEmbedded} jobs.`);
-      }
-    } catch (e) {
-      console.error("[agent/cron] embedding health check error:", e);
+    // If BullMQ is available, add the job to the queue for durable execution with retries
+    if (process.env.REDIS_URL) {
+      const { getAgentCronQueue } = await import("@/lib/queue");
+      const queue = getAgentCronQueue();
+      const job = await queue.add("manual-agent-run", {}, {
+        attempts: 2,
+        backoff: { type: "fixed", delay: 120_000 },
+      });
+      return NextResponse.json({
+        success: true,
+        message: "Agent cron job queued via BullMQ (retries on failure)",
+        jobId: job.id,
+        startedAt: startedAt.toISOString(),
+      });
     }
 
-    const report = parts.join("\n\n");
+    // Fallback: run directly (no queue, no retries)
+    await runAgentCronJob();
     const completedAt = new Date();
-
-    await prisma.agentRun.create({
-      data: { trigger: "cron", report, startedAt, completedAt },
-    });
 
     return NextResponse.json({
       success: true,
       startedAt: startedAt.toISOString(),
       completedAt: completedAt.toISOString(),
-      report,
     });
   } catch (e) {
     console.error("[agent/cron] error:", e);
-    const completedAt = new Date();
     const errorMsg = e instanceof Error ? e.message : "Cron agent failed";
-
-    await prisma.agentRun.create({
-      data: { trigger: "cron", report: `ERROR: ${errorMsg}`, startedAt, completedAt },
-    }).catch(() => {});
-
     return NextResponse.json(
       { success: false, startedAt: startedAt.toISOString(), error: errorMsg },
       { status: 500 }

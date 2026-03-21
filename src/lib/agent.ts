@@ -3,6 +3,9 @@ import type { MessageParam, Tool } from "@anthropic-ai/sdk/resources/messages";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
 import { sendReminder, scheduleInterview, findMutualAvailableSlots } from "./scheduling";
+import { generateEmbedding, buildCandidateText, buildJobText } from "./embeddings";
+import { searchSimilarCandidates, searchSimilarJobs, getJobEmbeddingVector } from "./vector-store";
+import { rememberFact, recallFacts } from "./agent-memory";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 if (!apiKey) {
@@ -25,7 +28,11 @@ You can verify nursing licenses by searching the Florida Department of Health (F
 
 You can run full credential verification checks using run_credential_check. This creates a record, verifies the candidate against FL DOH (for CNAs) and Nursys (for RNs), checks OIG exclusion lists and SAM.gov, and provides an AI recommendation (Employable, Review Required, or Not Employable). Use list_credential_checks to show recent checks and their results.
 
-You can match candidates to jobs using get_job_matches. This returns AI-scored matches (0-100) for a job, showing how well each candidate fits. Use run_job_matching to trigger a new AI analysis. Use list_jobs to find available job IDs first.
+You can match candidates to jobs using get_job_matches. This returns AI-scored matches (0-100) for a job, showing how well each candidate fits. Use find_candidates_for_job for RAG-enhanced matching (uses vector embeddings to pre-filter, then AI scores the top matches). Use list_jobs to find available job IDs first.
+
+You have semantic search capabilities powered by vector embeddings (RAG). When asked to find or search for candidates, prefer semantic_search_candidates over list_candidates — it understands natural language queries like "RN with ICU experience in Tampa" and returns semantically similar candidates. Use find_similar_jobs to find related positions.
+
+You have long-term memory. You can remember important facts using remember_fact — use it proactively when the employer shares preferences, requirements, or notes about candidates/jobs that should persist across conversations. Use recall_context to retrieve relevant memories before complex tasks.
 
 Be concise and direct. Act first, then confirm. Never ask "would you like me to..." — just do it.`;
 
@@ -345,6 +352,83 @@ const TOOLS: Tool[] = [
         status: { type: "string" as const, description: "Filter by status: 'open' or 'closed' (default: all)" },
       },
       required: [],
+    },
+  },
+  // ─── RAG & Semantic Memory Tools ─────────────────────────
+  {
+    name: "semantic_search_candidates",
+    description:
+      "Search for candidates using natural language. Uses AI vector embeddings to find semantically similar candidates based on skills, experience, certifications, location, etc. Much better than keyword filtering. Example: 'RN with ICU experience and BLS certification in Tampa'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string" as const, description: "Natural language search query describing the ideal candidate" },
+        limit: { type: "number" as const, description: "Max results to return (default 10)" },
+        min_similarity: { type: "number" as const, description: "Minimum similarity score 0-1 (default 0.3)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "find_similar_jobs",
+    description:
+      "Find jobs similar to a given description or to an existing job. Uses vector embeddings for semantic matching. Useful for finding related positions or suggesting alternative roles for a candidate.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string" as const, description: "Natural language job description or requirements" },
+        job_id: { type: "string" as const, description: "Existing job ID to find similar jobs to (alternative to query)" },
+        limit: { type: "number" as const, description: "Max results (default 5)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "remember_fact",
+    description:
+      "Store an important fact, preference, or note for long-term memory. Use proactively when the employer shares preferences, requirements, or important notes about candidates/jobs. These persist across conversations.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fact: {
+          type: "string" as const,
+          description: "The fact to remember, e.g. 'Employer prefers candidates with BLS certification for ICU positions'",
+        },
+        category: {
+          type: "string" as const,
+          enum: ["preference", "candidate_note", "job_requirement", "workflow", "general"],
+          description: "Category of the fact",
+        },
+        entity_id: { type: "string" as const, description: "Optional ID of related candidate or job" },
+        entity_type: { type: "string" as const, enum: ["candidate", "job"], description: "Type of related entity" },
+      },
+      required: ["fact", "category"],
+    },
+  },
+  {
+    name: "recall_context",
+    description:
+      "Recall previously remembered facts and preferences relevant to the current context. Use before complex tasks to load relevant long-term memory from past conversations.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string" as const, description: "What context to search for, e.g. 'ICU nurse preferences' or 'notes about Maria Santos'" },
+        limit: { type: "number" as const, description: "Max facts to return (default 5)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "find_candidates_for_job",
+    description:
+      "RAG-enhanced job matching. First finds semantically similar candidates via vector embeddings, then uses AI to fine-score the top matches. More accurate and scalable than legacy matching. Returns ranked candidates with scores and explanations.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        job_id: { type: "string" as const, description: "The job ID to find matches for" },
+        top_k: { type: "number" as const, description: "Number of candidates to pre-filter via similarity (default 20)" },
+      },
+      required: ["job_id"],
     },
   },
 ];
@@ -697,6 +781,140 @@ async function executeFunction(name: string, args: Record<string, unknown>, user
         count: jobsList.length,
       };
     }
+    // ─── RAG & Semantic Memory Tool Handlers ───────────────
+    case "semantic_search_candidates": {
+      try {
+        const query = String(args.query);
+        const limit = typeof args.limit === "number" ? args.limit : 10;
+        const minSimilarity = typeof args.min_similarity === "number" ? args.min_similarity : 0.3;
+
+        const queryEmbedding = await generateEmbedding(query);
+        const results = await searchSimilarCandidates(queryEmbedding, limit, minSimilarity);
+
+        if (results.length === 0) {
+          return { candidates: [], count: 0, message: "No semantically similar candidates found. Try a broader query, or embeddings may need to be generated (run embed:all)." };
+        }
+
+        // Enrich with candidate details
+        const candidateIds = results.map((r) => r.candidateId);
+        const candidates = await prisma.candidate.findMany({
+          where: { id: { in: candidateIds } },
+          select: { id: true, name: true, email: true, position: true, status: true },
+        });
+
+        const candidateMap = Object.fromEntries(candidates.map((c) => [c.id, c]));
+        return {
+          candidates: results.map((r) => ({
+            ...candidateMap[r.candidateId],
+            similarity: Number(r.similarity).toFixed(3),
+          })),
+          count: results.length,
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Semantic search failed" };
+      }
+    }
+    case "find_similar_jobs": {
+      try {
+        let queryEmbedding: number[];
+
+        if (args.job_id) {
+          const stored = await getJobEmbeddingVector(String(args.job_id));
+          if (!stored) {
+            // Generate on the fly
+            const job = await prisma.job.findUnique({ where: { id: String(args.job_id) } });
+            if (!job) return { error: "Job not found" };
+            queryEmbedding = await generateEmbedding(buildJobText(job));
+          } else {
+            queryEmbedding = stored;
+          }
+        } else if (args.query) {
+          queryEmbedding = await generateEmbedding(String(args.query));
+        } else {
+          return { error: "Provide either query or job_id" };
+        }
+
+        const limit = typeof args.limit === "number" ? args.limit : 5;
+        const results = await searchSimilarJobs(queryEmbedding, limit);
+
+        if (results.length === 0) {
+          return { jobs: [], count: 0, message: "No similar jobs found." };
+        }
+
+        const jobIds = results.map((r) => r.jobId);
+        const jobs = await prisma.job.findMany({
+          where: { id: { in: jobIds } },
+          select: { id: true, title: true, location: true, type: true, status: true },
+        });
+
+        const jobMap = Object.fromEntries(jobs.map((j) => [j.id, j]));
+        return {
+          jobs: results.map((r) => ({
+            ...jobMap[r.jobId],
+            similarity: Number(r.similarity).toFixed(3),
+          })),
+          count: results.length,
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Similar jobs search failed" };
+      }
+    }
+    case "remember_fact": {
+      try {
+        if (!userId) return { error: "User context required to store memories" };
+        const fact = String(args.fact);
+        const category = String(args.category || "general");
+        const entityId = args.entity_id ? String(args.entity_id) : null;
+        const entityType = args.entity_type ? String(args.entity_type) : null;
+
+        const result = await rememberFact(userId, fact, category, entityId, entityType);
+        return { success: true, ...result, message: "Fact stored in long-term memory." };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Failed to store fact" };
+      }
+    }
+    case "recall_context": {
+      try {
+        if (!userId) return { error: "User context required to recall memories" };
+        const query = String(args.query);
+        const limit = typeof args.limit === "number" ? args.limit : 5;
+
+        const facts = await recallFacts(userId, query, limit);
+        return {
+          facts: facts.map((f) => ({
+            fact: f.fact,
+            category: f.category,
+            relevance: Number(f.similarity).toFixed(3),
+          })),
+          count: facts.length,
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "Failed to recall context" };
+      }
+    }
+    case "find_candidates_for_job": {
+      try {
+        const { computeAndStoreMatchesRAG } = await import("./matching-service");
+        const jobId = String(args.job_id);
+        const topK = typeof args.top_k === "number" ? args.top_k : 20;
+
+        const matches = await computeAndStoreMatchesRAG(jobId, topK);
+        return {
+          success: true,
+          jobId,
+          matchesComputed: matches.length,
+          method: "RAG-enhanced (vector pre-filter + AI scoring)",
+          topMatches: matches.slice(0, 5).map((m) => ({
+            candidateName: m.candidate.name,
+            score: m.score,
+            label: m.label,
+            reason: m.reason,
+          })),
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : "RAG matching failed" };
+      }
+    }
     default:
       return { error: `Unknown function: ${name}` };
   }
@@ -726,6 +944,25 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
   let turns = 0;
   let lastText = "";
 
+  // ─── Auto-inject recalled semantic context ─────────────
+  let systemPrompt = SYSTEM_PROMPT;
+  if (userId) {
+    try {
+      const relevantFacts = await recallFacts(userId, userMessage, 3);
+      if (relevantFacts.length > 0) {
+        const contextBlock = relevantFacts
+          .filter((f) => f.similarity > 0.35)
+          .map((f) => `- ${f.fact}`)
+          .join("\n");
+        if (contextBlock) {
+          systemPrompt += `\n\n[Relevant context from previous conversations:]\n${contextBlock}`;
+        }
+      }
+    } catch {
+      // Silently skip if semantic memory not available (e.g. pgvector not enabled yet)
+    }
+  }
+
   const saveHistory = async (history: MessageParam[]) => {
     if (!sessionId || !userId) return;
     const trimmed = history.slice(-20);
@@ -741,7 +978,7 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         tools: TOOLS,
         messages,
       });

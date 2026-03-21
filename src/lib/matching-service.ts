@@ -243,3 +243,180 @@ Evaluate ALL ${candidateProfiles.length} candidates against the "${job.title}" p
     orderBy: { score: "desc" },
   });
 }
+
+/**
+ * RAG-enhanced matching: vector pre-filter → enrich top-K → Claude fine-score.
+ * Falls back to legacy computeAndStoreMatches if no embeddings exist.
+ */
+export async function computeAndStoreMatchesRAG(jobId: string, topK: number = 20) {
+  if (!anthropic) throw new Error("AI not configured");
+
+  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  if (!job) throw new Error("Job not found");
+
+  // Step 1: Get or generate job embedding
+  const { generateEmbedding, buildJobText } = await import("./embeddings");
+  const { searchSimilarCandidates, getJobEmbeddingVector, upsertJobEmbedding } = await import("./vector-store");
+
+  let jobEmbedding = await getJobEmbeddingVector(jobId);
+  if (!jobEmbedding) {
+    const text = buildJobText(job);
+    jobEmbedding = await generateEmbedding(text);
+    await upsertJobEmbedding(jobId, text, jobEmbedding);
+  }
+
+  // Step 2: Vector similarity pre-filter
+  const similarCandidates = await searchSimilarCandidates(jobEmbedding, topK, 0.2);
+
+  // Fallback: if no embeddings exist, use legacy approach
+  if (similarCandidates.length === 0) {
+    return computeAndStoreMatches(jobId);
+  }
+
+  // Step 3: Enrich only the pre-filtered candidates
+  const candidateIds = similarCandidates.map((r) => r.candidateId);
+  const candidates = await prisma.candidate.findMany({
+    where: { id: { in: candidateIds } },
+  });
+
+  const candidateProfiles = await Promise.all(
+    candidates.map(async (c) => {
+      const user = await prisma.user.findFirst({
+        where: { email: { equals: c.email, mode: "insensitive" } },
+        include: {
+          profile: {
+            include: {
+              experiences: { orderBy: { startDate: "desc" } },
+              educations: { orderBy: { startDate: "desc" } },
+              skills: true,
+              certifications: true,
+            },
+          },
+        },
+      });
+
+      const interview = await prisma.interview.findFirst({
+        where: { candidateId: c.id },
+        include: { screening: true, summary: true },
+        orderBy: { scheduledAt: "desc" },
+      });
+
+      const profile = user?.profile;
+      const screening = interview?.screening;
+      const interviewSummary = interview?.summary;
+      const simResult = similarCandidates.find((s) => s.candidateId === c.id);
+
+      return {
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        position: c.position,
+        status: c.status,
+        vectorSimilarity: simResult ? Number(simResult.similarity).toFixed(3) : "N/A",
+        profile: profile
+          ? {
+              headline: profile.headline,
+              summary: profile.summary,
+              experiences: profile.experiences.map((e) => ({
+                title: e.title,
+                company: e.company,
+                description: e.description,
+              })),
+              educations: profile.educations.map((e) => ({
+                school: e.school,
+                degree: e.degree,
+                field: e.field,
+              })),
+              skills: profile.skills.map((s) => s.name),
+              certifications: profile.certifications.map((cert) => ({
+                name: cert.name,
+                issuer: cert.issuer,
+              })),
+            }
+          : null,
+        screening: screening?.answers
+          ? { summary: screening.aiSummary, flagged: screening.flagged }
+          : null,
+        interviewSummary: interviewSummary
+          ? {
+              strengths: interviewSummary.strengths,
+              concerns: interviewSummary.concerns,
+              ratings: {
+                overall: interviewSummary.overallRating,
+              },
+              recommendation: interviewSummary.recommendation,
+            }
+          : null,
+      };
+    })
+  );
+
+  // Step 4: Claude fine-scoring (same prompt structure, smaller input)
+  const systemPrompt = `You are an expert healthcare recruiter AI. Score each candidate against this job posting.
+
+For each candidate, evaluate: position match, experience, skills, certifications, education, screening/interview performance.
+
+Score 0-100: 90-100 excellent, 75-89 good, 50-74 partial, 25-49 weak, 0-24 poor.
+Labels: "Excellent fit", "Good fit", "Partial fit", "Weak fit", "Not a fit"
+
+These candidates were PRE-FILTERED by vector similarity. Their "vectorSimilarity" score shows semantic relevance to the job (0-1). Use this as a signal but make your own assessment.
+
+Respond with ONLY a valid JSON array:
+[{"candidateId": "id", "score": 85, "label": "Good fit", "reason": "1-2 sentence explanation"}]`;
+
+  const userMessage = `## Job Posting
+**Title:** ${job.title}
+**Department:** ${job.department || "N/A"}
+**Location:** ${job.location}
+**Type:** ${job.type}
+**Description:** ${job.description || "No description provided"}
+
+## Pre-filtered Candidates (${candidateProfiles.length} via RAG)
+
+${candidateProfiles
+  .map(
+    (c, i) => `### Candidate ${i + 1}: ${c.name}
+- **ID:** ${c.id}
+- **Vector Similarity:** ${c.vectorSimilarity}
+- **Applied Position:** ${c.position}
+${
+  c.profile
+    ? `- **Skills:** ${c.profile.skills.length > 0 ? c.profile.skills.join(", ") : "None"}
+- **Certifications:** ${c.profile.certifications.length > 0 ? c.profile.certifications.map((cert) => cert.name).join(", ") : "None"}
+- **Experience:** ${c.profile.experiences.length > 0 ? c.profile.experiences.map((e) => `${e.title} at ${e.company}`).join("; ") : "None"}`
+    : "- **Profile:** No detailed profile"
+}
+${c.screening ? `- **Screening:** ${c.screening.summary || "Completed"}${c.screening.flagged ? " ⚠️" : ""}` : ""}
+${c.interviewSummary ? `- **Interview:** Overall ${c.interviewSummary.ratings.overall}/5, ${c.interviewSummary.recommendation}` : ""}`
+  )
+  .join("\n")}`;
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  const text = response.content[0].type === "text" ? response.content[0].text : "";
+  const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
+  const matches: { candidateId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
+
+  // Step 5: Upsert results
+  const now = new Date();
+  await Promise.all(
+    matches.map((m) =>
+      prisma.jobMatch.upsert({
+        where: { jobId_candidateId: { jobId: job.id, candidateId: m.candidateId } },
+        create: { jobId: job.id, candidateId: m.candidateId, score: m.score, label: m.label, reason: m.reason, computedAt: now },
+        update: { score: m.score, label: m.label, reason: m.reason, computedAt: now },
+      })
+    )
+  );
+
+  return prisma.jobMatch.findMany({
+    where: { jobId: job.id },
+    include: { candidate: true },
+    orderBy: { score: "desc" },
+  });
+}

@@ -234,6 +234,15 @@ export default function MatchingPage() {
     }
   }, [selectedJobId, loadMatches]);
 
+  // Auto-poll every 15 seconds for live score updates
+  useEffect(() => {
+    if (!selectedJobId) return;
+    const interval = setInterval(() => {
+      loadMatches(selectedJobId);
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [selectedJobId, loadMatches]);
+
   const runAnalysis = async () => {
     if (!selectedJobId) return;
     setComputing(true);
@@ -298,7 +307,7 @@ export default function MatchingPage() {
         <div>
           <h1 className="text-xl font-bold text-[#1a2b3c]">AI Job Matching</h1>
           <p className="mt-0.5 text-sm text-[#64748b]">
-            Pre-computed scores — results load instantly from cache
+            Live scores update automatically — deep analysis available on demand
           </p>
         </div>
         <Link
@@ -398,7 +407,7 @@ export default function MatchingPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#007bbd] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md active:scale-[0.97]"
             >
               <RefreshCw className={`h-4 w-4 ${computing ? "animate-spin" : ""}`} />
-              {computing ? "Analyzing..." : matchData?.matches.length ? "Re-analyze" : "Run Analysis"}
+              {computing ? "Deep analyzing..." : matchData?.matches.length ? "Deep Analysis (AI)" : "Deep Analysis (AI)"}
             </button>
           </div>
         </div>
@@ -519,19 +528,77 @@ export default function MatchingPage() {
             </motion.div>
           )}
 
-          {/* No matches yet */}
+          {/* No matches yet — animated computing state */}
           {matchData.matches.length === 0 && (
             <motion.div
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               className="card p-16 text-center"
             >
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0090d9]/10 to-[#6366f1]/10">
-                <Sparkles className="h-8 w-8 text-[#0090d9]" />
+              {/* Pulsing icon with orbiting dots */}
+              <div className="relative mx-auto h-24 w-24">
+                {/* Outer ring pulse */}
+                <motion.div
+                  className="absolute inset-0 rounded-full bg-gradient-to-br from-[#0090d9]/10 to-[#6366f1]/10"
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.2, 0.5] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                />
+                {/* Second ring pulse (offset) */}
+                <motion.div
+                  className="absolute inset-1 rounded-full bg-gradient-to-br from-[#0090d9]/8 to-[#6366f1]/8"
+                  animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.1, 0.3] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
+                />
+                {/* Center icon */}
+                <motion.div
+                  className="absolute inset-0 flex items-center justify-center"
+                  animate={{ rotate: [0, 360] }}
+                  transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                >
+                  <Sparkles className="h-8 w-8 text-[#0090d9]" />
+                </motion.div>
+                {/* Orbiting dots */}
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute left-1/2 top-1/2 h-2 w-2 -ml-1 -mt-1 rounded-full bg-[#0090d9]"
+                    animate={{
+                      x: [0, Math.cos((i * 2 * Math.PI) / 3) * 36, 0],
+                      y: [0, Math.sin((i * 2 * Math.PI) / 3) * 36, 0],
+                      opacity: [0.3, 1, 0.3],
+                      scale: [0.6, 1, 0.6],
+                    }}
+                    transition={{
+                      duration: 2.4,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                      delay: i * 0.8,
+                    }}
+                  />
+                ))}
               </div>
-              <p className="mt-4 text-sm font-semibold text-[#334155]">No matches computed yet</p>
-              <p className="mt-1 text-xs text-[#94a3b8]">
-                Click &ldquo;Run Analysis&rdquo; to compute AI match scores for all candidates
+
+              {/* Animated text */}
+              <motion.p
+                className="mt-6 text-sm font-semibold text-[#334155]"
+                animate={{ opacity: [0.6, 1, 0.6] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              >
+                Computing matches...
+              </motion.p>
+
+              {/* Progress bar */}
+              <div className="mx-auto mt-4 h-1 w-48 overflow-hidden rounded-full bg-[#e2e8f0]">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-[#0090d9] to-[#6366f1]"
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                  style={{ width: "50%" }}
+                />
+              </div>
+
+              <p className="mt-4 text-xs text-[#94a3b8]">
+                Scores update automatically as candidates and jobs are added. Click &ldquo;Deep Analysis (AI)&rdquo; for detailed Claude-powered scoring.
               </p>
             </motion.div>
           )}

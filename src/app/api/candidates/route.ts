@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
+import { embedCandidate } from "@/lib/embeddings";
 
 export async function PUT(request: NextRequest) {
   const auth = await requireEmployer(request);
@@ -24,6 +25,7 @@ export async function PUT(request: NextRequest) {
         ...(fitStatus !== undefined && { fitStatus: fitStatus || null }),
       },
     });
+    void embedCandidate(candidate.id);
     return NextResponse.json(candidate);
   } catch (e) {
     console.error(e);
@@ -108,6 +110,7 @@ export async function POST(request: NextRequest) {
     const candidate = await prisma.candidate.create({
       data: { name, email, phone: phone || null, position },
     });
+    void embedCandidate(candidate.id);
     return NextResponse.json(candidate);
   } catch (e) {
     console.error(e);

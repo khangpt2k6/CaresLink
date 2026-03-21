@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
+import { reembedCandidateByUserId } from "@/lib/embeddings";
 
 async function getProfileId(userId: string) {
   const profile = await prisma.candidateProfile.upsert({
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
     update: {},
   });
 
+  void reembedCandidateByUserId(result.user.id);
   return NextResponse.json(skill, { status: 201 });
 }
 
@@ -46,5 +48,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   await prisma.skill.delete({ where: { id } });
+  void reembedCandidateByUserId(result.user.id);
   return NextResponse.json({ success: true });
 }

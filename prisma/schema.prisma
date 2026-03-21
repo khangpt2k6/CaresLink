@@ -31,6 +31,7 @@ model User {
   profile               CandidateProfile?
   agentMemories         AgentMemory[]
   credentialChecks      CredentialCheck[]
+  semanticFacts         SemanticFact[]
 }
 
 // Candidate profile (LinkedIn-style)
@@ -182,6 +183,7 @@ model Job {
   updatedAt   DateTime @updatedAt
 
   matches     JobMatch[]
+  jobEmbedding JobEmbedding?
 }
 
 model Candidate {
@@ -198,6 +200,7 @@ model Candidate {
   interviews Interview[]
   events     Event[]
   matches    JobMatch[]
+  candidateEmbedding CandidateEmbedding?
 }
 
 model Interview {
@@ -455,4 +458,41 @@ model Screening {
   completedAt  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ─── RAG: Vector Embeddings & Semantic Memory ────────────────
+
+model CandidateEmbedding {
+  id          String    @id @default(cuid())
+  candidateId String    @unique
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  content     String    // concatenated text that was embedded
+  embedding   Unsupported("vector(384)")
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+}
+
+model JobEmbedding {
+  id        String   @id @default(cuid())
+  jobId     String   @unique
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  content   String   // concatenated text that was embedded
+  embedding Unsupported("vector(384)")
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+model SemanticFact {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fact       String   // e.g. "Employer prefers candidates with BLS certification for ICU"
+  category   String   // preference | candidate_note | job_requirement | workflow | general
+  entityId   String?  // optional link to candidate/job ID
+  entityType String?  // "candidate" | "job" | null
+  embedding  Unsupported("vector(384)")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
 }

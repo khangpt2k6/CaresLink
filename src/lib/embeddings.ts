@@ -239,275 +239,177 @@ export async function reembedCandidateByUserId(userId: string): Promise<void> {
   }
 }
 
-// ─── Auto-Matching (real-time score recomputation) ───────────
+// ─── Auto-Matching with Claude (accurate, cost-optimized) ────
+// Uses Claude to score candidates, but batches them in ONE API call per job.
+// Cost: ~$0.01-0.03 per job (scores ALL candidates in a single prompt).
+
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null;
 
 /**
- * When a candidate's embedding changes, recompute their match score
- * against all open jobs using multi-factor scoring (fast, no LLM call).
+ * When a candidate changes, re-score them against all open jobs using Claude.
+ * Batches into one Claude call per job for cost efficiency.
  */
-async function autoMatchCandidateToJobs(candidateId: string, candidateEmbedding: number[]): Promise<void> {
+async function autoMatchCandidateToJobs(candidateId: string, _embedding: number[]): Promise<void> {
   try {
-    const { getJobEmbeddingVector } = await import("./vector-store");
+    if (!anthropic) return;
 
-    const candidate = await prisma.candidate.findUnique({
-      where: { id: candidateId },
-      select: { position: true, name: true },
-    });
+    const candidate = await prisma.candidate.findUnique({ where: { id: candidateId } });
     if (!candidate) return;
 
-    // Load candidate profile for multi-factor scoring
     const user = await prisma.user.findFirst({
-      where: { email: { mode: "insensitive", equals: (await prisma.candidate.findUnique({ where: { id: candidateId }, select: { email: true } }))?.email || "" } },
+      where: { email: { equals: candidate.email, mode: "insensitive" } },
       include: {
-        profile: {
-          include: { skills: true, certifications: true, experiences: true },
-        },
+        profile: { include: { experiences: true, skills: true, certifications: true, educations: true } },
       },
     });
 
+    const candidateSummary = buildCandidateSummary(candidate, user?.profile);
+
     const openJobs = await prisma.job.findMany({
       where: { status: "open" },
-      select: { id: true, title: true, location: true, type: true, description: true, department: true },
+      select: { id: true, title: true, department: true, location: true, type: true, description: true },
     });
 
-    for (const job of openJobs) {
-      const jobEmbedding = await getJobEmbeddingVector(job.id);
-      if (!jobEmbedding) continue;
+    if (openJobs.length === 0) return;
 
-      const result = computeMultiFactorScore(
-        candidateEmbedding, jobEmbedding,
-        candidate.position, job.title,
-        job.description,
-        user?.profile?.skills?.map(s => s.name),
-        user?.profile?.certifications?.map(c => c.name),
-        user?.profile?.experiences?.map(e => e.title),
-      );
+    // ONE Claude call to score this candidate against ALL jobs
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2048,
+      messages: [{
+        role: "user",
+        content: `Score this healthcare candidate against each job. Be accurate and realistic.
 
-      await prisma.jobMatch.upsert({
-        where: { jobId_candidateId: { jobId: job.id, candidateId } },
-        create: { jobId: job.id, candidateId, score: result.score, label: result.label, reason: result.reason, computedAt: new Date() },
-        update: { score: result.score, label: result.label, reason: result.reason, computedAt: new Date() },
-      });
-    }
+## Candidate
+${candidateSummary}
+
+## Jobs
+${openJobs.map((j, i) => `${i + 1}. [${j.id}] ${j.title} — ${j.department || "N/A"}, ${j.location}, ${j.type}${j.description ? `\n   ${j.description.slice(0, 200)}` : ""}`).join("\n")}
+
+Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 50-74=Partial fit, 25-49=Weak fit, 0-24=Not a fit.
+[{"jobId":"id","score":85,"label":"Good fit","reason":"1 sentence"}]`,
+      }],
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
+    const scores: { jobId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
+
+    const now = new Date();
+    await Promise.all(
+      scores.map((s) =>
+        prisma.jobMatch.upsert({
+          where: { jobId_candidateId: { jobId: s.jobId, candidateId } },
+          create: { jobId: s.jobId, candidateId, score: s.score, label: s.label, reason: s.reason, computedAt: now },
+          update: { score: s.score, label: s.label, reason: s.reason, computedAt: now },
+        })
+      )
+    );
   } catch (e) {
     console.error(`[auto-match] Failed to match candidate ${candidateId}:`, e);
   }
 }
 
 /**
- * When a job's embedding changes, score ALL candidates against it.
- * At typical recruitment scale (<1000 candidates) this is instant.
+ * When a job changes, score ALL candidates against it using Claude.
+ * ONE Claude call with all candidates batched together.
  */
 async function autoMatchJobToCandidates(jobId: string): Promise<void> {
   try {
-    const { getJobEmbeddingVector } = await import("./vector-store");
+    if (!anthropic) return;
 
-    const jobEmbedding = await getJobEmbeddingVector(jobId);
-    if (!jobEmbedding) return;
-
-    const job = await prisma.job.findUnique({
-      where: { id: jobId },
-      select: { id: true, title: true, location: true, type: true, description: true, department: true },
-    });
+    const job = await prisma.job.findUnique({ where: { id: jobId } });
     if (!job) return;
 
-    // Score ALL candidates with embeddings — no pre-filtering at this scale
-    const allCandidateEmbeddings = await prisma.$queryRawUnsafe<{ candidateId: string; embedding: string }[]>(
-      `SELECT "candidateId", embedding::text FROM "CandidateEmbedding"`
+    const candidates = await prisma.candidate.findMany({
+      orderBy: { appliedAt: "desc" },
+    });
+
+    if (candidates.length === 0) return;
+
+    // Build candidate summaries
+    const candidateSummaries = await Promise.all(
+      candidates.map(async (c) => {
+        const user = await prisma.user.findFirst({
+          where: { email: { equals: c.email, mode: "insensitive" } },
+          include: {
+            profile: { include: { experiences: true, skills: true, certifications: true, educations: true } },
+          },
+        });
+        return { id: c.id, summary: buildCandidateSummary(c, user?.profile) };
+      })
     );
 
-    for (const row of allCandidateEmbeddings) {
-      const candidate = await prisma.candidate.findUnique({
-        where: { id: row.candidateId },
-        select: { position: true, email: true },
-      });
-      if (!candidate) continue;
+    // ONE Claude call to score all candidates
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      messages: [{
+        role: "user",
+        content: `Score each candidate against this job. Be accurate and realistic.
 
-      const user = await prisma.user.findFirst({
-        where: { email: { mode: "insensitive", equals: candidate.email } },
-        include: {
-          profile: {
-            include: { skills: true, certifications: true, experiences: true },
-          },
-        },
-      });
+## Job
+**${job.title}** — ${job.department || "N/A"}, ${job.location}, ${job.type}
+${job.description || "No description"}
 
-      const candVec: number[] = JSON.parse(row.embedding);
+## Candidates
+${candidateSummaries.map((c, i) => `### ${i + 1}. [${c.id}]\n${c.summary}`).join("\n\n")}
 
-      const result = computeMultiFactorScore(
-        candVec, jobEmbedding,
-        candidate.position, job.title,
-        job.description,
-        user?.profile?.skills?.map(s => s.name),
-        user?.profile?.certifications?.map(c => c.name),
-        user?.profile?.experiences?.map(e => e.title),
-      );
+Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 50-74=Partial fit, 25-49=Weak fit, 0-24=Not a fit. Deduplicate candidates with the same name — keep the highest-scoring entry.
+[{"candidateId":"id","score":85,"label":"Good fit","reason":"1 sentence"}]`,
+      }],
+    });
 
-      await prisma.jobMatch.upsert({
-        where: { jobId_candidateId: { jobId, candidateId: row.candidateId } },
-        create: { jobId, candidateId: row.candidateId, score: result.score, label: result.label, reason: result.reason, computedAt: new Date() },
-        update: { score: result.score, label: result.label, reason: result.reason, computedAt: new Date() },
-      });
-    }
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
+    const scores: { candidateId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
+
+    const now = new Date();
+    await Promise.all(
+      scores.map((s) =>
+        prisma.jobMatch.upsert({
+          where: { jobId_candidateId: { jobId, candidateId: s.candidateId } },
+          create: { jobId, candidateId: s.candidateId, score: s.score, label: s.label, reason: s.reason, computedAt: now },
+          update: { score: s.score, label: s.label, reason: s.reason, computedAt: now },
+        })
+      )
+    );
   } catch (e) {
     console.error(`[auto-match] Failed to match job ${jobId}:`, e);
   }
 }
 
-// ─── Multi-Factor Scoring Engine ─────────────────────────────
-// Combines multiple signals for accuracy closer to LLM scoring.
-
-interface MatchResult {
-  score: number;
-  label: string;
-  reason: string;
-}
-
-function computeMultiFactorScore(
-  candidateEmbedding: number[],
-  jobEmbedding: number[],
-  candidatePosition: string,
-  jobTitle: string,
-  jobDescription?: string | null,
-  candidateSkills?: string[],
-  candidateCerts?: string[],
-  candidateExpTitles?: string[],
-): MatchResult {
-  // Factor 1: Semantic similarity (50% weight)
-  // bge-small-en-v1.5 typically produces similarities in 0.3-0.85 range
-  const rawSimilarity = cosineSimilarity(candidateEmbedding, jobEmbedding);
-  // Normalize from [0.25, 0.85] → [0, 100]
-  const semanticScore = Math.min(100, Math.max(0, ((rawSimilarity - 0.25) / 0.60) * 100));
-
-  // Factor 2: Position/title match (25% weight)
-  const titleScore = computeTitleMatch(candidatePosition, jobTitle, candidateExpTitles);
-
-  // Factor 3: Keyword overlap — skills/certs mentioned in job description (25% weight)
-  const keywordScore = computeKeywordOverlap(jobTitle, jobDescription, candidateSkills, candidateCerts);
-
-  // Weighted ensemble
-  const finalScore = Math.round(
-    semanticScore * 0.50 +
-    titleScore * 0.25 +
-    keywordScore * 0.25
-  );
-
-  const clampedScore = Math.min(100, Math.max(0, finalScore));
-  const label = clampedScore >= 90 ? "Excellent fit" : clampedScore >= 75 ? "Good fit" : clampedScore >= 50 ? "Partial fit" : clampedScore >= 25 ? "Weak fit" : "Not a fit";
-
-  // Build reason
-  const reasons: string[] = [];
-  if (titleScore >= 80) reasons.push("strong position alignment");
-  else if (titleScore >= 50) reasons.push("related position");
-  if (semanticScore >= 70) reasons.push("high semantic match on profile");
-  if (keywordScore >= 60) reasons.push("relevant skills/certifications");
-  if (reasons.length === 0) reasons.push("limited alignment with job requirements");
-
-  const reason = `${label} — ${reasons.join(", ")}. Semantic: ${Math.round(semanticScore)}%, Title: ${Math.round(titleScore)}%, Skills: ${Math.round(keywordScore)}%.`;
-
-  return { score: clampedScore, label, reason };
-}
-
 /**
- * Score how well candidate's position/experience titles match the job title.
+ * Build a concise candidate summary for Claude scoring (keeps token count low).
  */
-function computeTitleMatch(candidatePosition: string, jobTitle: string, experienceTitles?: string[]): number {
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
-  const jobNorm = normalize(jobTitle);
-  const posNorm = normalize(candidatePosition);
+function buildCandidateSummary(
+  candidate: { name: string; position: string; status: string },
+  profile?: {
+    headline?: string | null;
+    summary?: string | null;
+    experiences?: { title: string; company: string }[];
+    skills?: { name: string }[];
+    certifications?: { name: string }[];
+    educations?: { school: string; degree?: string | null; field?: string | null }[];
+  } | null
+): string {
+  const parts = [`**${candidate.name}** — Applied: ${candidate.position}`];
 
-  // Exact match
-  if (posNorm === jobNorm) return 100;
-
-  // Check if one contains the other
-  if (jobNorm.includes(posNorm) || posNorm.includes(jobNorm)) return 85;
-
-  // Common healthcare role abbreviation matching
-  const roleMap: Record<string, string[]> = {
-    "rn": ["registered nurse", "rn"],
-    "lpn": ["licensed practical nurse", "lpn"],
-    "cna": ["certified nursing assistant", "cna", "nurse aide"],
-    "aprn": ["advanced practice", "aprn", "nurse practitioner"],
-    "hha": ["home health aide", "hha"],
-  };
-
-  for (const [abbr, variants] of Object.entries(roleMap)) {
-    const jobHasRole = variants.some(v => jobNorm.includes(v)) || jobNorm.includes(abbr);
-    const candHasRole = variants.some(v => posNorm.includes(v)) || posNorm.includes(abbr);
-    if (jobHasRole && candHasRole) return 90;
-  }
-
-  // Check experience titles
-  if (experienceTitles) {
-    for (const title of experienceTitles) {
-      const titleNorm = normalize(title);
-      if (titleNorm === jobNorm || jobNorm.includes(titleNorm) || titleNorm.includes(jobNorm)) return 75;
-      // Check role abbreviations in experience
-      for (const [abbr, variants] of Object.entries(roleMap)) {
-        const jobHasRole = variants.some(v => jobNorm.includes(v)) || jobNorm.includes(abbr);
-        const expHasRole = variants.some(v => titleNorm.includes(v)) || titleNorm.includes(abbr);
-        if (jobHasRole && expHasRole) return 70;
-      }
+  if (profile) {
+    if (profile.headline) parts.push(`Headline: ${profile.headline}`);
+    if (profile.skills?.length) parts.push(`Skills: ${profile.skills.map(s => s.name).join(", ")}`);
+    if (profile.certifications?.length) parts.push(`Certs: ${profile.certifications.map(c => c.name).join(", ")}`);
+    if (profile.experiences?.length) {
+      parts.push(`Experience: ${profile.experiences.slice(0, 3).map(e => `${e.title} at ${e.company}`).join("; ")}`);
+    }
+    if (profile.educations?.length) {
+      parts.push(`Education: ${profile.educations.slice(0, 2).map(e => `${e.degree || ""} ${e.field || ""} at ${e.school}`.trim()).join("; ")}`);
     }
   }
 
-  // Word overlap
-  const jobWords = new Set(jobNorm.split(/\s+/));
-  const posWords = posNorm.split(/\s+/);
-  const overlap = posWords.filter(w => jobWords.has(w) && w.length > 2).length;
-  if (overlap >= 2) return 60;
-  if (overlap >= 1) return 35;
-
-  return 10;
-}
-
-/**
- * Score keyword overlap between candidate skills/certs and job description.
- */
-function computeKeywordOverlap(
-  jobTitle: string,
-  jobDescription?: string | null,
-  candidateSkills?: string[],
-  candidateCerts?: string[],
-): number {
-  if (!candidateSkills?.length && !candidateCerts?.length) return 30; // no data, neutral score
-
-  const jobText = `${jobTitle} ${jobDescription || ""}`.toLowerCase();
-  const allTerms = [
-    ...(candidateSkills || []),
-    ...(candidateCerts || []),
-  ].map(t => t.toLowerCase());
-
-  if (allTerms.length === 0) return 30;
-
-  let matches = 0;
-  for (const term of allTerms) {
-    // Check if the skill/cert appears in the job text
-    if (jobText.includes(term)) {
-      matches++;
-    } else {
-      // Check individual words (e.g., "BLS" in "BLS certification required")
-      const words = term.split(/\s+/);
-      if (words.some(w => w.length >= 3 && jobText.includes(w))) {
-        matches += 0.5;
-      }
-    }
-  }
-
-  const ratio = matches / allTerms.length;
-  return Math.min(100, Math.round(ratio * 100 + 20)); // base 20 + overlap bonus
-}
-
-/**
- * Cosine similarity between two vectors (0 to 1).
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
+  return parts.join("\n");
 }

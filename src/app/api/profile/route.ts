@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
+import { reembedCandidateByUserId } from "@/lib/embeddings";
 
 // GET /api/profile — get current user's candidate profile
 export async function GET(req: NextRequest) {
@@ -71,5 +72,6 @@ export async function PUT(req: NextRequest) {
     },
   });
 
+  void reembedCandidateByUserId(user.id);
   return NextResponse.json({ profile });
 }

@@ -98,12 +98,12 @@ function parseDOHResults(html: string): FloridaLicense[] {
     const col = (keywords: string[]) =>
       header.findIndex((h) => keywords.some((k) => h.includes(k)));
 
-    const licNumCol = col(["license #", "license#", "lic #", "license number", "lic."]);
+    const licNumCol = col(["license #", "license#", "lic #", "license number", "lic.", "license"]);
     const nameCol   = col(["name", "licensee"]);
     const typeCol   = col(["profession", "license type", "type"]);
-    const statusCol = col(["status"]);
+    const statusCol = col(["status", "license status"]);
     const expCol    = col(["expir", "exp date", "expiration"]);
-    const countyCol = col(["county"]);
+    const countyCol = col(["county", "city"]);
 
     // If no recognizable header, skip this table
     if (licNumCol === -1 && nameCol === -1) continue;
@@ -169,9 +169,11 @@ export async function searchFloridaDOH(
       throw new Error("Could not load Florida DOH search page");
     }
 
-    // Step 2: POST — only First Name, Last Name, License Number
+    // Step 2: POST — include Board + Profession filters for nursing-specific results
     const body = new URLSearchParams({
       __RequestVerificationToken: csrf,
+      "SearchDto.Board":         profConfig.board,
+      "SearchDto.Profession":    profConfig.profession,
       "SearchDto.LastName":      lastName.toUpperCase(),
       "SearchDto.FirstName":     firstName.toUpperCase(),
       "SearchDto.LicenseNumber": licenseNumber?.trim() ?? "",
@@ -193,15 +195,16 @@ export async function searchFloridaDOH(
     cookies = mergeCookies(cookies, r2.headers.get("set-cookie"));
     const h2 = await r2.text();
 
-    // Check for "no results" indicators
-    if (/no\s+results?\s+found|no\s+records?\s+found|0\s+results?/i.test(h2)) {
-      return { status: "not_found", searchedName, licenseType: profConfig.label, matches: [], manualUrl: MANUAL_URL, checkedAt };
-    }
-
+    // Parse results first, then check — the page has secondary "no results" text
+    // that creates false positives, so we rely on the actual search results table
     const matches = parseDOHResults(h2);
 
+    // Only treat as "not found" if the results table caption says "Total: 0" or no table exists
+    const totalMatch = h2.match(/Search\s+Results\s+Total:\s*(\d+)/i);
+    const totalCount = totalMatch ? parseInt(totalMatch[1], 10) : matches.length;
+
     return {
-      status: matches.length > 0 ? "found" : "not_found",
+      status: (matches.length > 0 || totalCount > 0) ? "found" : "not_found",
       searchedName,
       licenseType: profConfig.label,
       matches,

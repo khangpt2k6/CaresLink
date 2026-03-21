@@ -190,7 +190,7 @@ export async function embedCandidate(candidateId: string): Promise<void> {
     await upsertCandidateEmbedding(candidateId, text, embedding);
 
     // Auto-recompute matches for all open jobs
-    void autoMatchCandidateToJobs(candidateId, embedding);
+    await autoMatchCandidateToJobs(candidateId, embedding);
   } catch (e) {
     console.error(`[embeddings] Failed to embed candidate ${candidateId}:`, e);
   }
@@ -210,7 +210,7 @@ export async function embedJob(jobId: string): Promise<void> {
     await upsertJobEmbedding(jobId, text, embedding);
 
     // Auto-recompute matches for this job
-    void autoMatchJobToCandidates(jobId);
+    await autoMatchJobToCandidates(jobId);
   } catch (e) {
     console.error(`[embeddings] Failed to embed job ${jobId}:`, e);
   }
@@ -295,8 +295,8 @@ async function autoMatchCandidateToJobs(candidateId: string, candidateEmbedding:
 }
 
 /**
- * When a job's embedding changes, recompute match scores
- * for top candidates using multi-factor scoring.
+ * When a job's embedding changes, score ALL candidates against it.
+ * At typical recruitment scale (<1000 candidates) this is instant.
  */
 async function autoMatchJobToCandidates(jobId: string): Promise<void> {
   try {
@@ -311,12 +311,14 @@ async function autoMatchJobToCandidates(jobId: string): Promise<void> {
     });
     if (!job) return;
 
-    // Find top 50 similar candidates via vector search
-    const similar = await searchSimilarCandidates(jobEmbedding, 50, 0.15);
+    // Score ALL candidates with embeddings — no pre-filtering at this scale
+    const allCandidateEmbeddings = await prisma.$queryRawUnsafe<{ candidateId: string; embedding: string }[]>(
+      `SELECT "candidateId", embedding::text FROM "CandidateEmbedding"`
+    );
 
-    for (const match of similar) {
+    for (const row of allCandidateEmbeddings) {
       const candidate = await prisma.candidate.findUnique({
-        where: { id: match.candidateId },
+        where: { id: row.candidateId },
         select: { position: true, email: true },
       });
       if (!candidate) continue;
@@ -330,13 +332,7 @@ async function autoMatchJobToCandidates(jobId: string): Promise<void> {
         },
       });
 
-      // Get candidate embedding for multi-factor scoring
-      const candidateEmbedding = await prisma.$queryRawUnsafe<{ embedding: string }[]>(
-        `SELECT embedding::text FROM "CandidateEmbedding" WHERE "candidateId" = $1 LIMIT 1`,
-        match.candidateId
-      );
-      if (candidateEmbedding.length === 0) continue;
-      const candVec: number[] = JSON.parse(candidateEmbedding[0].embedding);
+      const candVec: number[] = JSON.parse(row.embedding);
 
       const result = computeMultiFactorScore(
         candVec, jobEmbedding,
@@ -348,8 +344,8 @@ async function autoMatchJobToCandidates(jobId: string): Promise<void> {
       );
 
       await prisma.jobMatch.upsert({
-        where: { jobId_candidateId: { jobId, candidateId: match.candidateId } },
-        create: { jobId, candidateId: match.candidateId, score: result.score, label: result.label, reason: result.reason, computedAt: new Date() },
+        where: { jobId_candidateId: { jobId, candidateId: row.candidateId } },
+        create: { jobId, candidateId: row.candidateId, score: result.score, label: result.label, reason: result.reason, computedAt: new Date() },
         update: { score: result.score, label: result.label, reason: result.reason, computedAt: new Date() },
       });
     }

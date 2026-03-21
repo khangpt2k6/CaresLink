@@ -9,23 +9,29 @@ async function run() {
     select: { id: true, title: true },
   });
 
-  console.log(`Triggering auto-match for ${jobs.length} open jobs...\n`);
+  console.log(`Scoring ${jobs.length} jobs (Claude AI, parallel)...\n`);
 
-  for (const job of jobs) {
-    const existingCount = await prisma.jobMatch.count({ where: { jobId: job.id } });
-    if (existingCount > 0) {
-      console.log(`  ✓ ${job.title}: ${existingCount} matches (already computed)`);
-      continue;
-    }
-
-    console.log(`  ⏳ ${job.title}: computing...`);
-    await embedJob(job.id);
-    const newCount = await prisma.jobMatch.count({ where: { jobId: job.id } });
-    console.log(`  ✓ ${job.title}: ${newCount} matches`);
+  // Run 3 jobs in parallel to balance speed vs rate limits
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < jobs.length; i += BATCH_SIZE) {
+    const batch = jobs.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (job) => {
+        const before = await prisma.jobMatch.count({ where: { jobId: job.id } });
+        if (before > 0) {
+          console.log(`  ✓ ${job.title}: ${before} matches (cached)`);
+          return;
+        }
+        console.log(`  ⏳ ${job.title}...`);
+        await embedJob(job.id);
+        const after = await prisma.jobMatch.count({ where: { jobId: job.id } });
+        console.log(`  ✓ ${job.title}: ${after} matches`);
+      })
+    );
   }
 
   const total = await prisma.jobMatch.count();
-  console.log(`\nDone! Total matches in database: ${total}`);
+  console.log(`\nDone! ${total} total matches.`);
   await prisma.$disconnect();
 }
 

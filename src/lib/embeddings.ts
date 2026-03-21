@@ -299,16 +299,20 @@ Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 5
     const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
     const scores: { jobId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
 
+    // Validate job IDs exist
+    const validJobIds = new Set(openJobs.map((j) => j.id));
+    const validScores = scores.filter((s) => validJobIds.has(s.jobId));
+
     const now = new Date();
-    await Promise.all(
-      scores.map((s) =>
-        prisma.jobMatch.upsert({
+    for (const s of validScores) {
+      try {
+        await prisma.jobMatch.upsert({
           where: { jobId_candidateId: { jobId: s.jobId, candidateId } },
           create: { jobId: s.jobId, candidateId, score: s.score, label: s.label, reason: s.reason, computedAt: now },
           update: { score: s.score, label: s.label, reason: s.reason, computedAt: now },
-        })
-      )
-    );
+        });
+      } catch { /* skip invalid */ }
+    }
   } catch (e) {
     console.error(`[auto-match] Failed to match candidate ${candidateId}:`, e);
   }
@@ -368,16 +372,20 @@ Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 5
     const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
     const scores: { candidateId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
 
+    // Validate candidate IDs exist (Claude sometimes hallucinates IDs)
+    const validIds = new Set(candidates.map((c) => c.id));
+    const validScores = scores.filter((s) => validIds.has(s.candidateId));
+
     const now = new Date();
-    await Promise.all(
-      scores.map((s) =>
-        prisma.jobMatch.upsert({
+    for (const s of validScores) {
+      try {
+        await prisma.jobMatch.upsert({
           where: { jobId_candidateId: { jobId, candidateId: s.candidateId } },
           create: { jobId, candidateId: s.candidateId, score: s.score, label: s.label, reason: s.reason, computedAt: now },
           update: { score: s.score, label: s.label, reason: s.reason, computedAt: now },
-        })
-      )
-    );
+        });
+      } catch { /* skip invalid */ }
+    }
   } catch (e) {
     console.error(`[auto-match] Failed to match job ${jobId}:`, e);
   }

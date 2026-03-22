@@ -58,6 +58,10 @@ interface CredentialCheck {
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
   aiRecommendation?: string;
   aiSummary?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  recruiterDecision?: "APPROVED" | "REJECTED";
+  recruiterNote?: string;
   nursysData?: NursysResult;
   oigData?: OIGResult;
   floridaDohData?: FloridaDOHResult;
@@ -145,6 +149,8 @@ export default function CredentialCheckDetailPage() {
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [reportStep, setReportStep] = useState("");
   const [aiReviewing, setAiReviewing] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -211,6 +217,29 @@ export default function CredentialCheckDetailPage() {
     } finally {
       setAiReviewing(false);
     }
+  }
+
+  async function submitReview(decision: "APPROVED" | "REJECTED") {
+    if (submittingReview) return;
+    setSubmittingReview(true);
+    try {
+      const res = await fetch(`/api/credential-check/${id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, note: reviewNote || undefined }),
+      });
+      if (res.ok) {
+        setCheck(await res.json());
+        setReviewNote("");
+      }
+    } finally {
+      setSubmittingReview(false);
+    }
+  }
+
+  async function undoReview() {
+    const res = await fetch(`/api/credential-check/${id}/review`, { method: "DELETE" });
+    if (res.ok) setCheck(await res.json());
   }
 
   async function downloadPDF() {
@@ -312,7 +341,11 @@ export default function CredentialCheckDetailPage() {
   }
 
   const fullName = [check.firstName, check.middleName, check.lastName].filter(Boolean).join(" ");
-  const rec = check.aiRecommendation ? REC_CONFIG[check.aiRecommendation] : null;
+  // Determine the effective recommendation: recruiter decision overrides AI
+  const effectiveRec = check.recruiterDecision
+    ? check.recruiterDecision === "APPROVED" ? "EMPLOYABLE" : "NOT_EMPLOYABLE"
+    : check.aiRecommendation;
+  const rec = effectiveRec ? REC_CONFIG[effectiveRec] : null;
   const needsVerification = check.status === "PENDING" || check.status === "FAILED";
   // Treat as CNA if roleType is CNA OR license number starts with "CNA"
   const isCNA = check.roleType === "CNA" || !!check.licenseNumber?.toUpperCase().startsWith("CNA");
@@ -476,30 +509,93 @@ export default function CredentialCheckDetailPage() {
                 {/* ── 1. AI Recommendation ── */}
                 {rec && (
                   <section>
-                    <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-[#8a95a3]">AI Employability Recommendation</h2>
+                    <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-[#8a95a3]">
+                      {check.recruiterDecision ? "Recruiter Decision" : "AI Employability Recommendation"}
+                    </h2>
                     <div className={`rounded-xl border-2 p-5 flex items-start gap-4 ${rec.bg}`}>
                       {rec.icon}
                       <div className="flex-1">
                         <p className={`text-xl font-bold ${rec.color}`}>{rec.label}</p>
-                        {check.aiSummary && <p className="mt-1.5 text-sm text-[#374151] leading-relaxed">{check.aiSummary}</p>}
-                        {check.aiSummary?.includes("Automated AI analysis unavailable") && (
-                          <button
-                            onClick={runAIReview}
-                            disabled={aiReviewing}
-                            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                          >
-                            {aiReviewing ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Analyzing...
-                              </>
-                            ) : (
-                              <>
-                                <RefreshCw className="h-4 w-4" />
-                                Run AI Review
-                              </>
+
+                        {/* When recruiter has decided — show their decision info */}
+                        {check.recruiterDecision ? (
+                          <div className="mt-1.5">
+                            <p className="text-sm text-[#374151] leading-relaxed">{check.aiSummary}</p>
+                            <div className="mt-3 flex items-center justify-between">
+                              <p className="text-xs text-[#8a95a3]">
+                                {check.recruiterDecision === "APPROVED" ? "Approved" : "Rejected"} by {check.reviewedBy} · {new Date(check.reviewedAt!).toLocaleDateString()}
+                              </p>
+                              <button
+                                onClick={undoReview}
+                                className="text-xs text-[#8a95a3] hover:text-[#374151] underline transition-colors"
+                              >
+                                Undo Decision
+                              </button>
+                            </div>
+                            {check.recruiterNote && (
+                              <p className="mt-2 text-sm text-[#374151] italic border-t border-black/10 pt-2">
+                                &quot;{check.recruiterNote}&quot;
+                              </p>
                             )}
-                          </button>
+                          </div>
+                        ) : (
+                          <>
+                            {/* AI summary */}
+                            {check.aiSummary && <p className="mt-1.5 text-sm text-[#374151] leading-relaxed">{check.aiSummary}</p>}
+
+                            {/* AI re-run button when analysis failed */}
+                            {check.aiSummary?.includes("Automated AI analysis unavailable") && (
+                              <button
+                                onClick={runAIReview}
+                                disabled={aiReviewing}
+                                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#0077b6] disabled:opacity-50 transition-colors"
+                              >
+                                {aiReviewing ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Analyzing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="h-4 w-4" />
+                                    Run AI Review
+                                  </>
+                                )}
+                              </button>
+                            )}
+
+                            {/* Recruiter review actions — shown after AI has provided a real analysis */}
+                            {!check.aiSummary?.includes("Automated AI analysis unavailable") && (
+                              <div className="mt-4 rounded-lg border border-[#e2e8f0] bg-white/60 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wider text-[#8a95a3] mb-3">Recruiter Decision</p>
+                                <textarea
+                                  value={reviewNote}
+                                  onChange={(e) => setReviewNote(e.target.value)}
+                                  placeholder="Add a note (optional)..."
+                                  className="w-full rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 text-sm text-[#374151] placeholder-[#94a3b8] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9] mb-3 resize-none"
+                                  rows={2}
+                                />
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => submitReview("APPROVED")}
+                                    disabled={submittingReview}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                                  >
+                                    {submittingReview ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => submitReview("REJECTED")}
+                                    disabled={submittingReview}
+                                    className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 transition-colors"
+                                  >
+                                    {submittingReview ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                                    Reject
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>

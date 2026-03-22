@@ -75,6 +75,7 @@ interface CredentialCheckSummary {
   roleType: string;
   status: string;
   aiRecommendation: string | null;
+  recruiterDecision: string | null;
   createdAt: string;
 }
 
@@ -607,6 +608,9 @@ export default function DashboardPage() {
                 IN_PROGRESS: "bg-[#dbeafe] text-[#2563eb]",
                 FAILED: "bg-[#fef2f2] text-[#dc2626]",
               };
+              const effRec = check.recruiterDecision
+                ? check.recruiterDecision === "APPROVED" ? "EMPLOYABLE" : "NOT_EMPLOYABLE"
+                : check.aiRecommendation;
               return (
                 <motion.div key={check.id} variants={staggerItem}>
                   <Link href={`/credential-check/${check.id}`} className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-[#f0f4f8] transition-colors">
@@ -619,10 +623,10 @@ export default function DashboardPage() {
                         <p className="text-[11px] text-[#8a95a3]">{check.roleType === "NURSE" ? "Nurse (RN)" : "CNA"}</p>
                       </div>
                     </div>
-                    {check.aiRecommendation ? (
-                      <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${recColors[check.aiRecommendation] || ""}`}>
-                        {recIcons[check.aiRecommendation]}
-                        {check.aiRecommendation.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                    {effRec ? (
+                      <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${recColors[effRec] || ""}`}>
+                        {recIcons[effRec]}
+                        {effRec.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
                       </span>
                     ) : (
                       <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${checkStatusColors[check.status] || checkStatusColors.PENDING}`}>

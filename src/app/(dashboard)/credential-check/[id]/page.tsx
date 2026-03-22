@@ -107,6 +107,7 @@ export default function CredentialCheckDetailPage() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [reportStep, setReportStep] = useState("");
+  const [aiReviewing, setAiReviewing] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -153,6 +154,24 @@ export default function CredentialCheckDetailPage() {
       alert("Failed to generate report. Make sure verification has been run first.");
     } finally {
       setGeneratingReport(false);
+    }
+  }
+
+  async function runAIReview() {
+    if (aiReviewing) return;
+    setAiReviewing(true);
+    try {
+      const res = await fetch(`/api/credential-check/${id}/ai-review`, { method: "POST" });
+      if (res.ok) {
+        setCheck(await res.json());
+      } else {
+        const err = await res.json().catch(() => ({ error: "AI review failed" }));
+        alert(err.error || "AI review failed");
+      }
+    } catch {
+      alert("Failed to run AI review. Please try again.");
+    } finally {
+      setAiReviewing(false);
     }
   }
 
@@ -417,9 +436,28 @@ export default function CredentialCheckDetailPage() {
                     <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-[#8a95a3]">AI Employability Recommendation</h2>
                     <div className={`rounded-xl border-2 p-5 flex items-start gap-4 ${rec.bg}`}>
                       {rec.icon}
-                      <div>
+                      <div className="flex-1">
                         <p className={`text-xl font-bold ${rec.color}`}>{rec.label}</p>
                         {check.aiSummary && <p className="mt-1.5 text-sm text-[#374151] leading-relaxed">{check.aiSummary}</p>}
+                        {check.aiSummary?.includes("Automated AI analysis unavailable") && (
+                          <button
+                            onClick={runAIReview}
+                            disabled={aiReviewing}
+                            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                          >
+                            {aiReviewing ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Analyzing...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-4 w-4" />
+                                Run AI Review
+                              </>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </section>

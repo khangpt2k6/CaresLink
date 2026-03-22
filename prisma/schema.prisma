@@ -436,6 +436,10 @@ model CredentialCheck {
   aiRecommendation String?   // "EMPLOYABLE" | "REVIEW_REQUIRED" | "NOT_EMPLOYABLE"
   aiSummary        String?
 
+  // Recruiter review
+  reviewedAt    DateTime?
+  reviewedBy    String?     // Name of the recruiter who reviewed
+
   status        CredentialCheckStatus @default(PENDING)
   errorMessage  String?
 

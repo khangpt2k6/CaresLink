@@ -1,14 +1,51 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, ArrowLeft, Download, Loader2, CheckCircle2,
   AlertCircle, XCircle, ExternalLink, RefreshCw, AlertTriangle,
-  MapPin, User, Phone, Mail, FileText, Clock, FileCheck,
+  MapPin, User, Phone, Mail, FileText, Clock, FileCheck, X, ZoomIn,
 } from "lucide-react";
 import Link from "next/link";
+
+// ─── Lightbox Component ──────────────────────────────────────
+function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+      >
+        <X className="h-6 w-6" />
+      </button>
+      <p className="absolute top-5 left-5 text-white/80 text-sm font-medium">{alt}</p>
+      <motion.img
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.8, opacity: 0 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        src={src}
+        alt={alt}
+        className="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl object-contain cursor-default"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </motion.div>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────
 interface CredentialCheck {
@@ -108,6 +145,7 @@ export default function CredentialCheckDetailPage() {
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [reportStep, setReportStep] = useState("");
   const [aiReviewing, setAiReviewing] = useState(false);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -281,6 +319,11 @@ export default function CredentialCheckDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#f0f4f8] p-6">
+      <AnimatePresence>
+        {lightbox && (
+          <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+        )}
+      </AnimatePresence>
       <div className="mx-auto max-w-4xl">
         {/* Top bar */}
         <div className="mb-5 flex items-center justify-between">
@@ -470,7 +513,7 @@ export default function CredentialCheckDetailPage() {
 
                 {/* ── 3. Florida DOH CNA (CNA only) ── */}
                 {isCNA && check.floridaDohData && (
-                  <FloridaDOHSection data={check.floridaDohData} />
+                  <FloridaDOHSection data={check.floridaDohData} onImageClick={(src, alt) => setLightbox({ src, alt })} />
                 )}
 
                 {/* SAM.gov and OIG are hidden for CNA candidates */}
@@ -642,7 +685,7 @@ function NursysSection({ data }: { data: NursysResult }) {
   );
 }
 
-function FloridaDOHSection({ data }: { data: FloridaDOHResult }) {
+function FloridaDOHSection({ data, onImageClick }: { data: FloridaDOHResult; onImageClick?: (src: string, alt: string) => void }) {
   const status = data.status === "found"
     ? { label: "Found", color: "text-emerald-700 bg-emerald-50 border-emerald-200", icon: <CheckCircle2 className="h-3.5 w-3.5" /> }
     : data.status === "not_found"
@@ -695,9 +738,23 @@ function FloridaDOHSection({ data }: { data: FloridaDOHResult }) {
                 <p className="mb-2 text-xs font-bold uppercase tracking-widest text-[#8a95a3]">Live Verification Screenshots</p>
                 <div className="grid grid-cols-2 gap-3">
                   {data.screenshots.map((s, i) => (
-                    <div key={i} className="rounded-lg border border-[#e2e8f0] overflow-hidden">
-                      <p className="px-3 py-1.5 text-xs font-medium text-[#5a6b7c] bg-[#f8fafc] border-b border-[#e2e8f0]">{s.label}</p>
-                      <img src={s.dataUrl} alt={s.label} className="w-full" />
+                    <div
+                      key={i}
+                      className="rounded-lg border border-[#e2e8f0] overflow-hidden cursor-zoom-in group"
+                      onClick={() => onImageClick?.(s.dataUrl, s.label)}
+                    >
+                      <p className="px-3 py-1.5 text-xs font-medium text-[#5a6b7c] bg-[#f8fafc] border-b border-[#e2e8f0] flex items-center justify-between">
+                        {s.label}
+                        <ZoomIn className="h-3.5 w-3.5 text-[#8a95a3] opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </p>
+                      <div className="relative">
+                        <img src={s.dataUrl} alt={s.label} className="w-full transition-transform group-hover:scale-[1.02]" />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center">
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-2 shadow-lg">
+                            <ZoomIn className="h-5 w-5 text-[#374151]" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

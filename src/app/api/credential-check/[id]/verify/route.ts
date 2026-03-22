@@ -141,13 +141,17 @@ async function analyzeWithAI({
 }): Promise<{ aiRecommendation: string; aiSummary: string }> {
   try {
     const isCNA = roleType === "CNA";
+    // Strip screenshots from data before sending to AI (base64 images are huge and waste tokens)
+    const cleanDohData = floridaDohData && typeof floridaDohData === "object"
+      ? (() => { const { screenshots, ...rest } = floridaDohData as Record<string, unknown>; return rest; })()
+      : floridaDohData;
     const prompt = `You are a healthcare compliance analyst. Analyze the following credential verification results for ${firstName} ${lastName} (Role: ${roleType}) and provide:
 1. An employability recommendation: "EMPLOYABLE", "REVIEW_REQUIRED", or "NOT_EMPLOYABLE"
 2. A concise 2-3 sentence summary explaining the recommendation
 
 Verification Results:
 ${!isCNA && nursysData ? `Nursys License Verification: ${JSON.stringify(nursysData, null, 2)}` : ""}
-${isCNA && floridaDohData ? `Florida DOH CNA License Verification: ${JSON.stringify(floridaDohData, null, 2)}` : ""}
+${isCNA && cleanDohData ? `Florida DOH CNA License Verification: ${JSON.stringify(cleanDohData, null, 2)}` : ""}
 ${!isCNA && oigResult ? `OIG Exclusion List: ${JSON.stringify(oigResult, null, 2)}` : ""}
 ${!isCNA && samGovResult ? `SAM.gov: ${JSON.stringify(samGovResult, null, 2)}` : ""}
 

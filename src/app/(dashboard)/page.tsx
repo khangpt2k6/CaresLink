@@ -188,7 +188,7 @@ const staggerContainer = {
 };
 const staggerItem = {
   hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] } },
 };
 
 function fadeUp(delay: number) {
@@ -275,7 +275,7 @@ function CollapsibleCard({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
             className="overflow-hidden"
           >
             <div className="border-t border-[#f0f4f8] px-5 pb-4 pt-2">
@@ -398,7 +398,7 @@ export default function DashboardPage() {
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
         className="mb-5"
       >
         <div className="flex items-center gap-2">
@@ -448,7 +448,7 @@ export default function DashboardPage() {
                 key={row.label}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 + i * 0.08, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ delay: 0.2 + i * 0.08, duration: 0.35, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
                 className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-[#f0f4f8] transition-colors"
               >
                 <dt className="flex items-center gap-2.5 text-sm text-[#5a6b7c]">
@@ -799,7 +799,7 @@ export default function DashboardPage() {
                               transition={{
                                 delay: runIdx === 0 ? (200 + parsed.lines.length * 600) / 1000 : 0.3,
                                 duration: 0.4,
-                                ease: [0.16, 1, 0.3, 1],
+                                ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
                               }}
                               className="mt-2 flex items-center gap-2 rounded-lg border border-[#e2e8f0] bg-[#f0f7ff] px-3 py-1.5 origin-left"
                             >

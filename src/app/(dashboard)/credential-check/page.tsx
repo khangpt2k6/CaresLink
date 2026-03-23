@@ -25,6 +25,7 @@ interface CredentialCheck {
   status: CheckStatus;
   aiRecommendation?: Recommendation;
   aiSummary?: string;
+  recruiterDecision?: "APPROVED" | "REJECTED";
   createdAt: string;
   errorMessage?: string;
 }
@@ -306,7 +307,8 @@ export default function CredentialCheckPage() {
               {inlineResults.length > 0 && (
                 <div className="mb-6 space-y-3">
                   {inlineResults.map((r) => {
-                    const rec = r.check.aiRecommendation ? REC_CONFIG[r.check.aiRecommendation] : null;
+                    const effRec = r.check.recruiterDecision ? (r.check.recruiterDecision === "APPROVED" ? "EMPLOYABLE" : "NOT_EMPLOYABLE") as Recommendation : r.check.aiRecommendation;
+                    const rec = effRec ? REC_CONFIG[effRec] : null;
                     return (
                       <motion.div key={r.check.id}
                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -624,7 +626,8 @@ export default function CredentialCheckPage() {
                     <tbody className="divide-y divide-[#f1f5f9]">
                       {checks.map((c) => {
                         const status = STATUS_CONFIG[c.status];
-                        const rec    = c.aiRecommendation ? REC_CONFIG[c.aiRecommendation as Recommendation] : null;
+                        const effRec = c.recruiterDecision ? (c.recruiterDecision === "APPROVED" ? "EMPLOYABLE" : "NOT_EMPLOYABLE") as Recommendation : c.aiRecommendation as Recommendation | undefined;
+                        const rec    = effRec ? REC_CONFIG[effRec] : null;
                         return (
                           <tr key={c.id} className="hover:bg-[#f8fafc] transition-colors">
                             <td className="px-4 py-3">

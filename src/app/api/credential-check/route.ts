@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
       targetState: true,
       status: true,
       aiRecommendation: true,
+      recruiterDecision: true,
       createdAt: true,
       updatedAt: true,
     },

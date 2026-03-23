@@ -1,14 +1,51 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck, ArrowLeft, Download, Loader2, CheckCircle2,
   AlertCircle, XCircle, ExternalLink, RefreshCw, AlertTriangle,
-  MapPin, User, Phone, Mail, FileText, Clock, FileCheck,
+  MapPin, User, Phone, Mail, FileText, Clock, FileCheck, X, ZoomIn,
 } from "lucide-react";
 import Link from "next/link";
+
+// ─── Lightbox Component ──────────────────────────────────────
+function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+      >
+        <X className="h-6 w-6" />
+      </button>
+      <p className="absolute top-5 left-5 text-white/80 text-sm font-medium">{alt}</p>
+      <motion.img
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.8, opacity: 0 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        src={src}
+        alt={alt}
+        className="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl object-contain cursor-default"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </motion.div>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────
 interface CredentialCheck {
@@ -21,6 +58,10 @@ interface CredentialCheck {
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
   aiRecommendation?: string;
   aiSummary?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  recruiterDecision?: "APPROVED" | "REJECTED";
+  recruiterNote?: string;
   nursysData?: NursysResult;
   oigData?: OIGResult;
   floridaDohData?: FloridaDOHResult;
@@ -107,6 +148,10 @@ export default function CredentialCheckDetailPage() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [reportStep, setReportStep] = useState("");
+  const [aiReviewing, setAiReviewing] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -154,6 +199,47 @@ export default function CredentialCheckDetailPage() {
     } finally {
       setGeneratingReport(false);
     }
+  }
+
+  async function runAIReview() {
+    if (aiReviewing) return;
+    setAiReviewing(true);
+    try {
+      const res = await fetch(`/api/credential-check/${id}/ai-review`, { method: "POST" });
+      if (res.ok) {
+        setCheck(await res.json());
+      } else {
+        const err = await res.json().catch(() => ({ error: "AI review failed" }));
+        alert(err.error || "AI review failed");
+      }
+    } catch {
+      alert("Failed to run AI review. Please try again.");
+    } finally {
+      setAiReviewing(false);
+    }
+  }
+
+  async function submitReview(decision: "APPROVED" | "REJECTED") {
+    if (submittingReview) return;
+    setSubmittingReview(true);
+    try {
+      const res = await fetch(`/api/credential-check/${id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, note: reviewNote || undefined }),
+      });
+      if (res.ok) {
+        setCheck(await res.json());
+        setReviewNote("");
+      }
+    } finally {
+      setSubmittingReview(false);
+    }
+  }
+
+  async function undoReview() {
+    const res = await fetch(`/api/credential-check/${id}/review`, { method: "DELETE" });
+    if (res.ok) setCheck(await res.json());
   }
 
   async function downloadPDF() {
@@ -255,13 +341,22 @@ export default function CredentialCheckDetailPage() {
   }
 
   const fullName = [check.firstName, check.middleName, check.lastName].filter(Boolean).join(" ");
-  const rec = check.aiRecommendation ? REC_CONFIG[check.aiRecommendation] : null;
+  // Determine the effective recommendation: recruiter decision overrides AI
+  const effectiveRec = check.recruiterDecision
+    ? check.recruiterDecision === "APPROVED" ? "EMPLOYABLE" : "NOT_EMPLOYABLE"
+    : check.aiRecommendation;
+  const rec = effectiveRec ? REC_CONFIG[effectiveRec] : null;
   const needsVerification = check.status === "PENDING" || check.status === "FAILED";
   // Treat as CNA if roleType is CNA OR license number starts with "CNA"
   const isCNA = check.roleType === "CNA" || !!check.licenseNumber?.toUpperCase().startsWith("CNA");
 
   return (
     <div className="min-h-screen bg-[#f0f4f8] p-6">
+      <AnimatePresence>
+        {lightbox && (
+          <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+        )}
+      </AnimatePresence>
       <div className="mx-auto max-w-4xl">
         {/* Top bar */}
         <div className="mb-5 flex items-center justify-between">
@@ -414,12 +509,94 @@ export default function CredentialCheckDetailPage() {
                 {/* ── 1. AI Recommendation ── */}
                 {rec && (
                   <section>
-                    <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-[#8a95a3]">AI Employability Recommendation</h2>
+                    <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-[#8a95a3]">
+                      {check.recruiterDecision ? "Recruiter Decision" : "AI Employability Recommendation"}
+                    </h2>
                     <div className={`rounded-xl border-2 p-5 flex items-start gap-4 ${rec.bg}`}>
                       {rec.icon}
-                      <div>
+                      <div className="flex-1">
                         <p className={`text-xl font-bold ${rec.color}`}>{rec.label}</p>
-                        {check.aiSummary && <p className="mt-1.5 text-sm text-[#374151] leading-relaxed">{check.aiSummary}</p>}
+
+                        {/* When recruiter has decided — show their decision info */}
+                        {check.recruiterDecision ? (
+                          <div className="mt-1.5">
+                            <p className="text-sm text-[#374151] leading-relaxed">{check.aiSummary}</p>
+                            <div className="mt-3 flex items-center justify-between">
+                              <p className="text-xs text-[#8a95a3]">
+                                {check.recruiterDecision === "APPROVED" ? "Approved" : "Rejected"} by {check.reviewedBy} · {new Date(check.reviewedAt!).toLocaleDateString()}
+                              </p>
+                              <button
+                                onClick={undoReview}
+                                className="text-xs text-[#8a95a3] hover:text-[#374151] underline transition-colors"
+                              >
+                                Undo Decision
+                              </button>
+                            </div>
+                            {check.recruiterNote && (
+                              <p className="mt-2 text-sm text-[#374151] italic border-t border-black/10 pt-2">
+                                &quot;{check.recruiterNote}&quot;
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            {/* AI summary */}
+                            {check.aiSummary && <p className="mt-1.5 text-sm text-[#374151] leading-relaxed">{check.aiSummary}</p>}
+
+                            {/* AI re-run button when analysis failed */}
+                            {check.aiSummary?.includes("Automated AI analysis unavailable") && (
+                              <button
+                                onClick={runAIReview}
+                                disabled={aiReviewing}
+                                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#0090d9] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#0077b6] disabled:opacity-50 transition-colors"
+                              >
+                                {aiReviewing ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Analyzing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <RefreshCw className="h-4 w-4" />
+                                    Run AI Review
+                                  </>
+                                )}
+                              </button>
+                            )}
+
+                            {/* Recruiter review actions — shown after AI has provided a real analysis */}
+                            {!check.aiSummary?.includes("Automated AI analysis unavailable") && (
+                              <div className="mt-4 rounded-lg border border-[#e2e8f0] bg-white/60 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wider text-[#8a95a3] mb-3">Recruiter Decision</p>
+                                <textarea
+                                  value={reviewNote}
+                                  onChange={(e) => setReviewNote(e.target.value)}
+                                  placeholder="Add a note (optional)..."
+                                  className="w-full rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 text-sm text-[#374151] placeholder-[#94a3b8] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9] mb-3 resize-none"
+                                  rows={2}
+                                />
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => submitReview("APPROVED")}
+                                    disabled={submittingReview}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                                  >
+                                    {submittingReview ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => submitReview("REJECTED")}
+                                    disabled={submittingReview}
+                                    className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 transition-colors"
+                                  >
+                                    {submittingReview ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                                    Reject
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                   </section>
@@ -432,7 +609,7 @@ export default function CredentialCheckDetailPage() {
 
                 {/* ── 3. Florida DOH CNA (CNA only) ── */}
                 {isCNA && check.floridaDohData && (
-                  <FloridaDOHSection data={check.floridaDohData} />
+                  <FloridaDOHSection data={check.floridaDohData} onImageClick={(src, alt) => setLightbox({ src, alt })} />
                 )}
 
                 {/* SAM.gov and OIG are hidden for CNA candidates */}
@@ -604,7 +781,7 @@ function NursysSection({ data }: { data: NursysResult }) {
   );
 }
 
-function FloridaDOHSection({ data }: { data: FloridaDOHResult }) {
+function FloridaDOHSection({ data, onImageClick }: { data: FloridaDOHResult; onImageClick?: (src: string, alt: string) => void }) {
   const status = data.status === "found"
     ? { label: "Found", color: "text-emerald-700 bg-emerald-50 border-emerald-200", icon: <CheckCircle2 className="h-3.5 w-3.5" /> }
     : data.status === "not_found"
@@ -657,9 +834,23 @@ function FloridaDOHSection({ data }: { data: FloridaDOHResult }) {
                 <p className="mb-2 text-xs font-bold uppercase tracking-widest text-[#8a95a3]">Live Verification Screenshots</p>
                 <div className="grid grid-cols-2 gap-3">
                   {data.screenshots.map((s, i) => (
-                    <div key={i} className="rounded-lg border border-[#e2e8f0] overflow-hidden">
-                      <p className="px-3 py-1.5 text-xs font-medium text-[#5a6b7c] bg-[#f8fafc] border-b border-[#e2e8f0]">{s.label}</p>
-                      <img src={s.dataUrl} alt={s.label} className="w-full" />
+                    <div
+                      key={i}
+                      className="rounded-lg border border-[#e2e8f0] overflow-hidden cursor-zoom-in group"
+                      onClick={() => onImageClick?.(s.dataUrl, s.label)}
+                    >
+                      <p className="px-3 py-1.5 text-xs font-medium text-[#5a6b7c] bg-[#f8fafc] border-b border-[#e2e8f0] flex items-center justify-between">
+                        {s.label}
+                        <ZoomIn className="h-3.5 w-3.5 text-[#8a95a3] opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </p>
+                      <div className="relative">
+                        <img src={s.dataUrl} alt={s.label} className="w-full transition-transform group-hover:scale-[1.02]" />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center">
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-2 shadow-lg">
+                            <ZoomIn className="h-5 w-5 text-[#374151]" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

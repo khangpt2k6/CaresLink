@@ -76,12 +76,24 @@ export async function POST(
           licenseState ?? null,
           licenseNumber ?? null
         );
+        // Determine status: if we extracted license data or got enough screenshots, it's "found"
+        const hasReport = nursysBrowser.report && nursysBrowser.report.licenses.length > 0;
         nursysData = {
           ...fetchResult,
-          status: nursysBrowser.screenshots.length > 2 ? "found" : "manual_required",
+          status: hasReport || nursysBrowser.screenshots.length > 4 ? "found" : "manual_required",
           screenshots: nursysBrowser.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
           reportPdfPath: nursysBrowser.reportPdfPath || null,
+          reportPdfBase64: nursysBrowser.reportPdfBase64 || null,
           browserVerified: true,
+          // Include the structured report so the PDF report can render the license table
+          report: nursysBrowser.report ? {
+            ncsbnId: nursysBrowser.report.ncsbnId,
+            fullName: nursysBrowser.report.fullName,
+            reportDate: nursysBrowser.report.reportDate,
+            licenses: nursysBrowser.report.licenses,
+            boardMessages: nursysBrowser.report.boardMessages,
+            authorizedStates: nursysBrowser.report.authorizedStates,
+          } : undefined,
         };
       }
     } else {

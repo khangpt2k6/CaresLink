@@ -24,17 +24,22 @@ async function main() {
   console.log("Calling captureNursysScreenshots('MARIA', 'JOHNSON', 'FL', 'RN9458458')...\n");
 
   const startTime = Date.now();
-  const screenshots = await captureNursysScreenshots("MARIA", "JOHNSON", "FL", "RN9458458");
+  const result = await captureNursysScreenshots("MARIA", "JOHNSON", "FL", "RN9458458");
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const screenshots = result.screenshots;
 
   console.log(`\n✅ Done in ${elapsed}s — got ${screenshots.length} screenshot(s):\n`);
 
   screenshots.forEach((s, i) => {
-    const sizeKB = (s.dataUrl.length * 0.75 / 1024).toFixed(1); // base64 → approx bytes
+    const sizeKB = (s.dataUrl.length * 0.75 / 1024).toFixed(1);
     console.log(`  ${i + 1}. "${s.label}"`);
     console.log(`     URL: ${s.url}`);
     console.log(`     Size: ~${sizeKB} KB`);
   });
+
+  if (result.reportPdfPath) {
+    console.log(`\n  📄 PDF Report: ${result.reportPdfPath}`);
+  }
 
   // Check if screenshots were also saved to disk
   const screenshotDir = path.join(__dirname, "screenshots");
@@ -79,6 +84,10 @@ async function main() {
   const hasReport = screenshots.some((s) => s.label.includes("Report"));
   if (hasReport) {
     console.log("  ✓ Full license report was captured");
+  }
+
+  if (result.reportPdfPath) {
+    console.log("  ✓ Nursys PDF report downloaded");
   }
 
   if (!blocked && !formNotFound && screenshots.length >= 3) {

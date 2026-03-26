@@ -92,12 +92,17 @@ async function snap(page: Page, label: string): Promise<VerificationScreenshot> 
 // 1.  NURSYS® QuickConfirm — License Verification
 //     Uses LQC URL + real Chrome + stealth (same as test-nursys-browser.ts)
 // ─────────────────────────────────────────────────────────────
+export interface NursysBrowserResult {
+  screenshots: VerificationScreenshot[];
+  reportPdfPath?: string; // Path to downloaded Nursys PDF report
+}
+
 export async function captureNursysScreenshots(
   firstName: string,
   lastName: string,
   licenseState?: string | null,
   licenseNumber?: string | null
-): Promise<VerificationScreenshot[]> {
+): Promise<NursysBrowserResult> {
   const shots: VerificationScreenshot[] = [];
   const browser = await launchBrowser();
 
@@ -305,6 +310,8 @@ export async function captureNursysScreenshots(
     shots.push(await snap(page, "Nursys® — Search Results"));
 
     // ── Step 6: Click first result for full report ────────────
+    let reportPdfPath: string | undefined;
+
     const resultLink = await page.$('a[href*="ViewRpt"], a[href*="Report"], a[href*="ncsbnid"]');
     if (resultLink) {
       await Promise.all([
@@ -317,6 +324,65 @@ export async function captureNursysScreenshots(
       await page.evaluate(() => window.scrollBy(0, 400));
       await wait(1000);
       shots.push(await snap(page, "Nursys® — License Details"));
+
+      // ── Step 7: Download the Nursys PDF report ──────────────
+      const DOWNLOAD_DIR = path.join(SCREENSHOT_DIR, "..", "downloads");
+      if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+
+      // Clear old PDFs so we detect the new one
+      for (const f of fs.readdirSync(DOWNLOAD_DIR).filter((f) => f.endsWith(".pdf"))) {
+        try { fs.unlinkSync(path.join(DOWNLOAD_DIR, f)); } catch {}
+      }
+
+      // Tell Chrome where to save downloads
+      const client = await page.createCDPSession();
+      await client.send("Page.setDownloadBehavior", {
+        behavior: "allow",
+        downloadPath: path.resolve(DOWNLOAD_DIR),
+      });
+
+      // Click "Download report" button (opens modal)
+      const downloadBtn = await page.$('a[data-target="#infoDownloadReport"], a[onclick*="ClearDownload"]');
+      if (downloadBtn) {
+        await downloadBtn.click();
+        await wait(2000);
+
+        // In the modal: "Download full report" is pre-selected, click the Download button
+        await page.evaluate(() => {
+          const modal = document.querySelector("#infoDownloadReport");
+          if (!modal) return;
+          for (const btn of Array.from(modal.querySelectorAll<HTMLElement>("a, button"))) {
+            const text = (btn.textContent || "").toLowerCase();
+            if (text.includes("download") && !text.includes("close")) {
+              btn.click();
+              return;
+            }
+          }
+        });
+
+        console.log("[browser-verify] Waiting for Nursys PDF download...");
+
+        // Wait for PDF to appear
+        for (let i = 0; i < 15; i++) {
+          await wait(1000);
+          const files = fs.readdirSync(DOWNLOAD_DIR).filter((f) => f.endsWith(".pdf"));
+          if (files.length > 0) {
+            const srcPath = path.join(DOWNLOAD_DIR, files[0]);
+            const destName = `nursys-report-${lastName}-${firstName}.pdf`.toLowerCase();
+            const destPath = path.join(SCREENSHOT_DIR, destName);
+            fs.copyFileSync(srcPath, destPath);
+            reportPdfPath = destPath;
+            console.log(`[browser-verify] PDF saved: ${destPath} (${(fs.statSync(destPath).size / 1024).toFixed(1)} KB)`);
+            break;
+          }
+        }
+
+        if (!reportPdfPath) {
+          console.log("[browser-verify] PDF download timed out");
+        }
+
+        shots.push(await snap(page, "Nursys® — Report Downloaded"));
+      }
     }
   } catch (err) {
     console.error("[browser-verify] Nursys error:", err);
@@ -324,7 +390,7 @@ export async function captureNursysScreenshots(
     await browser.close();
   }
 
-  return shots;
+  return { screenshots: shots, reportPdfPath };
 }
 
 // ─────────────────────────────────────────────────────────────

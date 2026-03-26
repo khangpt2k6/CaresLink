@@ -71,15 +71,16 @@ export async function POST(
       } else {
         // Fetch was blocked (manual_required/error) — use browser with screenshots
         console.log("[verify] Nursys fetch blocked, falling back to browser verification...");
-        const nursysScreenshots = await captureNursysScreenshots(
+        const nursysBrowser = await captureNursysScreenshots(
           firstName, lastName,
           licenseState ?? null,
           licenseNumber ?? null
         );
         nursysData = {
           ...fetchResult,
-          status: nursysScreenshots.length > 2 ? "found" : "manual_required",
-          screenshots: nursysScreenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
+          status: nursysBrowser.screenshots.length > 2 ? "found" : "manual_required",
+          screenshots: nursysBrowser.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
+          reportPdfPath: nursysBrowser.reportPdfPath || null,
           browserVerified: true,
         };
       }

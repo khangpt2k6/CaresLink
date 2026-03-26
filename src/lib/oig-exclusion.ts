@@ -131,6 +131,14 @@ export async function checkOIGExclusion(
   const searchedName = [firstName, middleName, lastName].filter(Boolean).join(" ").toUpperCase();
   const checkedAt = new Date().toISOString();
 
+  // Use the web endpoint first (fast, name-specific query) instead of
+  // downloading the full 15MB LEIE CSV which can take 30s+ and timeout.
+  try {
+    return await checkOIGViaWeb(firstName, lastName, searchedName, checkedAt);
+  } catch {
+    // Web endpoint failed — fall back to full CSV download
+  }
+
   try {
     const leie = await loadLeie();
 
@@ -177,21 +185,16 @@ export async function checkOIGExclusion(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // Try fallback: OIG web search form
-    try {
-      return await checkOIGViaWeb(firstName, lastName, searchedName, checkedAt);
-    } catch {
-      return {
-        status: "manual_required",
-        searchedName,
-        matches: [],
-        exactMatches: [],
-        partialMatches: [],
-        error: msg,
-        manualUrl: MANUAL_URL,
-        checkedAt,
-      };
-    }
+    return {
+      status: "manual_required",
+      searchedName,
+      matches: [],
+      exactMatches: [],
+      partialMatches: [],
+      error: msg,
+      manualUrl: MANUAL_URL,
+      checkedAt,
+    };
   }
 }
 

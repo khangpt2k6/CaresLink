@@ -50,7 +50,7 @@ New-ItemProperty -Path $regPath -Name "DisplayName" -Value "CaresLink" -Property
 New-ItemProperty -Path $regPath -Name "ShowInSettings" -Value 1 -PropertyType DWord -Force | Out-Null
 `;
     const tmpFile = path.join(os.tmpdir(), `careslink-reg-${Date.now()}.ps1`);
-    fs.writeFileSync(tmpFile, regScript, "utf-8");
+    fs.writeFileSync(tmpFile, "\ufeff" + regScript, "utf-8");
     execSync(
       `powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`,
       { windowsHide: true, timeout: 10_000 }
@@ -137,9 +137,10 @@ $toast.ExpirationTime = [DateTimeOffset]::Now.AddMinutes(30)
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("${APP_ID}").Show($toast)
 `;
 
-  // Write to a temp file to avoid all shell escaping issues
+  // Write to a temp file to avoid all shell escaping issues.
+  // Prepend UTF-8 BOM so PowerShell reads special characters (em dash, ®) correctly.
   const tmpFile = path.join(os.tmpdir(), `careslink-toast-${Date.now()}.ps1`);
-  fs.writeFileSync(tmpFile, script, "utf-8");
+  fs.writeFileSync(tmpFile, "\ufeff" + script, "utf-8");
 
   exec(
     `powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`,
@@ -204,7 +205,7 @@ $n.Dispose()
 `;
 
   const tmpFile = path.join(os.tmpdir(), `careslink-balloon-${Date.now()}.ps1`);
-  fs.writeFileSync(tmpFile, script, "utf-8");
+  fs.writeFileSync(tmpFile, "\ufeff" + script, "utf-8");
 
   exec(
     `powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`,

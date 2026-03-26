@@ -50,21 +50,22 @@ export async function POST(
     let samGovResult = null;
 
     if (roleType === "NURSE") {
-      // RNs: run OIG + SAM.gov in parallel, then Nursys via browser (fetch gets blocked by WAF)
-      const [oig, sam] = await Promise.all([
+      // RNs: run OIG, SAM.gov, and Nursys ALL in parallel for speed.
+      // Nursys fetch is almost always blocked by Cloudflare (403), so the
+      // browser fallback will trigger — running in parallel means Chrome
+      // opens immediately instead of waiting 30s+ for OIG to finish first.
+      const [oig, sam, fetchResult] = await Promise.all([
         checkOIGExclusion(firstName, lastName, middleName ?? undefined),
         checkSAMGov(firstName, lastName, licenseNumber ?? undefined, licenseState ?? undefined),
+        searchNursysRN(
+          firstName, lastName,
+          middleName ?? undefined,
+          licenseNumber ?? undefined,
+          licenseState ?? undefined
+        ),
       ]);
       oigResult = oig;
       samGovResult = sam;
-
-      // Try fetch-based Nursys first (fast), fall back to browser if blocked
-      const fetchResult = await searchNursysRN(
-        firstName, lastName,
-        middleName ?? undefined,
-        licenseNumber ?? undefined,
-        licenseState ?? undefined
-      );
 
       if (fetchResult.status === "found" || fetchResult.status === "not_found" || fetchResult.status === "multiple_found") {
         nursysData = fetchResult;

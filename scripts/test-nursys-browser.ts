@@ -22,7 +22,7 @@ puppeteer.use(StealthPlugin());
 const TEST_FIRST_NAME = "MARIA";
 const TEST_LAST_NAME  = "JOHNSON";
 const TEST_STATE      = "FLORIDA";
-const TEST_LICENSE_NUM = "RN671562";
+const TEST_LICENSE_NUM = "RN9458458";  // Actual FL license (EXPIRED — Null & Void)
 // ═══════════════════════════════════════════════════════════════
 
 const DELAY = 3000;

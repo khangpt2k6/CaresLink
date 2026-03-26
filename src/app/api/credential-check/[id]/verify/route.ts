@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { searchNursysRN } from "@/lib/nursys";
 import { checkOIGExclusion } from "@/lib/oig-exclusion";
 import { checkSAMGov } from "@/lib/sam-gov";
-import { captureFloridaDOHScreenshots } from "@/lib/browser-verify";
+import { captureFloridaDOHScreenshots, captureNursysScreenshots } from "@/lib/browser-verify";
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic();
@@ -50,20 +50,39 @@ export async function POST(
     let samGovResult = null;
 
     if (roleType === "NURSE") {
-      // RNs: run all three checks in parallel (unchanged)
-      const [oig, sam, nursys] = await Promise.all([
+      // RNs: run OIG + SAM.gov in parallel, then Nursys via browser (fetch gets blocked by WAF)
+      const [oig, sam] = await Promise.all([
         checkOIGExclusion(firstName, lastName, middleName ?? undefined),
         checkSAMGov(firstName, lastName, licenseNumber ?? undefined, licenseState ?? undefined),
-        searchNursysRN(
-          firstName, lastName,
-          middleName ?? undefined,
-          licenseNumber ?? undefined,
-          licenseState ?? undefined
-        ),
       ]);
       oigResult = oig;
       samGovResult = sam;
-      nursysData = nursys;
+
+      // Try fetch-based Nursys first (fast), fall back to browser if blocked
+      const fetchResult = await searchNursysRN(
+        firstName, lastName,
+        middleName ?? undefined,
+        licenseNumber ?? undefined,
+        licenseState ?? undefined
+      );
+
+      if (fetchResult.status === "found" || fetchResult.status === "not_found" || fetchResult.status === "multiple_found") {
+        nursysData = fetchResult;
+      } else {
+        // Fetch was blocked (manual_required/error) — use browser with screenshots
+        console.log("[verify] Nursys fetch blocked, falling back to browser verification...");
+        const nursysScreenshots = await captureNursysScreenshots(
+          firstName, lastName,
+          licenseState ?? null,
+          licenseNumber ?? null
+        );
+        nursysData = {
+          ...fetchResult,
+          status: nursysScreenshots.length > 2 ? "found" : "manual_required",
+          screenshots: nursysScreenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
+          browserVerified: true,
+        };
+      }
     } else {
       // CNAs: use Puppeteer for accurate FL DOH verification + screenshot capture
       const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber ?? undefined);

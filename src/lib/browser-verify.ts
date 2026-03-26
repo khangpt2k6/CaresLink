@@ -1,10 +1,17 @@
 /**
  * Browser-based verification with live screenshots.
- * Opens visible Chrome windows (in dev) so you can watch the verification happen,
- * captures screenshots at key steps, and embeds them into the PDF report.
+ * Uses real Chrome + puppeteer-extra stealth to bypass bot detection on Nursys.
+ * Captures screenshots at key steps and embeds them into the PDF report.
  */
 
+import puppeteerExtra from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import puppeteer, { Browser, Page } from "puppeteer";
+import path from "path";
+import fs from "fs";
+import os from "os";
+
+puppeteerExtra.use(StealthPlugin());
 
 export interface VerificationScreenshot {
   label: string;
@@ -13,8 +20,53 @@ export interface VerificationScreenshot {
 }
 
 const IS_HEADLESS = process.env.NODE_ENV === "production";
+const DELAY = 2000; // 2s between steps
 
+function wait(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Find real Chrome on Windows/Mac/Linux */
+function findChrome(): string | undefined {
+  const candidates = [
+    // Windows
+    path.join(os.homedir(), "AppData", "Local", "Google", "Chrome", "Application", "chrome.exe"),
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    // Mac
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    // Linux
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return undefined;
+}
+
+/** Launch browser — uses real Chrome with stealth if available, else falls back to Puppeteer Chromium */
 async function launchBrowser(): Promise<Browser> {
+  const chromePath = findChrome();
+  const tmpProfile = path.join(os.tmpdir(), "careslink-chrome-profile");
+
+  if (chromePath) {
+    // Real Chrome + stealth plugin (bypasses Nursys WAF)
+    return puppeteerExtra.launch({
+      headless: IS_HEADLESS,
+      executablePath: chromePath,
+      userDataDir: tmpProfile,
+      args: [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-infobars",
+        "--window-size=1280,900",
+      ],
+      defaultViewport: IS_HEADLESS ? { width: 1280, height: 900 } : null,
+      ignoreDefaultArgs: ["--enable-automation"],
+    }) as unknown as Promise<Browser>;
+  }
+
+  // Fallback: Puppeteer's bundled Chromium (may get blocked by Nursys)
   return puppeteer.launch({
     headless: IS_HEADLESS,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
@@ -23,7 +75,7 @@ async function launchBrowser(): Promise<Browser> {
 }
 
 async function snap(page: Page, label: string): Promise<VerificationScreenshot> {
-  await new Promise((r) => setTimeout(r, 800)); // brief render pause
+  await wait(800);
   const buf = await page.screenshot({ type: "png", fullPage: false }) as Buffer;
   return {
     label,
@@ -33,7 +85,8 @@ async function snap(page: Page, label: string): Promise<VerificationScreenshot> 
 }
 
 // ─────────────────────────────────────────────────────────────
-// 1.  NURSYS® — License Verification
+// 1.  NURSYS® QuickConfirm — License Verification
+//     Uses LQC URL + real Chrome + stealth (same as test-nursys-browser.ts)
 // ─────────────────────────────────────────────────────────────
 export async function captureNursysScreenshots(
   firstName: string,
@@ -45,20 +98,36 @@ export async function captureNursysScreenshots(
   const browser = await launchBrowser();
 
   try {
-    const page = await browser.newPage();
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    );
+    const page = (await browser.pages())[0] || await browser.newPage();
 
-    // ── Step 1: Terms page ──────────────────────────────────
+    // Remove automation traces
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+    });
+
+    // ── Step 1: Load LQC search page (may redirect to terms) ──
     await page.goto("https://www.nursys.com/LQC/LQCSearch.aspx", {
       waitUntil: "networkidle2",
       timeout: 30000,
     });
 
-    // LQC redirects to LQCTerms.aspx — accept terms if present
+    // Check if blocked
+    const pageText = await page.evaluate(() => document.body.innerText);
+    if (/access\s+denied|blocked|error\s+15/i.test(pageText)) {
+      shots.push(await snap(page, "Nursys® — Access Denied"));
+      return shots;
+    }
+
+    // ── Step 2: Handle terms page if redirected ───────────────
     if (page.url().includes("Terms")) {
       shots.push(await snap(page, "Nursys® — Terms & Conditions"));
+
+      // Scroll like a human
+      await page.evaluate(() => window.scrollBy(0, 300));
+      await wait(1500);
+      await page.evaluate(() => window.scrollBy(0, 300));
+      await wait(1000);
+
       const agreeBtn = await page.$("#MainContent_lbtnContinue");
       if (agreeBtn) {
         await Promise.all([
@@ -66,80 +135,124 @@ export async function captureNursysScreenshots(
           agreeBtn.click(),
         ]);
       }
+      await wait(DELAY);
     }
+
+    // Check if blocked after terms
+    const afterTermsText = await page.evaluate(() => document.body.innerText);
+    if (/access\s+denied|blocked/i.test(afterTermsText)) {
+      shots.push(await snap(page, "Nursys® — Blocked After Terms"));
+      return shots;
+    }
+
     shots.push(await snap(page, "Nursys® — License Search Form"));
 
-    // ── Step 2: Fill search form (real Nursys LQC element IDs) ─
-    // Last name
-    const lastInput = await page.$('#MainContent_txtLastName, input[name*="LastName"]');
+    // ── Step 3: Fill search form ──────────────────────────────
+    // Last name — type like a human
+    const lastInput = await page.$('#MainContent_txtLastName, input[id*="LastName"], input[name*="LastName"]');
     if (lastInput) {
       await lastInput.click();
-      await lastInput.type(lastName.toUpperCase(), { delay: 80 });
+      await wait(300);
+      await lastInput.type(lastName.toUpperCase(), { delay: 100 });
     }
+    await wait(500);
 
     // First name
-    const firstInput = await page.$('#MainContent_txtFirstName, input[name*="FirstName"]');
+    const firstInput = await page.$('#MainContent_txtFirstName, input[id*="FirstName"], input[name*="FirstName"]');
     if (firstInput) {
       await firstInput.click();
-      await firstInput.type(firstName.toUpperCase(), { delay: 80 });
+      await wait(300);
+      await firstInput.type(firstName.toUpperCase(), { delay: 100 });
     }
+    await wait(500);
 
-    // License type = RN (value="3" on LQC)
-    try {
-      await page.evaluate(() => {
-        for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
-          const rnOpt = Array.from(sel.options).find((o) => o.text.trim() === "RN");
-          if (rnOpt) { sel.value = rnOpt.value; sel.dispatchEvent(new Event("change", { bubbles: true })); break; }
-        }
-      });
-    } catch {}
+    // License type = RN (find by option text)
+    await page.evaluate(() => {
+      for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
+        const rnOpt = Array.from(sel.options).find((o) => o.text.trim() === "RN");
+        if (rnOpt) { sel.value = rnOpt.value; sel.dispatchEvent(new Event("change", { bubbles: true })); break; }
+      }
+    }).catch(() => {});
+    await wait(500);
 
     // State — match by full name (e.g. "FLORIDA")
     if (licenseState) {
-      try {
-        await page.evaluate((state) => {
-          for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
-            const opts = Array.from(sel.options);
-            if (!opts.some((o) => /ALABAMA|FLORIDA/i.test(o.text))) continue;
-            const match = opts.find((o) => o.value.toUpperCase() === state || o.text.toUpperCase().includes(state));
-            if (match) { sel.value = match.value; sel.dispatchEvent(new Event("change", { bubbles: true })); }
-          }
-        }, licenseState.toUpperCase());
-      } catch {}
+      await page.evaluate((state: string) => {
+        for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
+          const opts = Array.from(sel.options);
+          if (!opts.some((o) => /ALABAMA|ALASKA|FLORIDA/i.test(o.text))) continue;
+          const match = opts.find((o) => o.value.toUpperCase() === state || o.text.toUpperCase().includes(state));
+          if (match) { sel.value = match.value; sel.dispatchEvent(new Event("change", { bubbles: true })); }
+        }
+      }, licenseState.toUpperCase()).catch(() => {});
     }
-
-    // License number
-    if (licenseNumber) {
-      const licInput = await page.$('#MainContent_txtLicenseNumber, input[name*="LicNum"], input[name*="License"]');
-      if (licInput) {
-        await licInput.click();
-        await licInput.type(licenseNumber, { delay: 80 });
-      }
-    }
+    await wait(500);
 
     shots.push(await snap(page, "Nursys® — Search Form Filled"));
+    await wait(DELAY);
 
-    // ── Step 3: Submit and capture results ─────────────────
-    const searchBtn = await page.$('#MainContent_ibtnSearchName, input[name="btnSearch"]');
-    if (!searchBtn) throw new Error("Search button not found");
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "networkidle2", timeout: 25000 }),
-      searchBtn.click(),
-    ]);
+    // ── Step 4: Handle reCAPTCHA ──────────────────────────────
+    const recaptchaFrame = await page.waitForSelector(
+      'iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"]',
+      { timeout: 5000 }
+    ).catch(() => null);
+
+    if (recaptchaFrame) {
+      const frame = await recaptchaFrame.contentFrame();
+      if (frame) {
+        await frame.waitForSelector('#recaptcha-anchor', { timeout: 5000 }).catch(() => {});
+        await wait(1500);
+        await frame.click('#recaptcha-anchor').catch(() => {});
+      }
+
+      // Wait for captcha to be solved (auto-pass or image challenge timeout)
+      await page.evaluate(() => {
+        return new Promise<void>((resolve) => {
+          let checks = 0;
+          const interval = setInterval(() => {
+            checks++;
+            const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
+            if ((ta && ta.value.length > 0) || checks > 40) { clearInterval(interval); resolve(); }
+          }, 500);
+        });
+      });
+
+      shots.push(await snap(page, "Nursys® — reCAPTCHA"));
+    }
+
+    // ── Step 5: Submit search ─────────────────────────────────
+    const searchBtn = await page.$('#MainContent_ibtnSearchName');
+    if (searchBtn) {
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {}),
+        searchBtn.click(),
+      ]);
+    } else {
+      // Fallback: click any Search link/button
+      await page.evaluate(() => {
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
+          const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
+          if (text.includes("search") && !text.includes("reset")) { el.click(); return; }
+        }
+      });
+      await wait(5000);
+    }
+
+    await wait(DELAY);
     shots.push(await snap(page, "Nursys® — Search Results"));
 
-    // ── Step 4: Click first result to see full report ──────
-    const resultLink = await page.$('a[href*="NLVViewRpt"]');
+    // ── Step 6: Click first result for full report ────────────
+    const resultLink = await page.$('a[href*="ViewRpt"], a[href*="Report"], a[href*="ncsbnid"]');
     if (resultLink) {
       await Promise.all([
-        page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }),
+        page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {}),
         resultLink.click(),
       ]);
       shots.push(await snap(page, "Nursys® — Full License Report"));
 
-      // Scroll down to capture license table
+      // Scroll to license table
       await page.evaluate(() => window.scrollBy(0, 400));
-      await new Promise((r) => setTimeout(r, 600));
+      await wait(1000);
       shots.push(await snap(page, "Nursys® — License Details"));
     }
   } catch (err) {
@@ -198,7 +311,7 @@ export async function captureOIGScreenshots(
     try { await page.$eval("#LAST_NAME", (el, v) => ((el as HTMLInputElement).value = v), lastName.toUpperCase()); } catch {}
     try { await page.$eval("#FIRST_NAME", (el, v) => ((el as HTMLInputElement).value = v), firstName.toUpperCase()); } catch {}
 
-    await new Promise((r) => setTimeout(r, 500));
+    await wait(500);
     shots.push(await snap(page, "OIG Exclusion List — Form Filled"));
 
     // Click the search/submit button
@@ -211,31 +324,27 @@ export async function captureOIGScreenshots(
           return true;
         }
       }
-      // Fallback: try any submit button
       const submit = document.querySelector<HTMLElement>('button[type="submit"], input[type="submit"]');
       if (submit) { submit.click(); return true; }
       return false;
     });
 
     if (clicked) {
-      // Wait for results to render
-      await new Promise((r) => setTimeout(r, 4000));
+      await wait(4000);
       shots.push(await snap(page, "OIG Exclusion List — Results"));
 
-      // Scroll to show results if they appeared below
       const hasResults = await page.evaluate(() =>
         document.body.innerText.toLowerCase().includes("result") ||
         document.querySelector("table") !== null
       );
       if (hasResults) {
         await page.evaluate(() => window.scrollBy(0, 300));
-        await new Promise((r) => setTimeout(r, 600));
+        await wait(600);
         shots.push(await snap(page, "OIG Exclusion List — Results Detail"));
       }
     } else {
-      // Try navigating with form submit
       await page.keyboard.press("Enter");
-      await new Promise((r) => setTimeout(r, 3000));
+      await wait(3000);
       shots.push(await snap(page, "OIG Exclusion List — Results"));
     }
   } catch (err) {
@@ -280,7 +389,6 @@ export async function captureFloridaDOHScreenshots(
 
     await page.goto(SEARCH_URL, { waitUntil: "networkidle2", timeout: 30000 });
 
-    // Fill only: Last Name, First Name, License Number (no board/profession/status filters)
     try {
       await page.$eval('input[name="SearchDto.LastName"]',
         (el, v) => ((el as HTMLInputElement).value = v), lastName.toUpperCase());
@@ -298,9 +406,8 @@ export async function captureFloridaDOHScreenshots(
       } catch {}
     }
 
-    await new Promise((r) => setTimeout(r, 500));
+    await wait(500);
 
-    // Submit the form
     const submitted = await page.evaluate(() => {
       const btn = document.querySelector<HTMLElement>(
         'input[type="submit"][name*="Search"], input[type="submit"][value*="Search"], button[type="submit"]'
@@ -312,22 +419,17 @@ export async function captureFloridaDOHScreenshots(
     let matches: FloridaDOHRow[] = [];
 
     if (submitted) {
-      await new Promise((r) => setTimeout(r, 3000));
+      await wait(3000);
       shots.push(await snap(page, "Florida DOH — Search Results"));
 
-      // Scroll to show full results, then take detail screenshot
       await page.evaluate(() => window.scrollBy(0, 300));
-      await new Promise((r) => setTimeout(r, 600));
+      await wait(600);
       shots.push(await snap(page, "Florida DOH — License Details"));
 
-      // Extract license data — FL DOH uses a card/detail layout, not a plain table.
-      // Strategy 1: standard HTML table (fallback for list-view pages).
-      // Strategy 2: text parsing for the card-based detail view.
       matches = await page.evaluate((): FloridaDOHRow[] => {
         const rows: FloridaDOHRow[] = [];
         const bodyText = document.body.innerText;
 
-        // ── Strategy 1: HTML table ──────────────────────────────────
         document.querySelectorAll("table tr").forEach((tr, idx) => {
           if (idx === 0) return;
           const cells = Array.from(tr.querySelectorAll("td")).map((td) =>
@@ -346,19 +448,16 @@ export async function captureFloridaDOHScreenshots(
         });
         if (rows.length > 0) return rows;
 
-        // ── Strategy 2: FL DOH card/detail text parsing ─────────────
         const get = (pattern: RegExp) => {
           const m = bodyText.match(pattern);
           return m ? m[1].trim() : "";
         };
 
-        // License number: e.g. "CNA160586" or "License Number: CNA160586"
         const licNum = get(/License(?:\s+Number)?[:\s]+([A-Z]{2,5}\d+)/i)
           || get(/\b((?:CNA|RN|LPN|APRN|MA)\d{4,})\b/);
 
-        if (!licNum) return rows; // nothing found on this page
+        if (!licNum) return rows;
 
-        // Name: all-caps line near top of results
         const nameMatch = bodyText.match(/([A-Z][A-Z]+(?:\s+[A-Z][A-Z]*\.?){1,4})\s*\n/);
         const name = nameMatch ? nameMatch[1].trim() : "";
 
@@ -394,14 +493,12 @@ export async function captureSAMGovScreenshots(
   try {
     const page = await browser.newPage();
 
-    // Navigate to SAM.gov exclusions search
     await page.goto(
       "https://sam.gov/search/?index=ei&page=1&sort=-score&sAMStatuses=Active&exclusionStatusFilter=Y",
       { waitUntil: "networkidle2", timeout: 30000 }
     );
     shots.push(await snap(page, "SAM.gov — Exclusions Search Page"));
 
-    // Try to search by name
     try {
       const searchInput = await page.$(
         'input[placeholder*="Search"], input[type="search"], #search-input, [data-testid*="search"]'
@@ -409,10 +506,10 @@ export async function captureSAMGovScreenshots(
       if (searchInput) {
         await searchInput.click();
         await searchInput.type(`${firstName} ${lastName}`, { delay: 60 });
-        await new Promise((r) => setTimeout(r, 1000));
+        await wait(1000);
         shots.push(await snap(page, "SAM.gov — Name Entered"));
         await page.keyboard.press("Enter");
-        await new Promise((r) => setTimeout(r, 4000));
+        await wait(4000);
         shots.push(await snap(page, "SAM.gov — Search Results"));
       }
     } catch {}

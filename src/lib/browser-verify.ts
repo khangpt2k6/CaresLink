@@ -1,17 +1,14 @@
 /**
  * Browser-based verification with live screenshots.
- * Uses real Chrome + puppeteer-extra stealth to bypass bot detection on Nursys.
+ * Uses real Chrome with anti-detection flags to bypass bot detection on Nursys.
+ * Opens a visible browser window in dev mode so you can watch/solve captchas.
  * Captures screenshots at key steps and embeds them into the PDF report.
  */
 
-import puppeteerExtra from "puppeteer-extra";
-import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import puppeteer, { Browser, Page } from "puppeteer";
 import path from "path";
 import fs from "fs";
 import os from "os";
-
-puppeteerExtra.use(StealthPlugin());
 
 export interface VerificationScreenshot {
   label: string;
@@ -19,8 +16,12 @@ export interface VerificationScreenshot {
   dataUrl: string; // base64 PNG data URL
 }
 
-const IS_HEADLESS = process.env.NODE_ENV === "production";
-const DELAY = 2000; // 2s between steps
+const IS_PROD = process.env.NODE_ENV === "production";
+const DELAY = 2000;
+const SCREENSHOT_DIR = path.join(process.cwd(), "scripts", "screenshots");
+
+// Ensure screenshots folder exists
+if (!fs.existsSync(SCREENSHOT_DIR)) fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
 function wait(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -29,13 +30,10 @@ function wait(ms: number) {
 /** Find real Chrome on Windows/Mac/Linux */
 function findChrome(): string | undefined {
   const candidates = [
-    // Windows
     path.join(os.homedir(), "AppData", "Local", "Google", "Chrome", "Application", "chrome.exe"),
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    // Mac
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    // Linux
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
   ];
@@ -45,15 +43,14 @@ function findChrome(): string | undefined {
   return undefined;
 }
 
-/** Launch browser — uses real Chrome with stealth if available, else falls back to Puppeteer Chromium */
+/** Launch browser — real Chrome in dev (visible), headless in prod */
 async function launchBrowser(): Promise<Browser> {
   const chromePath = findChrome();
   const tmpProfile = path.join(os.tmpdir(), "careslink-chrome-profile");
 
   if (chromePath) {
-    // Real Chrome + stealth plugin (bypasses Nursys WAF)
-    return puppeteerExtra.launch({
-      headless: IS_HEADLESS,
+    return puppeteer.launch({
+      headless: IS_PROD,           // visible in dev so you can watch & solve captchas
       executablePath: chromePath,
       userDataDir: tmpProfile,
       args: [
@@ -61,22 +58,29 @@ async function launchBrowser(): Promise<Browser> {
         "--disable-infobars",
         "--window-size=1280,900",
       ],
-      defaultViewport: IS_HEADLESS ? { width: 1280, height: 900 } : null,
+      defaultViewport: IS_PROD ? { width: 1280, height: 900 } : null,
       ignoreDefaultArgs: ["--enable-automation"],
-    }) as unknown as Promise<Browser>;
+    });
   }
 
-  // Fallback: Puppeteer's bundled Chromium (may get blocked by Nursys)
+  // Fallback: Puppeteer's bundled Chromium
   return puppeteer.launch({
-    headless: IS_HEADLESS,
+    headless: IS_PROD,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
     defaultViewport: { width: 1280, height: 900 },
   });
 }
 
+let snapCount = 0;
 async function snap(page: Page, label: string): Promise<VerificationScreenshot> {
   await wait(800);
   const buf = await page.screenshot({ type: "png", fullPage: false }) as Buffer;
+
+  // Also save to disk for debugging
+  snapCount++;
+  const filename = `verify-${String(snapCount).padStart(2, "0")}-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.png`;
+  try { fs.writeFileSync(path.join(SCREENSHOT_DIR, filename), buf); } catch {}
+
   return {
     label,
     url: page.url(),

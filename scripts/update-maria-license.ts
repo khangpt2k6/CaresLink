@@ -23,20 +23,20 @@ async function main() {
   if (user?.profile) {
     await prisma.license.deleteMany({ where: { profileId: user.profile.id } });
 
-    // Florida license (primary — used for credential check)
+    // Vermont license (EXPIRED) — created first so it's oldest
     await prisma.license.create({
       data: {
         profileId: user.profile.id,
         type: "RN",
-        licenseNumber: "RN9458458",
-        licenseState: "FL",
-        boardName: "Florida Board of Nursing",
+        licenseNumber: "026.0052205",
+        licenseState: "VT",
+        boardName: "Vermont Board of Nursing",
         status: "EXPIRED",
-        issueDate: new Date("2017-04-24"),
-        expiryDate: new Date("2018-07-31"),
+        issueDate: new Date("2009-12-04"),
+        expiryDate: new Date("2019-03-31"),
       },
     });
-    console.log("  + FL license: RN9458458 — EXPIRED (Null & Void)");
+    console.log("  + VT license: 026.0052205 — EXPIRED");
 
     // Washington license (UNENCUMBERED)
     await prisma.license.create({
@@ -53,20 +53,20 @@ async function main() {
     });
     console.log("  + WA license: RN60837175 — UNENCUMBERED (active, expires 04/22/2026)");
 
-    // Vermont license (EXPIRED)
+    // Florida license — created LAST so it's picked by `orderBy: createdAt desc`
     await prisma.license.create({
       data: {
         profileId: user.profile.id,
         type: "RN",
-        licenseNumber: "026.0052205",
-        licenseState: "VT",
-        boardName: "Vermont Board of Nursing",
+        licenseNumber: "RN9458458",
+        licenseState: "FL",
+        boardName: "Florida Board of Nursing",
         status: "EXPIRED",
-        issueDate: new Date("2009-12-04"),
-        expiryDate: new Date("2019-03-31"),
+        issueDate: new Date("2017-04-24"),
+        expiryDate: new Date("2018-07-31"),
       },
     });
-    console.log("  + VT license: 026.0052205 — EXPIRED");
+    console.log("  + FL license: RN9458458 — EXPIRED (Null & Void) ← will be picked by form");
   }
 
   // Verify

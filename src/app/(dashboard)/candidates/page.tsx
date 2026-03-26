@@ -400,7 +400,7 @@ export default function CandidatesPage() {
       )}
 
       {/* Table card with integrated search/filters */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         {/* Search & Filter toolbar */}
         {!loading && candidates.length > 0 && (
           <div className="flex items-center gap-3 border-b border-[#f1f5f9] px-5 py-3">

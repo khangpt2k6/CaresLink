@@ -226,18 +226,18 @@ export function CandidateTable({
     "w-full rounded-lg border border-[#e2e8f0] bg-white px-2.5 py-1.5 text-sm text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20";
 
   return (
-    <div className="overflow-hidden">
+    <div className="overflow-x-auto">
       <table className="min-w-full">
         <thead>
           <tr className="border-b border-[#e2e8f0]">
-            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Candidate</th>
-            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Position</th>
-            {matchScores && <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Match</th>}
-            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Fit</th>
-            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Send</th>
-            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Profile</th>
-            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Status</th>
-            <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8]">Actions</th>
+            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Candidate</th>
+            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Position</th>
+            {matchScores && <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Match</th>}
+            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Fit</th>
+            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Send</th>
+            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Profile</th>
+            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Status</th>
+            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#f1f5f9]">
@@ -258,7 +258,7 @@ export function CandidateTable({
                     : ""
                 )}
               >
-                <td className="px-5 py-3 align-middle">
+                <td className="px-3 py-3 align-middle lg:px-5">
                   {editingId === c.id ? (
                     <div className="flex flex-col gap-1.5" style={{ minWidth: 180 }}>
                       <input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} placeholder="Name" className={inputClass} />
@@ -281,7 +281,7 @@ export function CandidateTable({
                     </div>
                   )}
                 </td>
-                <td className="px-5 py-3 align-middle">
+                <td className="px-3 py-3 align-middle lg:px-5">
                   {editingId === c.id ? (
                     <input value={editForm.position} onChange={(e) => setEditForm((f) => ({ ...f, position: e.target.value }))} placeholder="Position" className={inputClass} style={{ minWidth: 140 }} />
                   ) : (
@@ -289,7 +289,7 @@ export function CandidateTable({
                   )}
                 </td>
                 {matchScores && (
-                  <td className="px-5 py-3 align-middle">
+                  <td className="px-3 py-3 align-middle lg:px-5">
                     {matchScores[c.id] ? (
                       <MatchScoreBadge match={matchScores[c.id]} />
                     ) : (
@@ -297,7 +297,7 @@ export function CandidateTable({
                     )}
                   </td>
                 )}
-                <td className="px-5 py-3 align-middle">
+                <td className="px-3 py-3 align-middle lg:px-5">
                   {onFitStatusChange ? (
                     <FitDropdown
                       value={c.fitStatus ?? null}
@@ -311,7 +311,7 @@ export function CandidateTable({
                     <span className="text-xs text-[#94a3b8]">—</span>
                   )}
                 </td>
-                <td className="px-5 py-3 align-middle text-center">
+                <td className="px-3 py-3 align-middle text-center lg:px-5">
                   {onSendTemplate && (
                     <button
                       onClick={() => {
@@ -334,7 +334,7 @@ export function CandidateTable({
                     </button>
                   )}
                 </td>
-                <td className="px-5 py-3 align-middle text-center">
+                <td className="px-3 py-3 align-middle text-center lg:px-5">
                   <button
                     onClick={() => router.push(`/candidates/${c.id}`)}
                     className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-[#f1f5f9] text-[#475569] hover:bg-[#e2e8f0] transition-colors"
@@ -343,16 +343,16 @@ export function CandidateTable({
                     View Profile
                   </button>
                 </td>
-                <td className="px-5 py-3 align-middle">
+                <td className="px-3 py-3 align-middle lg:px-5">
                   <span className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap",
                     status.bg, status.text
                   )}>
                     <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
                     {status.label}
                   </span>
                 </td>
-                <td className="px-5 py-3 align-middle text-right">
+                <td className="px-3 py-3 align-middle text-right lg:px-5">
                   <div className="inline-flex items-center gap-1">
                     {editingId === c.id ? (
                       <>

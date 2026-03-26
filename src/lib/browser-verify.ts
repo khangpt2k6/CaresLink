@@ -144,11 +144,21 @@ export async function captureNursysScreenshots(
       Object.defineProperty(navigator, "webdriver", { get: () => undefined });
     });
 
-    // ── Step 1: Load LQC search page (may redirect to terms) ──
-    await page.goto("https://www.nursys.com/LQC/LQCSearch.aspx", {
-      waitUntil: "networkidle2",
-      timeout: 30000,
-    });
+    // ── Step 1: Load LQC search page (may redirect to terms or Cloudflare check) ──
+    // Use "domcontentloaded" instead of "networkidle2" because Cloudflare security
+    // pages keep making polling requests that prevent networkidle2 from resolving,
+    // causing a timeout that kills the entire flow before we can detect the check.
+    try {
+      await page.goto("https://www.nursys.com/LQC/LQCSearch.aspx", {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+    } catch {
+      // Even if navigation times out, the page may still be usable
+      console.log("[browser-verify] Initial navigation timeout — checking page state...");
+    }
+    // Give the page a moment to render
+    await wait(3000);
 
     // Check if security check / CAPTCHA page is showing
     const pageText = await page.evaluate(() => document.body.innerText);
@@ -164,59 +174,66 @@ export async function captureNursysScreenshots(
       console.log("[browser-verify] Security check detected — waiting for manual verification...");
       notifyCaptchaRequired("Nursys®");
 
-      // Show a visible alert banner in the browser window
-      await page.evaluate(() => {
-        const overlay = document.createElement("div");
-        overlay.id = "careslink-security-alert";
-        overlay.innerHTML = `
-          <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
-            <span style="font-size:22px;">🔒</span>
-            <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
-          </div>
-        `;
-        document.body.appendChild(overlay);
-      });
+      // Try to show a visible alert banner (may fail on Cloudflare CSP pages)
+      try {
+        await page.evaluate(() => {
+          const overlay = document.createElement("div");
+          overlay.id = "careslink-security-alert";
+          overlay.innerHTML = `
+            <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
+              <span style="font-size:22px;">🔒</span>
+              <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+        });
+      } catch {
+        // CSP may block injection on Cloudflare pages — OS notification is the primary alert
+      }
 
       shots.push(await snap(page, "Nursys® — Security Check (waiting for you)"));
 
-      // Wait up to 90 seconds for the user to manually click "Verify" in the visible browser
-      const passedCheck = await page.evaluate(() => {
-        return new Promise<boolean>((resolve) => {
-          let elapsed = 0;
-          const interval = setInterval(() => {
-            elapsed += 1000;
-            const text = document.body.innerText || "";
-            // Check if we've moved past the security page
-            const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(text);
-            if (!stillOnCheck) { clearInterval(interval); resolve(true); }
-            if (elapsed >= 90000) { clearInterval(interval); resolve(false); }
-          }, 1000);
-        });
-      });
+      // Poll from the Node.js side (NOT inside page.evaluate) because the page
+      // navigates away entirely after the user passes the Cloudflare check,
+      // which would destroy any in-page interval.
+      let passedCheck = false;
+      for (let elapsed = 0; elapsed < 120000; elapsed += 2000) {
+        await wait(2000);
+        try {
+          const currentUrl = page.url();
+          const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
+          const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(currentText);
+          // Passed if: page text no longer contains security check, OR URL changed to a Nursys page
+          if (!stillOnCheck || currentUrl.includes("Terms") || currentUrl.includes("LQCSearch")) {
+            // Double check it's not the same security check page at LQCSearch
+            if (!stillOnCheck) { passedCheck = true; break; }
+          }
+        } catch {
+          // page.evaluate can fail during navigation — that means the page IS navigating (good!)
+          await wait(2000);
+          passedCheck = true;
+          break;
+        }
+      }
 
       if (!passedCheck) {
-        // Also check if page navigated (URL changed)
-        await wait(2000);
-        const newText = await page.evaluate(() => document.body.innerText);
-        if (/additional\s+security\s+check|click\s+to\s+verify/i.test(newText)) {
-          console.log("[browser-verify] Security check not completed within 60s");
-          notifyVerificationProgress("Nursys®", "timeout");
-          shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
-          return { screenshots: shots };
-        }
+        console.log("[browser-verify] Security check not completed within 120s");
+        notifyVerificationProgress("Nursys®", "timeout");
+        shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
+        return { screenshots: shots };
       }
 
       console.log("[browser-verify] Security check passed! Continuing...");
       notifyVerificationProgress("Nursys®", "passed");
-      await wait(DELAY);
 
-      // After passing, the page may redirect — wait for it to settle
+      // Wait for the redirected page to fully settle
+      await wait(3000);
       try {
-        await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 15000 });
+        await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 });
       } catch {
         // Navigation may have already completed
-        await wait(2000);
       }
+      await wait(DELAY);
     }
 
     // ── Step 2: Handle terms page if redirected ───────────────
@@ -276,32 +293,37 @@ export async function captureNursysScreenshots(
       console.log("[browser-verify] Security check after terms — waiting for manual verification...");
       notifyCaptchaRequired("Nursys® (after terms)");
 
-      await page.evaluate(() => {
-        const overlay = document.createElement("div");
-        overlay.id = "careslink-security-alert";
-        overlay.innerHTML = `
-          <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
-            <span style="font-size:22px;">🔒</span>
-            <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
-          </div>
-        `;
-        document.body.appendChild(overlay);
-      });
-
-      const passedCheck = await page.evaluate(() => {
-        return new Promise<boolean>((resolve) => {
-          let elapsed = 0;
-          const interval = setInterval(() => {
-            elapsed += 1000;
-            const text = document.body.innerText || "";
-            const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(text);
-            if (!stillOnCheck) { clearInterval(interval); resolve(true); }
-            if (elapsed >= 90000) { clearInterval(interval); resolve(false); }
-          }, 1000);
+      try {
+        await page.evaluate(() => {
+          const overlay = document.createElement("div");
+          overlay.id = "careslink-security-alert";
+          overlay.innerHTML = `
+            <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
+              <span style="font-size:22px;">🔒</span>
+              <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
+            </div>
+          `;
+          document.body.appendChild(overlay);
         });
-      });
+      } catch {}
+
+      // Poll from Node.js side (page navigates away after Cloudflare check)
+      let passedCheck = false;
+      for (let elapsed = 0; elapsed < 120000; elapsed += 2000) {
+        await wait(2000);
+        try {
+          const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
+          if (!/additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(currentText)) {
+            passedCheck = true; break;
+          }
+        } catch {
+          await wait(2000);
+          passedCheck = true; break;
+        }
+      }
 
       if (!passedCheck) {
+        notifyVerificationProgress("Nursys®", "timeout");
         shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
         return { screenshots: shots };
       }

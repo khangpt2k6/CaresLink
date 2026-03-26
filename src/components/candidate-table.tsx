@@ -72,7 +72,7 @@ function FitDropdown({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex w-[130px] items-center justify-between gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20",
+          "flex w-[120px] items-center justify-between gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[#0090d9]/20",
           current
             ? `${current.bg} ${current.text} ${current.border}`
             : "bg-[#f8fafc] text-[#94a3b8] border-[#e2e8f0] hover:border-[#cbd5e1]"
@@ -337,10 +337,11 @@ export function CandidateTable({
                 <td className="px-3 py-3 align-middle text-center lg:px-5">
                   <button
                     onClick={() => router.push(`/candidates/${c.id}`)}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-[#f1f5f9] text-[#475569] hover:bg-[#e2e8f0] transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-[#f1f5f9] text-[#475569] hover:bg-[#e2e8f0] transition-colors whitespace-nowrap"
+                    title="View Profile"
                   >
                     <Eye className="h-3.5 w-3.5" />
-                    View Profile
+                    <span className="hidden xl:inline">View</span> Profile
                   </button>
                 </td>
                 <td className="px-3 py-3 align-middle lg:px-5">
@@ -369,7 +370,7 @@ export function CandidateTable({
                           <button
                             onClick={() => (onContactAiClick ?? onContactAi)?.(c)}
                             disabled={aiLoading === c.id || bookingLinkLoading === c.id || templateLoading === c.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-[#0077b6] hover:shadow-sm disabled:opacity-40"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-2.5 py-1.5 text-xs font-medium text-white transition-all hover:bg-[#0077b6] hover:shadow-sm disabled:opacity-40 whitespace-nowrap"
                           >
                             {aiLoading === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
                             {aiLoading === c.id ? "Booking..." : bookingLinkLoading === c.id ? "Sending..." : "Contact"}

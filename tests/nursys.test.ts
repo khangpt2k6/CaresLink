@@ -36,53 +36,78 @@ function resultsHtml(matches: { name: string; id: string }[]) {
     .join("\n");
 }
 
-const SINGLE_RESULT_HTML = resultsHtml([{ name: "SARAH FLORENCE JOHNSON", id: "24189751" }]);
+// Real Nursys data based on MARIA ANA D JOHNSON [NCSBN ID: 21551977]
+const SINGLE_RESULT_HTML = resultsHtml([{ name: "MARIA ANA D JOHNSON", id: "21551977" }]);
 
 const MULTIPLE_RESULTS_HTML = resultsHtml([
-  { name: "SARAH FLORENCE JOHNSON", id: "24189751" },
-  { name: "SARAH ANN JOHNSON", id: "99887766" },
+  { name: "MARIA ANA D JOHNSON", id: "21551977" },
+  { name: "MARIA BETH JOHNSON", id: "99887766" },
 ]);
 
 const NO_RESULTS_HTML = `<div>No results found for your search criteria.</div>`;
 
+// Real report: 3 licenses — FL (expired), VT (expired), WA (active/unencumbered)
 const REPORT_HTML = `
 <html>
-<h2>SARAH FLORENCE JOHNSON [NCSBN ID: 24189751]</h2>
+<h2>MARIA ANA D JOHNSON [NCSBN ID: 21551977]</h2>
+<p>As of Wednesday March 25 2026 07:05:49 PM US Central Time</p>
+<div>WASHINGTON (RN)</div>
+<table>
+<tr><td>LAST</td><td>TYPE</td><td>STATE</td><td>LICENSE#</td><td>ACTIVE</td><td>STATUS</td><td>ISSUED</td><td>EXPIRES</td><td>COMPACT</td></tr>
+<tr>
+  <td>JOHNSON, MARIA ANA</td>
+  <td>RN</td>
+  <td>FLORIDA</td>
+  <td>RN9458458</td>
+  <td>NO</td>
+  <td>EXPIRED</td>
+  <td>04/24/2017</td>
+  <td>07/31/2018</td>
+  <td>NONE</td>
+</tr>
+<tr>
+  <td>JOHNSON, MARIA ANA</td>
+  <td>RN</td>
+  <td>VERMONT</td>
+  <td>026.0052205</td>
+  <td>NO</td>
+  <td>EXPIRED</td>
+  <td>12/04/2009</td>
+  <td>03/31/2019</td>
+  <td>NONE</td>
+</tr>
+<tr>
+  <td>JOHNSON, MARIA ANA D</td>
+  <td>RN</td>
+  <td>WASHINGTON</td>
+  <td>RN60837175</td>
+  <td>YES</td>
+  <td>UNENCUMBERED</td>
+  <td>03/01/2018</td>
+  <td>04/22/2026</td>
+  <td>SINGLE STATE</td>
+</tr>
+</table>
+</html>`;
+
+// Expired-only report for testing expired detection
+const EXPIRED_REPORT_HTML = `
+<html>
+<h2>MARIA ANA JOHNSON [NCSBN ID: 21551977]</h2>
 <p>As of 03/25/2026</p>
 <div>FLORIDA (RN)</div>
 <table>
 <tr><td>LAST</td><td>TYPE</td><td>STATE</td><td>LICENSE#</td><td>ACTIVE</td><td>STATUS</td><td>ISSUED</td><td>EXPIRES</td><td>COMPACT</td></tr>
 <tr>
-  <td>SARAH FLORENCE JOHNSON</td>
+  <td>JOHNSON, MARIA ANA</td>
   <td>RN</td>
-  <td>FL</td>
-  <td>RN9404671</td>
-  <td>YES</td>
-  <td>UNENCUMBERED</td>
-  <td>06/15/2018</td>
-  <td>04/30/2027</td>
-  <td>MULTISTATE</td>
-</tr>
-</table>
-</html>`;
-
-const EXPIRED_REPORT_HTML = `
-<html>
-<h2>JOHN MICHAEL SMITH [NCSBN ID: 55667788]</h2>
-<p>As of 03/25/2026</p>
-<div>TEXAS (RN)</div>
-<table>
-<tr><td>LAST</td><td>TYPE</td><td>STATE</td><td>LICENSE#</td><td>ACTIVE</td><td>STATUS</td><td>ISSUED</td><td>EXPIRES</td><td>COMPACT</td></tr>
-<tr>
-  <td>JOHN MICHAEL SMITH</td>
-  <td>RN</td>
-  <td>TX</td>
-  <td>RN5512345</td>
+  <td>FLORIDA</td>
+  <td>RN9458458</td>
   <td>NO</td>
   <td>EXPIRED</td>
-  <td>01/10/2015</td>
-  <td>01/10/2024</td>
-  <td>SINGLE STATE</td>
+  <td>04/24/2017</td>
+  <td>07/31/2018</td>
+  <td>NONE</td>
 </tr>
 </table>
 </html>`;
@@ -114,22 +139,25 @@ describe("Nursys License Verification", () => {
       mockNursysFlow({ searchResultHtml: SINGLE_RESULT_HTML, reportHtml: REPORT_HTML });
 
       const { searchNursysRN } = await import("@/lib/nursys");
-      const result: NursysResult = await searchNursysRN("Sarah", "Johnson", "Florence");
+      const result: NursysResult = await searchNursysRN("Maria", "Johnson", "Ana");
 
       expect(result.status).toBe("found");
       expect(result.matches).toHaveLength(1);
-      expect(result.selectedMatch?.ncsbnId).toBe("24189751");
-      expect(result.selectedMatch?.firstName).toBe("SARAH");
+      expect(result.selectedMatch?.ncsbnId).toBe("21551977");
+      expect(result.selectedMatch?.firstName).toBe("MARIA");
       expect(result.selectedMatch?.lastName).toBe("JOHNSON");
       expect(result.report).toBeDefined();
-      expect(result.report?.licenses).toHaveLength(1);
-      expect(result.report?.licenses[0].type).toBe("RN");
-      expect(result.report?.licenses[0].licenseState).toBe("FL");
-      expect(result.report?.licenses[0].licenseNumber).toBe("RN9404671");
-      expect(result.report?.licenses[0].active).toBe(true);
-      expect(result.report?.licenses[0].status).toBe("UNENCUMBERED");
-      expect(result.report?.licenses[0].compactStatus).toBe("MULTISTATE");
-      expect(result.report?.reportDate).toBe("03/25/2026");
+      // Report has 3 licenses (FL expired, VT expired, WA active)
+      expect(result.report?.licenses).toHaveLength(3);
+      // FL — expired
+      expect(result.report?.licenses[0].licenseNumber).toBe("RN9458458");
+      expect(result.report?.licenses[0].active).toBe(false);
+      expect(result.report?.licenses[0].status).toBe("EXPIRED");
+      // WA — active/unencumbered
+      expect(result.report?.licenses[2].licenseNumber).toBe("RN60837175");
+      expect(result.report?.licenses[2].active).toBe(true);
+      expect(result.report?.licenses[2].status).toBe("UNENCUMBERED");
+      expect(result.report?.licenses[2].compactStatus).toBe("SINGLE STATE");
       expect(result.manualUrl).toContain("nursys.com");
     });
 
@@ -149,24 +177,24 @@ describe("Nursys License Verification", () => {
       mockNursysFlow({ searchResultHtml: MULTIPLE_RESULTS_HTML, reportHtml: REPORT_HTML });
 
       const { searchNursysRN } = await import("@/lib/nursys");
-      const result = await searchNursysRN("Sarah", "Johnson", "Florence");
+      const result = await searchNursysRN("Maria", "Johnson", "Ana");
 
       expect(result.status).toBe("multiple_found");
       expect(result.matches).toHaveLength(2);
-      // Should prefer FLORENCE match over ANN
-      expect(result.selectedMatch?.middleName).toBe("FLORENCE");
-      expect(result.selectedMatch?.ncsbnId).toBe("24189751");
+      // Should prefer ANA D match over BETH
+      expect(result.selectedMatch?.middleName).toBe("ANA D");
+      expect(result.selectedMatch?.ncsbnId).toBe("21551977");
     });
 
     it("returns 'multiple_found' and picks first when no middle name provided", async () => {
       mockNursysFlow({ searchResultHtml: MULTIPLE_RESULTS_HTML, reportHtml: REPORT_HTML });
 
       const { searchNursysRN } = await import("@/lib/nursys");
-      const result = await searchNursysRN("Sarah", "Johnson");
+      const result = await searchNursysRN("Maria", "Johnson");
 
       expect(result.status).toBe("multiple_found");
       expect(result.matches).toHaveLength(2);
-      expect(result.selectedMatch?.ncsbnId).toBe("24189751"); // first match
+      expect(result.selectedMatch?.ncsbnId).toBe("21551977"); // first match
     });
 
     it("sends correct search parameters to Nursys", async () => {
@@ -223,18 +251,19 @@ describe("Nursys License Verification", () => {
       expect(result.report).toBeUndefined(); // gracefully degraded
     });
 
-    it("parses expired license correctly", async () => {
-      const expiredMatch = resultsHtml([{ name: "JOHN MICHAEL SMITH", id: "55667788" }]);
+    it("parses expired Florida license correctly", async () => {
+      const expiredMatch = resultsHtml([{ name: "MARIA ANA JOHNSON", id: "21551977" }]);
       mockNursysFlow({ searchResultHtml: expiredMatch, reportHtml: EXPIRED_REPORT_HTML });
 
       const { searchNursysRN } = await import("@/lib/nursys");
-      const result = await searchNursysRN("John", "Smith", "Michael");
+      const result = await searchNursysRN("Maria", "Johnson", "Ana");
 
       expect(result.status).toBe("found");
+      expect(result.report?.licenses[0].licenseNumber).toBe("RN9458458");
       expect(result.report?.licenses[0].active).toBe(false);
       expect(result.report?.licenses[0].status).toBe("EXPIRED");
-      expect(result.report?.licenses[0].licenseState).toBe("TX");
-      expect(result.report?.licenses[0].compactStatus).toBe("SINGLE STATE");
+      expect(result.report?.licenses[0].licenseState).toBe("FLORIDA");
+      expect(result.report?.licenses[0].compactStatus).toBe("NONE");
     });
 
     it("handles optional licenseState and licenseNumber", async () => {
@@ -268,24 +297,23 @@ describe("Nursys License Verification", () => {
 
   describe("Credential Check API integration", () => {
     it("calls nursys for NURSE roleType and stores result", async () => {
-      // This test verifies the verify route calls searchNursysRN for nurses
       mockNursysFlow({ searchResultHtml: SINGLE_RESULT_HTML, reportHtml: REPORT_HTML });
 
       const { searchNursysRN } = await import("@/lib/nursys");
-      const result = await searchNursysRN("Sarah", "Johnson", "Florence", "RN9404671", "FL");
+      const result = await searchNursysRN("Maria", "Johnson", "Ana", "RN9458458", "FL");
 
       // Verify the result shape matches what the API route stores as nursysData
       expect(result).toMatchObject({
         status: "found",
         matches: expect.arrayContaining([
-          expect.objectContaining({ ncsbnId: "24189751" }),
+          expect.objectContaining({ ncsbnId: "21551977" }),
         ]),
-        selectedMatch: expect.objectContaining({ ncsbnId: "24189751" }),
+        selectedMatch: expect.objectContaining({ ncsbnId: "21551977" }),
         report: expect.objectContaining({
           licenses: expect.arrayContaining([
             expect.objectContaining({
               type: "RN",
-              licenseNumber: "RN9404671",
+              licenseNumber: "RN60837175",
               active: true,
               status: "UNENCUMBERED",
             }),
@@ -299,12 +327,12 @@ describe("Nursys License Verification", () => {
       mockNursysFlow({ searchResultHtml: SINGLE_RESULT_HTML, reportHtml: REPORT_HTML });
 
       const { searchNursysRN } = await import("@/lib/nursys");
-      const result = await searchNursysRN("Sarah", "Johnson");
+      const result = await searchNursysRN("Maria", "Johnson");
 
       // Ensure the result can be serialized to JSON (needed for Prisma JSON field)
       const serialized = JSON.parse(JSON.stringify(result));
       expect(serialized.status).toBe("found");
-      expect(serialized.report.licenses[0].licenseNumber).toBe("RN9404671");
+      expect(serialized.report.licenses[0].licenseNumber).toBe("RN9458458");
     });
   });
 });

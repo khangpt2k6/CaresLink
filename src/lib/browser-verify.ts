@@ -51,49 +51,80 @@ export async function captureNursysScreenshots(
     );
 
     // ── Step 1: Terms page ──────────────────────────────────
-    await page.goto("https://www.nursys.com/NLV/NLVTerms.aspx", {
+    await page.goto("https://www.nursys.com/LQC/LQCSearch.aspx", {
       waitUntil: "networkidle2",
       timeout: 30000,
     });
-    shots.push(await snap(page, "Nursys® — Terms & Conditions"));
 
-    // Accept terms
-    await page.click('input[name="btnAgree"]');
-    await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 });
+    // LQC redirects to LQCTerms.aspx — accept terms if present
+    if (page.url().includes("Terms")) {
+      shots.push(await snap(page, "Nursys® — Terms & Conditions"));
+      const agreeBtn = await page.$("#MainContent_lbtnContinue");
+      if (agreeBtn) {
+        await Promise.all([
+          page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }),
+          agreeBtn.click(),
+        ]);
+      }
+    }
     shots.push(await snap(page, "Nursys® — License Search Form"));
 
-    // ── Step 2: Fill search form ────────────────────────────
-    await page.$eval(
-      'input[name="txtLastName"]',
-      (el, v) => ((el as HTMLInputElement).value = v),
-      lastName.toUpperCase()
-    );
-    await page.$eval(
-      'input[name="txtFirstName"]',
-      (el, v) => ((el as HTMLInputElement).value = v),
-      firstName.toUpperCase()
-    );
-
-    try { await page.select('select[name="ddlLicType"]', "RN"); } catch {}
-    if (licenseState) {
-      try { await page.select('select[name="ddlState"]', licenseState.toUpperCase()); } catch {}
+    // ── Step 2: Fill search form (real Nursys LQC element IDs) ─
+    // Last name
+    const lastInput = await page.$('#MainContent_txtLastName, input[name*="LastName"]');
+    if (lastInput) {
+      await lastInput.click();
+      await lastInput.type(lastName.toUpperCase(), { delay: 80 });
     }
-    if (licenseNumber) {
+
+    // First name
+    const firstInput = await page.$('#MainContent_txtFirstName, input[name*="FirstName"]');
+    if (firstInput) {
+      await firstInput.click();
+      await firstInput.type(firstName.toUpperCase(), { delay: 80 });
+    }
+
+    // License type = RN (value="3" on LQC)
+    try {
+      await page.evaluate(() => {
+        for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
+          const rnOpt = Array.from(sel.options).find((o) => o.text.trim() === "RN");
+          if (rnOpt) { sel.value = rnOpt.value; sel.dispatchEvent(new Event("change", { bubbles: true })); break; }
+        }
+      });
+    } catch {}
+
+    // State — match by full name (e.g. "FLORIDA")
+    if (licenseState) {
       try {
-        await page.$eval(
-          'input[name="txtLicNum"]',
-          (el, v) => ((el as HTMLInputElement).value = v),
-          licenseNumber
-        );
+        await page.evaluate((state) => {
+          for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
+            const opts = Array.from(sel.options);
+            if (!opts.some((o) => /ALABAMA|FLORIDA/i.test(o.text))) continue;
+            const match = opts.find((o) => o.value.toUpperCase() === state || o.text.toUpperCase().includes(state));
+            if (match) { sel.value = match.value; sel.dispatchEvent(new Event("change", { bubbles: true })); }
+          }
+        }, licenseState.toUpperCase());
       } catch {}
+    }
+
+    // License number
+    if (licenseNumber) {
+      const licInput = await page.$('#MainContent_txtLicenseNumber, input[name*="LicNum"], input[name*="License"]');
+      if (licInput) {
+        await licInput.click();
+        await licInput.type(licenseNumber, { delay: 80 });
+      }
     }
 
     shots.push(await snap(page, "Nursys® — Search Form Filled"));
 
     // ── Step 3: Submit and capture results ─────────────────
+    const searchBtn = await page.$('#MainContent_ibtnSearchName, input[name="btnSearch"]');
+    if (!searchBtn) throw new Error("Search button not found");
     await Promise.all([
       page.waitForNavigation({ waitUntil: "networkidle2", timeout: 25000 }),
-      page.click('input[name="btnSearch"]'),
+      searchBtn.click(),
     ]);
     shots.push(await snap(page, "Nursys® — Search Results"));
 

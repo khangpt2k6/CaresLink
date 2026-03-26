@@ -139,13 +139,32 @@ export async function captureNursysScreenshots(
           agreeBtn.click(),
         ]);
       }
+
+      // Wait for the new page to fully load after navigation
       await wait(DELAY);
+      await page.waitForSelector("body", { timeout: 10000 });
+      await wait(1000);
     }
 
     // Check if blocked after terms
-    const afterTermsText = await page.evaluate(() => document.body.innerText);
+    let afterTermsText = "";
+    try { afterTermsText = await page.evaluate(() => document.body.innerText); } catch { await wait(2000); }
     if (/access\s+denied|blocked/i.test(afterTermsText)) {
       shots.push(await snap(page, "Nursys® — Blocked After Terms"));
+      return shots;
+    }
+
+    // Check if form fields exist — if not, page may still be loading
+    let formReady = false;
+    for (let i = 0; i < 5; i++) {
+      const hasFields = await page.$('#MainContent_txtLastName, input[id*="LastName"]');
+      if (hasFields) { formReady = true; break; }
+      await wait(2000);
+    }
+
+    if (!formReady) {
+      console.error("[browser-verify] Search form not found after terms acceptance");
+      shots.push(await snap(page, "Nursys® — Form Not Found"));
       return shots;
     }
 

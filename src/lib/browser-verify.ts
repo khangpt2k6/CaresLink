@@ -157,12 +157,32 @@ export async function captureNursysScreenshots(
       // Even if navigation times out, the page may still be usable
       console.log("[browser-verify] Initial navigation timeout — checking page state...");
     }
-    // Give the page a moment to render
-    await wait(3000);
+    // Give the page time to render (Cloudflare pages load content via JS)
+    await wait(5000);
 
     // Check if security check / CAPTCHA page is showing
-    const pageText = await page.evaluate(() => document.body.innerText);
-    const isSecurityCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(pageText);
+    let pageText = "";
+    let pageHtml = "";
+    try { pageText = await page.evaluate(() => document.body.innerText || ""); } catch {}
+    try { pageHtml = await page.evaluate(() => document.body.innerHTML || ""); } catch {}
+    const hasSearchForm = await page.$('#MainContent_txtLastName, input[id*="LastName"]').then((el) => !!el).catch(() => false);
+    const pageTitle = await page.title().catch(() => "");
+    const currentUrl = page.url();
+
+    // Log for debugging
+    console.log("[browser-verify] Page URL:", currentUrl);
+    console.log("[browser-verify] Page title:", pageTitle);
+    console.log("[browser-verify] Has search form:", hasSearchForm);
+    console.log("[browser-verify] Page text (first 200 chars):", pageText.slice(0, 200).replace(/\n/g, " "));
+
+    const securityPatterns = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human|security\s+check\s+is\s+required|identified.*as\s+a\s+bot|automated\s+task|Incomplete/i;
+    const securityHtmlPatterns = /turnstile|cf-challenge|challenge-platform|cloudflare/i;
+    const isSecurityCheck =
+      securityPatterns.test(pageText) ||
+      securityPatterns.test(pageTitle) ||
+      securityHtmlPatterns.test(pageHtml) ||
+      // Fallback: we're on the Nursys URL but there's no search form and no terms page
+      (!hasSearchForm && !currentUrl.includes("Terms") && currentUrl.includes("nursys.com"));
     const isHardBlocked = /access\s+denied|error\s+15/i.test(pageText) && !isSecurityCheck;
 
     if (isHardBlocked) {

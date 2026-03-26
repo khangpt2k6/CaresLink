@@ -132,18 +132,38 @@ export async function captureNursysScreenshots(
       await page.evaluate(() => window.scrollBy(0, 300));
       await wait(1000);
 
-      const agreeBtn = await page.$("#MainContent_lbtnContinue");
-      if (agreeBtn) {
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }),
-          agreeBtn.click(),
-        ]);
+      // Find the agree button — try multiple strategies
+      const agreeClicked = await page.evaluate(() => {
+        // Strategy 1: known ID
+        const btn1 = document.querySelector<HTMLElement>("#MainContent_lbtnContinue");
+        if (btn1) { btn1.click(); return "MainContent_lbtnContinue"; }
+
+        // Strategy 2: any link/button containing "agree" or "continue"
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
+          const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
+          if (text.includes("agree") || text.includes("i agree") || text.includes("continue")) {
+            el.click();
+            return `text: "${text.trim().slice(0, 40)}"`;
+          }
+        }
+        return null;
+      });
+
+      console.log("[browser-verify] Agree button:", agreeClicked || "NOT FOUND");
+
+      if (agreeClicked) {
+        // Wait for navigation after clicking agree
+        try {
+          await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 });
+        } catch {
+          // Navigation might not trigger — wait and check URL
+          await wait(3000);
+        }
       }
 
-      // Wait for the new page to fully load after navigation
+      // Wait for the new page to fully load
       await wait(DELAY);
-      await page.waitForSelector("body", { timeout: 10000 });
-      await wait(1000);
+      console.log("[browser-verify] After agree URL:", page.url());
     }
 
     // Check if blocked after terms
@@ -167,6 +187,26 @@ export async function captureNursysScreenshots(
       shots.push(await snap(page, "Nursys® — Form Not Found"));
       return shots;
     }
+
+    // ── Dismiss popups ──────────────────────────────────────────
+    // 1) Cookie banner: "Accept All"
+    await page.evaluate(() => {
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button"))) {
+        if (/accept\s*all/i.test(el.textContent || "")) { el.click(); return; }
+      }
+    }).catch(() => {});
+    await wait(500);
+
+    // 2) e-Notify promo modal: "No Thanks"
+    await page.evaluate(() => {
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, span"))) {
+        if (/no\s*thanks/i.test(el.textContent || "")) { el.click(); return; }
+      }
+      // Also try the X close button on the modal
+      const closeBtn = document.querySelector<HTMLElement>('.modal .close, [data-dismiss="modal"], button[aria-label="Close"]');
+      if (closeBtn) closeBtn.click();
+    }).catch(() => {});
+    await wait(1000);
 
     shots.push(await snap(page, "Nursys® — License Search Form"));
 

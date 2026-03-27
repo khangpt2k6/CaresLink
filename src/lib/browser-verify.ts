@@ -5,10 +5,78 @@
  * Captures screenshots at key steps and embeds them into the PDF report.
  */
 
-import puppeteer, { Browser, Page } from "puppeteer";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import { Browser, Page } from "puppeteer";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import AdmZip from "adm-zip";
+
+// Apply stealth patches — hides webdriver, chrome.runtime, permissions, plugins, etc.
+puppeteer.use(StealthPlugin());
+
+// ── CapSolver Chrome Extension setup ──────────────────────────────
+// Loads the CapSolver browser extension directly (bypasses broken plugin build).
+// The extension auto-detects and solves Cloudflare Turnstile + reCAPTCHA v2.
+const CAPSOLVER_API_KEY = process.env.CAPSOLVER_API_KEY;
+const HAS_CAPSOLVER = !!CAPSOLVER_API_KEY;
+let capsolverExtensionPath: string | undefined;
+
+if (HAS_CAPSOLVER) {
+  try {
+    const zipPath = path.join(
+      __dirname, "..", "..", "node_modules",
+      "puppeteer-extra-plugin-capsolver", "src", "resources",
+      "capsolver-extension-v1.15.3.zip"
+    );
+    // Also check from cwd in case __dirname doesn't resolve correctly
+    const altZipPath = path.join(
+      process.cwd(), "node_modules",
+      "puppeteer-extra-plugin-capsolver", "src", "resources",
+      "capsolver-extension-v1.15.3.zip"
+    );
+    const resolvedZip = fs.existsSync(zipPath) ? zipPath : altZipPath;
+
+    if (fs.existsSync(resolvedZip)) {
+      const extDir = path.join(os.tmpdir(), "capsolver-extension");
+      if (!fs.existsSync(extDir)) fs.mkdirSync(extDir, { recursive: true });
+      new AdmZip(resolvedZip).extractAllTo(extDir, true);
+
+      // Inject API key into extension config
+      const configPath = path.join(extDir, "assets", "config.js");
+      if (fs.existsSync(configPath)) {
+        let config = fs.readFileSync(configPath, "utf8");
+        config = config.replace(/apiKey: '',/, `apiKey: '${CAPSOLVER_API_KEY}',`);
+        config = config.replace(/appId: '',/, `appId: 'F9E44D7F-A254-4D75-87F6-54B84EE16676',`);
+        config = config.replace(/reCaptchaMode: 'click',/, `reCaptchaMode: 'click',`);
+        config = config.replace(/reCaptchaMode: 'token',/, `reCaptchaMode: 'click',`);
+        // Disable proxy in extension (we handle proxies separately if needed)
+        config = config.replace(/useProxy: true,/, `useProxy: false,`);
+        fs.writeFileSync(configPath, config);
+      }
+
+      // Add http://*/* permission to manifest so extension works on all sites
+      const manifestPath = path.join(extDir, "manifest.json");
+      if (fs.existsSync(manifestPath)) {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        if (!manifest.permissions.includes("http://*/*")) {
+          manifest.permissions.push("http://*/*");
+          fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+        }
+      }
+
+      capsolverExtensionPath = extDir;
+      console.log("[browser-verify] CapSolver extension prepared at:", extDir);
+    } else {
+      console.warn("[browser-verify] CapSolver extension zip not found — falling back to manual CAPTCHA solving");
+    }
+  } catch (err) {
+    console.warn("[browser-verify] Failed to prepare CapSolver extension:", err);
+  }
+} else {
+  console.log("[browser-verify] No CAPSOLVER_API_KEY — CAPTCHAs require manual solving");
+}
 import { notifyCaptchaRequired, notifyVerificationProgress } from "./os-notify";
 
 export interface VerificationScreenshot {
@@ -18,7 +86,7 @@ export interface VerificationScreenshot {
 }
 
 const IS_PROD = process.env.NODE_ENV === "production";
-const DELAY = 2000;
+const DELAY = 500;
 const SCREENSHOT_DIR = path.join(process.cwd(), "scripts", "screenshots");
 
 // Ensure screenshots folder exists
@@ -45,23 +113,40 @@ function findChrome(): string | undefined {
 }
 
 /** Launch browser — real Chrome in dev (visible), headless in prod.
- *  Pass forceVisible=true to always open visible (e.g. Nursys needs manual CAPTCHA). */
-async function launchBrowser(forceVisible = false): Promise<Browser> {
+ *  Pass forceVisible=true to always open visible (e.g. Nursys needs manual CAPTCHA).
+ *  Pass withCapsolver=true to load the CapSolver extension (forces visible mode). */
+async function launchBrowser(forceVisible = false, withCapsolver = false): Promise<Browser> {
   const chromePath = findChrome();
   const tmpProfile = path.join(os.tmpdir(), "careslink-chrome-profile");
+  const loadExtension = withCapsolver && !!capsolverExtensionPath;
 
-  const headless = forceVisible ? false : IS_PROD;
+  // CapSolver extension requires visible mode (headless can't load extensions)
+  const headless = (forceVisible || loadExtension) ? false : IS_PROD;
+
+  const baseArgs = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-infobars",
+    "--window-size=1280,900",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+  ];
+
+  // Inject CapSolver extension into Chrome launch args
+  if (loadExtension) {
+    const extPath = capsolverExtensionPath!.replace(/\\/g, "/");
+    baseArgs.push(`--disable-extensions-except=${extPath}`);
+    baseArgs.push(`--load-extension=${extPath}`);
+  }
 
   if (chromePath) {
     return puppeteer.launch({
-      headless,           // visible in dev or when forceVisible (for manual CAPTCHA)
+      headless,
       executablePath: chromePath,
       userDataDir: tmpProfile,
-      args: [
-        "--disable-blink-features=AutomationControlled",
-        "--disable-infobars",
-        "--window-size=1280,900",
-      ],
+      args: baseArgs,
       defaultViewport: headless ? { width: 1280, height: 900 } : null,
       ignoreDefaultArgs: ["--enable-automation"],
     });
@@ -70,14 +155,41 @@ async function launchBrowser(forceVisible = false): Promise<Browser> {
   // Fallback: Puppeteer's bundled Chromium
   return puppeteer.launch({
     headless,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", ...baseArgs],
     defaultViewport: { width: 1280, height: 900 },
+  });
+}
+
+/** Wait for the CapSolver extension to signal it solved a CAPTCHA.
+ *  The extension sets window.captchaSolvedCallbackDone = true when done. */
+async function waitForCapsolverCallback(page: Page, timeout = 30000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    try {
+      const done = await page.evaluate(() => (window as any).captchaSolvedCallbackDone === true);
+      if (done) return true;
+    } catch {
+      // page.evaluate can fail during navigation — treat as solved
+      return true;
+    }
+    await wait(1000);
+  }
+  return false;
+}
+
+/** Inject the captchaSolvedCallback that the CapSolver extension calls after solving. */
+async function setupCapsolverCallback(page: Page): Promise<void> {
+  await page.evaluateOnNewDocument(() => {
+    (window as any).captchaSolvedCallbackDone = false;
+    (window as any).captchaSolvedCallback = () => {
+      (window as any).captchaSolvedCallbackDone = true;
+    };
   });
 }
 
 let snapCount = 0;
 async function snap(page: Page, label: string): Promise<VerificationScreenshot> {
-  await wait(800);
+  await wait(200);
   const buf = await page.screenshot({ type: "png", fullPage: false }) as Buffer;
 
   // Also save to disk for debugging
@@ -134,10 +246,13 @@ export async function captureNursysScreenshots(
   let reportPdfPath: string | undefined;
   let reportPdfBase64: string | undefined;
   let extractedReport: NursysBrowserReport | undefined;
-  const browser = await launchBrowser(true); // Always visible — user may need to solve CAPTCHA
+  const browser = await launchBrowser(true, HAS_CAPSOLVER); // visible + CapSolver extension if available
 
   try {
     const page = (await browser.pages())[0] || await browser.newPage();
+
+    // Set up CapSolver callback so we can detect when the extension solves a CAPTCHA
+    if (HAS_CAPSOLVER) await setupCapsolverCallback(page);
 
     // Remove automation traces
     await page.evaluateOnNewDocument(() => {
@@ -158,7 +273,7 @@ export async function captureNursysScreenshots(
       console.log("[browser-verify] Initial navigation timeout — checking page state...");
     }
     // Give the page time to render (Cloudflare pages load content via JS)
-    await wait(5000);
+    await wait(1500);
 
     // Check if security check / CAPTCHA page is showing
     let pageText = "";
@@ -191,63 +306,84 @@ export async function captureNursysScreenshots(
     }
 
     if (isSecurityCheck) {
-      console.log("[browser-verify] Security check detected — waiting for manual verification...");
-      notifyCaptchaRequired("Nursys®");
+      if (HAS_CAPSOLVER) {
+        // CapSolver extension auto-solves Cloudflare Turnstile — just wait for it
+        console.log("[browser-verify] Security check detected — CapSolver extension solving automatically...");
+        shots.push(await snap(page, "Nursys® — Security Check (CapSolver solving)"));
 
-      // Try to show a visible alert banner (may fail on Cloudflare CSP pages)
-      try {
-        await page.evaluate(() => {
-          const overlay = document.createElement("div");
-          overlay.id = "careslink-security-alert";
-          overlay.innerHTML = `
-            <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
-              <span style="font-size:22px;">🔒</span>
-              <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
-            </div>
-          `;
-          document.body.appendChild(overlay);
-        });
-      } catch {
-        // CSP may block injection on Cloudflare pages — OS notification is the primary alert
-      }
-
-      shots.push(await snap(page, "Nursys® — Security Check (waiting for you)"));
-
-      // Poll from the Node.js side (NOT inside page.evaluate) because the page
-      // navigates away entirely after the user passes the Cloudflare check,
-      // which would destroy any in-page interval.
-      let passedCheck = false;
-      for (let elapsed = 0; elapsed < 120000; elapsed += 2000) {
-        await wait(2000);
-        try {
-          const currentUrl = page.url();
-          const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
-          const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(currentText);
-          // Passed if: page text no longer contains security check, OR URL changed to a Nursys page
-          if (!stillOnCheck || currentUrl.includes("Terms") || currentUrl.includes("LQCSearch")) {
-            // Double check it's not the same security check page at LQCSearch
-            if (!stillOnCheck) { passedCheck = true; break; }
-          }
-        } catch {
-          // page.evaluate can fail during navigation — that means the page IS navigating (good!)
+        let passedCheck = false;
+        // Extension typically solves Turnstile in ~2s; poll for up to 30s
+        for (let elapsed = 0; elapsed < 30000; elapsed += 2000) {
           await wait(2000);
-          passedCheck = true;
-          break;
+          try {
+            const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
+            const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human|security\s+check\s+is\s+required/i.test(currentText);
+            if (!stillOnCheck) { passedCheck = true; break; }
+          } catch {
+            // page.evaluate fails during navigation — page is redirecting (good!)
+            await wait(2000);
+            passedCheck = true;
+            break;
+          }
         }
-      }
 
-      if (!passedCheck) {
-        console.log("[browser-verify] Security check not completed within 120s");
-        notifyVerificationProgress("Nursys®", "timeout");
-        shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
-        return { screenshots: shots };
+        if (!passedCheck) {
+          console.log("[browser-verify] CapSolver did not solve Turnstile within 30s");
+          notifyVerificationProgress("Nursys®", "timeout");
+          shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
+          return { screenshots: shots };
+        }
+      } else {
+        // No CapSolver — fall back to manual solving
+        console.log("[browser-verify] Security check detected — waiting for manual verification...");
+        notifyCaptchaRequired("Nursys®");
+
+        try {
+          await page.evaluate(() => {
+            const overlay = document.createElement("div");
+            overlay.id = "careslink-security-alert";
+            overlay.innerHTML = `
+              <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
+                <span style="font-size:22px;">🔒</span>
+                <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
+              </div>
+            `;
+            document.body.appendChild(overlay);
+          });
+        } catch {}
+
+        shots.push(await snap(page, "Nursys® — Security Check (waiting for you)"));
+
+        let passedCheck = false;
+        for (let elapsed = 0; elapsed < 120000; elapsed += 2000) {
+          await wait(2000);
+          try {
+            const currentUrl = page.url();
+            const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
+            const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(currentText);
+            if (!stillOnCheck || currentUrl.includes("Terms") || currentUrl.includes("LQCSearch")) {
+              if (!stillOnCheck) { passedCheck = true; break; }
+            }
+          } catch {
+            await wait(2000);
+            passedCheck = true;
+            break;
+          }
+        }
+
+        if (!passedCheck) {
+          console.log("[browser-verify] Security check not completed within 120s");
+          notifyVerificationProgress("Nursys®", "timeout");
+          shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
+          return { screenshots: shots };
+        }
       }
 
       console.log("[browser-verify] Security check passed! Continuing...");
       notifyVerificationProgress("Nursys®", "passed");
 
       // Wait for the redirected page to fully settle
-      await wait(3000);
+      await wait(1000);
       try {
         await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 });
       } catch {
@@ -260,11 +396,9 @@ export async function captureNursysScreenshots(
     if (page.url().includes("Terms")) {
       shots.push(await snap(page, "Nursys® — Terms & Conditions"));
 
-      // Scroll like a human
-      await page.evaluate(() => window.scrollBy(0, 300));
-      await wait(1500);
-      await page.evaluate(() => window.scrollBy(0, 300));
-      await wait(1000);
+      // Scroll down before clicking agree
+      await page.evaluate(() => window.scrollBy(0, 600));
+      await wait(300);
 
       // Find the agree button — try multiple strategies
       const agreeClicked = await page.evaluate(() => {
@@ -291,7 +425,7 @@ export async function captureNursysScreenshots(
           await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 });
         } catch {
           // Navigation might not trigger — wait and check URL
-          await wait(3000);
+          await wait(1000);
         }
       }
 
@@ -302,34 +436,36 @@ export async function captureNursysScreenshots(
 
     // Check if blocked after terms
     let afterTermsText = "";
-    try { afterTermsText = await page.evaluate(() => document.body.innerText); } catch { await wait(2000); }
+    try { afterTermsText = await page.evaluate(() => document.body.innerText); } catch { await wait(500); }
     if (/access\s+denied|blocked/i.test(afterTermsText) && !/additional\s+security\s+check/i.test(afterTermsText)) {
       shots.push(await snap(page, "Nursys® — Blocked After Terms"));
       return { screenshots: shots };
     }
 
-    // If security check appears after terms, wait for manual resolution
+    // If security check appears after terms, wait for resolution
     if (/additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(afterTermsText)) {
-      console.log("[browser-verify] Security check after terms — waiting for manual verification...");
-      notifyCaptchaRequired("Nursys® (after terms)");
+      const timeout = HAS_CAPSOLVER ? 30000 : 120000;
+      console.log(`[browser-verify] Security check after terms — ${HAS_CAPSOLVER ? "CapSolver solving" : "waiting for manual verification"}...`);
+      if (!HAS_CAPSOLVER) notifyCaptchaRequired("Nursys® (after terms)");
 
-      try {
-        await page.evaluate(() => {
-          const overlay = document.createElement("div");
-          overlay.id = "careslink-security-alert";
-          overlay.innerHTML = `
-            <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
-              <span style="font-size:22px;">🔒</span>
-              <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
-            </div>
-          `;
-          document.body.appendChild(overlay);
-        });
-      } catch {}
+      if (!HAS_CAPSOLVER) {
+        try {
+          await page.evaluate(() => {
+            const overlay = document.createElement("div");
+            overlay.id = "careslink-security-alert";
+            overlay.innerHTML = `
+              <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
+                <span style="font-size:22px;">🔒</span>
+                <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
+              </div>
+            `;
+            document.body.appendChild(overlay);
+          });
+        } catch {}
+      }
 
-      // Poll from Node.js side (page navigates away after Cloudflare check)
       let passedCheck = false;
-      for (let elapsed = 0; elapsed < 120000; elapsed += 2000) {
+      for (let elapsed = 0; elapsed < timeout; elapsed += 2000) {
         await wait(2000);
         try {
           const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
@@ -358,7 +494,7 @@ export async function captureNursysScreenshots(
     for (let i = 0; i < 5; i++) {
       const hasFields = await page.$('#MainContent_txtLastName, input[id*="LastName"]');
       if (hasFields) { formReady = true; break; }
-      await wait(2000);
+      await wait(800);
     }
 
     if (!formReady) {
@@ -374,7 +510,7 @@ export async function captureNursysScreenshots(
         if (/accept\s*all/i.test(el.textContent || "")) { el.click(); return; }
       }
     }).catch(() => {});
-    await wait(500);
+    await wait(200);
 
     // 2) e-Notify promo modal: "No Thanks"
     await page.evaluate(() => {
@@ -385,7 +521,7 @@ export async function captureNursysScreenshots(
       const closeBtn = document.querySelector<HTMLElement>('.modal .close, [data-dismiss="modal"], button[aria-label="Close"]');
       if (closeBtn) closeBtn.click();
     }).catch(() => {});
-    await wait(1000);
+    await wait(300);
 
     shots.push(await snap(page, "Nursys® — License Search Form"));
 
@@ -394,19 +530,15 @@ export async function captureNursysScreenshots(
     const lastInput = await page.$('#MainContent_txtLastName, input[id*="LastName"], input[name*="LastName"]');
     if (lastInput) {
       await lastInput.click();
-      await wait(300);
-      await lastInput.type(lastName.toUpperCase(), { delay: 100 });
+      await lastInput.type(lastName.toUpperCase(), { delay: 30 });
     }
-    await wait(500);
 
     // First name
     const firstInput = await page.$('#MainContent_txtFirstName, input[id*="FirstName"], input[name*="FirstName"]');
     if (firstInput) {
       await firstInput.click();
-      await wait(300);
-      await firstInput.type(firstName.toUpperCase(), { delay: 100 });
+      await firstInput.type(firstName.toUpperCase(), { delay: 30 });
     }
-    await wait(500);
 
     // License type = RN (find by option text)
     await page.evaluate(() => {
@@ -415,7 +547,6 @@ export async function captureNursysScreenshots(
         if (rnOpt) { sel.value = rnOpt.value; sel.dispatchEvent(new Event("change", { bubbles: true })); break; }
       }
     }).catch(() => {});
-    await wait(500);
 
     // State — match by full name (e.g. "FLORIDA")
     if (licenseState) {
@@ -428,7 +559,6 @@ export async function captureNursysScreenshots(
         }
       }, licenseState.toUpperCase()).catch(() => {});
     }
-    await wait(500);
 
     shots.push(await snap(page, "Nursys® — Search Form Filled"));
     await wait(DELAY);
@@ -440,46 +570,75 @@ export async function captureNursysScreenshots(
     ).catch(() => null);
 
     if (recaptchaFrame) {
-      console.log("[browser-verify] reCAPTCHA detected — prompting user to solve it manually...");
-      notifyCaptchaRequired("Nursys® reCAPTCHA");
+      if (HAS_CAPSOLVER) {
+        // CapSolver extension auto-solves reCAPTCHA v2
+        console.log("[browser-verify] reCAPTCHA detected — CapSolver extension solving automatically...");
 
-      // Show a visible alert in the browser window so the user knows to act
-      await page.evaluate(() => {
-        const overlay = document.createElement("div");
-        overlay.id = "careslink-captcha-alert";
-        overlay.innerHTML = `
-          <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e40af;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
-            <span style="font-size:22px;">🔒</span>
-            <span>CaresLink: Please complete the reCAPTCHA below, then wait — automation will continue.</span>
-          </div>
-        `;
-        document.body.appendChild(overlay);
-      });
-
-      // Wait up to 90 seconds for the user to solve the captcha
-      const captchaSolved = await page.evaluate(() => {
-        return new Promise<boolean>((resolve) => {
-          let elapsed = 0;
-          const interval = setInterval(() => {
-            elapsed += 1000;
-            const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
-            if (ta && ta.value.length > 0) { clearInterval(interval); resolve(true); }
-            if (elapsed >= 90000) { clearInterval(interval); resolve(false); }
-          }, 1000);
-        });
-      });
-
-      // Remove the alert overlay
-      await page.evaluate(() => {
-        document.getElementById("careslink-captcha-alert")?.remove();
-      });
-
-      if (captchaSolved) {
-        console.log("[browser-verify] reCAPTCHA solved by user!");
-        notifyVerificationProgress("Nursys® reCAPTCHA", "passed");
+        // Wait for CapSolver extension callback, then fall back to polling the token
+        const solved = await waitForCapsolverCallback(page, 30000);
+        if (solved) {
+          console.log("[browser-verify] reCAPTCHA solved by CapSolver!");
+          notifyVerificationProgress("Nursys® reCAPTCHA", "passed");
+        } else {
+          // Callback didn't fire — check if extension solved it anyway (token in textarea)
+          console.log("[browser-verify] CapSolver callback timed out — polling for response token...");
+          let tokenFound = false;
+          for (let elapsed = 0; elapsed < 15000; elapsed += 2000) {
+            await wait(2000);
+            const hasToken = await page.evaluate(() => {
+              const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
+              return ta && ta.value.length > 0;
+            }).catch(() => false);
+            if (hasToken) { tokenFound = true; break; }
+          }
+          if (tokenFound) {
+            console.log("[browser-verify] reCAPTCHA solved (token detected)!");
+            notifyVerificationProgress("Nursys® reCAPTCHA", "passed");
+          } else {
+            console.log("[browser-verify] reCAPTCHA not solved within timeout");
+            notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
+          }
+        }
       } else {
-        console.log("[browser-verify] reCAPTCHA not solved within 90s");
-        notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
+        // No CapSolver — fall back to manual solving
+        console.log("[browser-verify] reCAPTCHA detected — prompting user to solve it manually...");
+        notifyCaptchaRequired("Nursys® reCAPTCHA");
+
+        await page.evaluate(() => {
+          const overlay = document.createElement("div");
+          overlay.id = "careslink-captcha-alert";
+          overlay.innerHTML = `
+            <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e40af;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
+              <span style="font-size:22px;">🔒</span>
+              <span>CaresLink: Please complete the reCAPTCHA below, then wait — automation will continue.</span>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+        });
+
+        const captchaSolved = await page.evaluate(() => {
+          return new Promise<boolean>((resolve) => {
+            let elapsed = 0;
+            const interval = setInterval(() => {
+              elapsed += 1000;
+              const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
+              if (ta && ta.value.length > 0) { clearInterval(interval); resolve(true); }
+              if (elapsed >= 90000) { clearInterval(interval); resolve(false); }
+            }, 1000);
+          });
+        });
+
+        await page.evaluate(() => {
+          document.getElementById("careslink-captcha-alert")?.remove();
+        });
+
+        if (captchaSolved) {
+          console.log("[browser-verify] reCAPTCHA solved by user!");
+          notifyVerificationProgress("Nursys® reCAPTCHA", "passed");
+        } else {
+          console.log("[browser-verify] reCAPTCHA not solved within 90s");
+          notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
+        }
       }
 
       shots.push(await snap(page, "Nursys® — reCAPTCHA"));
@@ -500,10 +659,9 @@ export async function captureNursysScreenshots(
           if (text.includes("search") && !text.includes("reset")) { el.click(); return; }
         }
       });
-      await wait(5000);
+      await wait(2000);
     }
 
-    await wait(DELAY);
     shots.push(await snap(page, "Nursys® — Search Results"));
 
     // ── Step 6: Click first result for full report ────────────
@@ -518,7 +676,7 @@ export async function captureNursysScreenshots(
 
       // Scroll to license table
       await page.evaluate(() => window.scrollBy(0, 400));
-      await wait(1000);
+      await wait(300);
       shots.push(await snap(page, "Nursys® — License Details"));
 
       // ── Step 6b: Extract structured license data from the report page ──
@@ -634,7 +792,7 @@ export async function captureNursysScreenshots(
       const downloadBtn = await page.$('a[data-target="#infoDownloadReport"], a[onclick*="ClearDownload"]');
       if (downloadBtn) {
         await downloadBtn.click();
-        await wait(2000);
+        await wait(800);
 
         // In the modal: "Download full report" is pre-selected, click the Download button
         await page.evaluate(() => {
@@ -730,7 +888,7 @@ export async function captureOIGScreenshots(
     try { await page.$eval("#LAST_NAME", (el, v) => ((el as HTMLInputElement).value = v), lastName.toUpperCase()); } catch {}
     try { await page.$eval("#FIRST_NAME", (el, v) => ((el as HTMLInputElement).value = v), firstName.toUpperCase()); } catch {}
 
-    await wait(500);
+    await wait(200);
     shots.push(await snap(page, "OIG Exclusion List — Form Filled"));
 
     // Click the search/submit button
@@ -749,7 +907,7 @@ export async function captureOIGScreenshots(
     });
 
     if (clicked) {
-      await wait(4000);
+      await wait(1500);
       shots.push(await snap(page, "OIG Exclusion List — Results"));
 
       const hasResults = await page.evaluate(() =>
@@ -758,12 +916,12 @@ export async function captureOIGScreenshots(
       );
       if (hasResults) {
         await page.evaluate(() => window.scrollBy(0, 300));
-        await wait(600);
+        await wait(300);
         shots.push(await snap(page, "OIG Exclusion List — Results Detail"));
       }
     } else {
       await page.keyboard.press("Enter");
-      await wait(3000);
+      await wait(1500);
       shots.push(await snap(page, "OIG Exclusion List — Results"));
     }
   } catch (err) {
@@ -825,7 +983,7 @@ export async function captureFloridaDOHScreenshots(
       } catch {}
     }
 
-    await wait(500);
+    await wait(200);
 
     const submitted = await page.evaluate(() => {
       const btn = document.querySelector<HTMLElement>(
@@ -838,11 +996,11 @@ export async function captureFloridaDOHScreenshots(
     let matches: FloridaDOHRow[] = [];
 
     if (submitted) {
-      await wait(3000);
+      await wait(1500);
       shots.push(await snap(page, "Florida DOH — Search Results"));
 
       await page.evaluate(() => window.scrollBy(0, 300));
-      await wait(600);
+      await wait(300);
       shots.push(await snap(page, "Florida DOH — License Details"));
 
       matches = await page.evaluate((): FloridaDOHRow[] => {
@@ -924,11 +1082,11 @@ export async function captureSAMGovScreenshots(
       );
       if (searchInput) {
         await searchInput.click();
-        await searchInput.type(`${firstName} ${lastName}`, { delay: 60 });
-        await wait(1000);
+        await searchInput.type(`${firstName} ${lastName}`, { delay: 30 });
+        await wait(300);
         shots.push(await snap(page, "SAM.gov — Name Entered"));
         await page.keyboard.press("Enter");
-        await wait(4000);
+        await wait(1500);
         shots.push(await snap(page, "SAM.gov — Search Results"));
       }
     } catch {}

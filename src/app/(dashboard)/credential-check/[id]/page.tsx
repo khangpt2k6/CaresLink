@@ -779,7 +779,7 @@ function NursysSection({ data, checkId }: { data: NursysResult; checkId: string 
           </>
         ) : (
           <>
-            {data.matches.length > 0 && (
+            {data.matches?.length > 0 && (
               <div className="mb-3">
                 <p className="mb-2 text-xs font-semibold text-[#5a6b7c]">{data.matches.length} match(es) found:</p>
                 <div className="space-y-1.5">

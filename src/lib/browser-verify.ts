@@ -278,26 +278,62 @@ async function solveTurnstileViaAPI(page: Page, pageUrl: string): Promise<boolea
   const apiKey = getCapsolverKey();
   if (!apiKey) return false;
 
-  // Extract the Turnstile sitekey from the page
-  const sitekey = await page.evaluate(() => {
-    // Turnstile widget: div.cf-turnstile[data-sitekey] or iframe src param
-    const div = document.querySelector('.cf-turnstile[data-sitekey], [data-sitekey]');
-    if (div) return div.getAttribute('data-sitekey');
-    // Try from iframe src
-    const iframe = document.querySelector('iframe[src*="turnstile"], iframe[src*="challenges.cloudflare.com"]') as HTMLIFrameElement;
-    if (iframe) {
-      const match = iframe.src.match(/[?&]k=([^&]+)/);
-      if (match) return match[1];
+  // Wait for Turnstile widget to appear — Cloudflare challenge pages load JS asynchronously
+  console.log("[browser-verify] Waiting for Turnstile widget to load...");
+  let sitekey: string | null = null;
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await wait(2000);
+
+    sitekey = await page.evaluate(() => {
+      // Method 1: div.cf-turnstile[data-sitekey]
+      const div = document.querySelector('.cf-turnstile[data-sitekey], [data-sitekey]');
+      if (div) return div.getAttribute('data-sitekey');
+
+      // Method 2: iframe src from challenges.cloudflare.com
+      const iframes = document.querySelectorAll('iframe');
+      for (const iframe of Array.from(iframes)) {
+        if (iframe.src.includes('challenges.cloudflare.com') || iframe.src.includes('turnstile')) {
+          const match = iframe.src.match(/[?&]k=([^&]+)/);
+          if (match) return match[1];
+        }
+      }
+
+      // Method 3: Extract from page HTML (script tags, inline JS)
+      const html = document.documentElement.innerHTML;
+      // Cloudflare embeds sitekey in various formats
+      const patterns = [
+        /sitekey['":\s]+['"]([0-9a-zA-Z_-]{20,})['"]/,
+        /data-sitekey=['"]([0-9a-zA-Z_-]{20,})['"]/,
+        /turnstile[^}]*?sitekey['":\s]+['"]([0-9a-zA-Z_-]{20,})['"]/,
+        /chlApiSitekey['"]?\s*[:=]\s*['"]([0-9a-zA-Z_-]{20,})['"]/,
+        /\bsiteKey['"]?\s*[:=]\s*['"]([0-9a-zA-Z_-]{20,})['"]/i,
+      ];
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match) return match[1];
+      }
+
+      return null;
+    }).catch(() => null);
+
+    if (sitekey) break;
+
+    // Log what we see on each attempt for debugging
+    if (attempt === 2 || attempt === 5) {
+      const debugInfo = await page.evaluate(() => ({
+        title: document.title,
+        textLen: (document.body.innerText || "").length,
+        iframeCount: document.querySelectorAll("iframe").length,
+        iframeSrcs: Array.from(document.querySelectorAll("iframe")).map(f => f.src).slice(0, 3),
+        hasCfDiv: !!document.querySelector(".cf-turnstile, [data-sitekey]"),
+      })).catch(() => null);
+      console.log(`[browser-verify] Turnstile extraction attempt ${attempt + 1}:`, JSON.stringify(debugInfo));
     }
-    // Try from script tags or page HTML
-    const html = document.documentElement.innerHTML;
-    const scriptMatch = html.match(/sitekey['":\s]+['"]([0-9a-zA-Z_-]{30,})['"]/);
-    if (scriptMatch) return scriptMatch[1];
-    return null;
-  }).catch(() => null);
+  }
 
   if (!sitekey) {
-    console.log("[browser-verify] Could not extract Turnstile sitekey from page");
+    console.log("[browser-verify] Could not extract Turnstile sitekey after 20s of waiting");
     return false;
   }
   console.log("[browser-verify] Turnstile sitekey:", sitekey);

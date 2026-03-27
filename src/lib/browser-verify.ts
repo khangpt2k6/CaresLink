@@ -272,6 +272,123 @@ async function solveRecaptchaViaAPI(page: Page, pageUrl: string): Promise<boolea
   return false;
 }
 
+/** Solve Cloudflare Turnstile via CapSolver REST API.
+ *  Extracts the sitekey from the challenge page, sends to CapSolver, injects the token. */
+async function solveTurnstileViaAPI(page: Page, pageUrl: string): Promise<boolean> {
+  const apiKey = getCapsolverKey();
+  if (!apiKey) return false;
+
+  // Extract the Turnstile sitekey from the page
+  const sitekey = await page.evaluate(() => {
+    // Turnstile widget: div.cf-turnstile[data-sitekey] or iframe src param
+    const div = document.querySelector('.cf-turnstile[data-sitekey], [data-sitekey]');
+    if (div) return div.getAttribute('data-sitekey');
+    // Try from iframe src
+    const iframe = document.querySelector('iframe[src*="turnstile"], iframe[src*="challenges.cloudflare.com"]') as HTMLIFrameElement;
+    if (iframe) {
+      const match = iframe.src.match(/[?&]k=([^&]+)/);
+      if (match) return match[1];
+    }
+    // Try from script tags or page HTML
+    const html = document.documentElement.innerHTML;
+    const scriptMatch = html.match(/sitekey['":\s]+['"]([0-9a-zA-Z_-]{30,})['"]/);
+    if (scriptMatch) return scriptMatch[1];
+    return null;
+  }).catch(() => null);
+
+  if (!sitekey) {
+    console.log("[browser-verify] Could not extract Turnstile sitekey from page");
+    return false;
+  }
+  console.log("[browser-verify] Turnstile sitekey:", sitekey);
+
+  // Create task
+  const createRes = await fetch("https://api.capsolver.com/createTask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientKey: apiKey,
+      task: {
+        type: "AntiTurnstileTaskProxyLess",
+        websiteURL: pageUrl,
+        websiteKey: sitekey,
+      },
+    }),
+  });
+  const createData = await createRes.json() as any;
+
+  if (createData.errorId && createData.errorId !== 0) {
+    console.log("[browser-verify] CapSolver Turnstile createTask error:", createData.errorDescription || createData.errorCode);
+    return false;
+  }
+
+  const taskId = createData.taskId;
+  if (!taskId) {
+    console.log("[browser-verify] CapSolver Turnstile returned no taskId:", JSON.stringify(createData));
+    return false;
+  }
+  console.log("[browser-verify] CapSolver Turnstile task created:", taskId);
+
+  // Poll for result (max 30s — Turnstile is fast)
+  for (let elapsed = 0; elapsed < 30000; elapsed += 3000) {
+    await wait(3000);
+    const resultRes = await fetch("https://api.capsolver.com/getTaskResult", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientKey: apiKey, taskId }),
+    });
+    const resultData = await resultRes.json() as any;
+
+    if (resultData.status === "ready") {
+      const token = resultData.solution?.token;
+      if (!token) {
+        console.log("[browser-verify] CapSolver Turnstile returned ready but no token");
+        return false;
+      }
+      console.log("[browser-verify] CapSolver solved Turnstile! Token length:", token.length);
+
+      // Inject the token into the Turnstile widget and trigger the callback
+      await page.evaluate((t: string) => {
+        // Set the hidden input value
+        const input = document.querySelector<HTMLInputElement>('input[name="cf-turnstile-response"], [name*="turnstile"]');
+        if (input) input.value = t;
+        // Try calling the Turnstile callback to submit
+        try {
+          const cfDiv = document.querySelector('.cf-turnstile');
+          const cb = cfDiv?.getAttribute('data-callback');
+          if (cb && typeof (window as any)[cb] === 'function') {
+            (window as any)[cb](t);
+          }
+        } catch {}
+        // Also try window.turnstile callback
+        try {
+          if ((window as any).turnstile) {
+            // Some pages use turnstile.render callback
+            const widgets = document.querySelectorAll('[data-turnstile-callback]');
+            widgets.forEach((w) => {
+              const cbName = w.getAttribute('data-turnstile-callback');
+              if (cbName && typeof (window as any)[cbName] === 'function') {
+                (window as any)[cbName](t);
+              }
+            });
+          }
+        } catch {}
+      }, token);
+      return true;
+    }
+
+    if (resultData.errorId && resultData.errorId !== 0) {
+      console.log("[browser-verify] CapSolver Turnstile error:", resultData.errorDescription || resultData.errorCode);
+      return false;
+    }
+
+    console.log(`[browser-verify] CapSolver Turnstile polling... (${(elapsed / 1000 + 3).toFixed(0)}s)`);
+  }
+
+  console.log("[browser-verify] CapSolver Turnstile timed out after 30s");
+  return false;
+}
+
 let snapCount = 0;
 async function snap(page: Page, label: string): Promise<VerificationScreenshot> {
   await wait(200);
@@ -393,28 +510,32 @@ export async function captureNursysScreenshots(
 
     if (isSecurityCheck) {
       if (HAS_CAPSOLVER) {
-        // CapSolver extension auto-solves Cloudflare Turnstile — just wait for it
-        console.log("[browser-verify] Security check detected — CapSolver extension solving automatically...");
+        // Solve Cloudflare Turnstile via CapSolver REST API
+        console.log("[browser-verify] Security check detected — solving Turnstile via CapSolver API...");
         shots.push(await snap(page, "Nursys® — Security Check (CapSolver solving)"));
 
+        const turnstileSolved = await solveTurnstileViaAPI(page, page.url());
         let passedCheck = false;
-        // Extension typically solves Turnstile in ~2s; poll for up to 30s
-        for (let elapsed = 0; elapsed < 30000; elapsed += 2000) {
-          await wait(2000);
-          try {
-            const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
-            const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human|security\s+check\s+is\s+required/i.test(currentText);
-            if (!stillOnCheck) { passedCheck = true; break; }
-          } catch {
-            // page.evaluate fails during navigation — page is redirecting (good!)
+
+        if (turnstileSolved) {
+          // Token injected — wait for the page to navigate past the challenge
+          console.log("[browser-verify] Turnstile token injected — waiting for redirect...");
+          for (let elapsed = 0; elapsed < 15000; elapsed += 2000) {
             await wait(2000);
-            passedCheck = true;
-            break;
+            try {
+              const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
+              const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human|security\s+check\s+is\s+required/i.test(currentText);
+              if (!stillOnCheck) { passedCheck = true; break; }
+            } catch {
+              await wait(2000);
+              passedCheck = true;
+              break;
+            }
           }
         }
 
         if (!passedCheck) {
-          console.log("[browser-verify] CapSolver did not solve Turnstile within 30s");
+          console.log("[browser-verify] CapSolver did not solve Turnstile");
           notifyVerificationProgress("Nursys®", "timeout");
           shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
           return { screenshots: shots };
@@ -530,11 +651,26 @@ export async function captureNursysScreenshots(
 
     // If security check appears after terms, wait for resolution
     if (/additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(afterTermsText)) {
-      const timeout = HAS_CAPSOLVER ? 30000 : 120000;
-      console.log(`[browser-verify] Security check after terms — ${HAS_CAPSOLVER ? "CapSolver solving" : "waiting for manual verification"}...`);
-      if (!HAS_CAPSOLVER) notifyCaptchaRequired("Nursys® (after terms)");
+      let passedCheck = false;
 
-      if (!HAS_CAPSOLVER) {
+      if (HAS_CAPSOLVER) {
+        console.log("[browser-verify] Security check after terms — solving via CapSolver API...");
+        const solved = await solveTurnstileViaAPI(page, page.url());
+        if (solved) {
+          for (let elapsed = 0; elapsed < 15000; elapsed += 2000) {
+            await wait(2000);
+            try {
+              const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
+              if (!/additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(currentText)) {
+                passedCheck = true; break;
+              }
+            } catch { await wait(2000); passedCheck = true; break; }
+          }
+        }
+      } else {
+        console.log("[browser-verify] Security check after terms — waiting for manual verification...");
+        notifyCaptchaRequired("Nursys® (after terms)");
+
         try {
           await page.evaluate(() => {
             const overlay = document.createElement("div");
@@ -548,19 +684,15 @@ export async function captureNursysScreenshots(
             document.body.appendChild(overlay);
           });
         } catch {}
-      }
 
-      let passedCheck = false;
-      for (let elapsed = 0; elapsed < timeout; elapsed += 2000) {
-        await wait(2000);
-        try {
-          const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
-          if (!/additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(currentText)) {
-            passedCheck = true; break;
-          }
-        } catch {
+        for (let elapsed = 0; elapsed < 120000; elapsed += 2000) {
           await wait(2000);
-          passedCheck = true; break;
+          try {
+            const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
+            if (!/additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(currentText)) {
+              passedCheck = true; break;
+            }
+          } catch { await wait(2000); passedCheck = true; break; }
         }
       }
 

@@ -709,25 +709,40 @@ export async function captureNursysScreenshots(
         }
       }
 
-      shots.push(await snap(page, "Nursys® — reCAPTCHA"));
+      shots.push(await snap(page, "Nursys® — reCAPTCHA").catch(() => ({
+        label: "Nursys® — reCAPTCHA (page navigating)", url: page.url(), dataUrl: "",
+      })));
     }
 
     // ── Step 5: Submit search ─────────────────────────────────
-    const searchBtn = await page.$('#MainContent_ibtnSearchName');
-    if (searchBtn) {
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {}),
-        searchBtn.click(),
-      ]);
-    } else {
-      // Fallback: click any Search link/button
-      await page.evaluate(() => {
-        for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
-          const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
-          if (text.includes("search") && !text.includes("reset")) { el.click(); return; }
-        }
-      });
-      await wait(2000);
+    // reCAPTCHA callback may have already triggered form submission (ASP.NET postback).
+    // Wait briefly for any in-flight navigation to settle before trying to click search.
+    await wait(1000);
+    try {
+      await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 5000 });
+    } catch {
+      // No navigation happened — we need to click the search button manually
+    }
+
+    // Only click search if we're still on the search page (not already navigated to results)
+    const stillOnSearch = page.url().includes("LQCSearch");
+    if (stillOnSearch) {
+      const searchBtn = await page.$('#MainContent_ibtnSearchName').catch(() => null);
+      if (searchBtn) {
+        await Promise.all([
+          page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {}),
+          searchBtn.click(),
+        ]);
+      } else {
+        // Fallback: click any Search link/button
+        await page.evaluate(() => {
+          for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
+            const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
+            if (text.includes("search") && !text.includes("reset")) { el.click(); return; }
+          }
+        }).catch(() => {});
+        await wait(2000);
+      }
     }
 
     shots.push(await snap(page, "Nursys® — Search Results"));

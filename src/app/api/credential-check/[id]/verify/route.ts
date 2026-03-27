@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { searchNursysRN } from "@/lib/nursys";
 import { checkOIGExclusion } from "@/lib/oig-exclusion";
 import { checkSAMGov } from "@/lib/sam-gov";
 import { captureFloridaDOHScreenshots, captureNursysScreenshots } from "@/lib/browser-verify";
@@ -50,53 +49,37 @@ export async function POST(
     let samGovResult = null;
 
     if (roleType === "NURSE") {
-      // RNs: run OIG, SAM.gov, and Nursys ALL in parallel for speed.
-      // Nursys fetch is almost always blocked by Cloudflare (403), so the
-      // browser fallback will trigger — running in parallel means Chrome
-      // opens immediately instead of waiting 30s+ for OIG to finish first.
-      const [oig, sam, fetchResult] = await Promise.all([
+      // RNs: run OIG, SAM.gov, and Nursys browser verification ALL in parallel.
+      // Always use browser for Nursys so the user can see the live verification.
+      const [oig, sam, nursysBrowser] = await Promise.all([
         checkOIGExclusion(firstName, lastName, middleName ?? undefined),
         checkSAMGov(firstName, lastName, licenseNumber ?? undefined, licenseState ?? undefined),
-        searchNursysRN(
+        captureNursysScreenshots(
           firstName, lastName,
-          middleName ?? undefined,
-          licenseNumber ?? undefined,
-          licenseState ?? undefined
+          licenseState ?? null,
+          licenseNumber ?? null
         ),
       ]);
       oigResult = oig;
       samGovResult = sam;
 
-      if (fetchResult.status === "found" || fetchResult.status === "not_found" || fetchResult.status === "multiple_found") {
-        nursysData = fetchResult;
-      } else {
-        // Fetch was blocked (manual_required/error) — use browser with screenshots
-        console.log("[verify] Nursys fetch blocked, falling back to browser verification...");
-        const nursysBrowser = await captureNursysScreenshots(
-          firstName, lastName,
-          licenseState ?? null,
-          licenseNumber ?? null
-        );
-        // Determine status: if we extracted license data or got enough screenshots, it's "found"
-        const hasReport = nursysBrowser.report && nursysBrowser.report.licenses.length > 0;
-        nursysData = {
-          ...fetchResult,
-          status: hasReport || nursysBrowser.screenshots.length > 4 ? "found" : "manual_required",
-          screenshots: nursysBrowser.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
-          reportPdfPath: nursysBrowser.reportPdfPath || null,
-          reportPdfBase64: nursysBrowser.reportPdfBase64 || null,
-          browserVerified: true,
-          // Include the structured report so the PDF report can render the license table
-          report: nursysBrowser.report ? {
-            ncsbnId: nursysBrowser.report.ncsbnId,
-            fullName: nursysBrowser.report.fullName,
-            reportDate: nursysBrowser.report.reportDate,
-            licenses: nursysBrowser.report.licenses,
-            boardMessages: nursysBrowser.report.boardMessages,
-            authorizedStates: nursysBrowser.report.authorizedStates,
-          } : undefined,
-        };
-      }
+      const hasReport = nursysBrowser.report && nursysBrowser.report.licenses.length > 0;
+      nursysData = {
+        status: hasReport || nursysBrowser.screenshots.length > 4 ? "found" : "manual_required",
+        searchedName: `${firstName} ${lastName}`.toUpperCase(),
+        screenshots: nursysBrowser.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
+        reportPdfPath: nursysBrowser.reportPdfPath || null,
+        reportPdfBase64: nursysBrowser.reportPdfBase64 || null,
+        browserVerified: true,
+        report: nursysBrowser.report ? {
+          ncsbnId: nursysBrowser.report.ncsbnId,
+          fullName: nursysBrowser.report.fullName,
+          reportDate: nursysBrowser.report.reportDate,
+          licenses: nursysBrowser.report.licenses,
+          boardMessages: nursysBrowser.report.boardMessages,
+          authorizedStates: nursysBrowser.report.authorizedStates,
+        } : undefined,
+      };
     } else {
       // CNAs: use Puppeteer for accurate FL DOH verification + screenshot capture
       const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber ?? undefined);

@@ -9,6 +9,10 @@
 
 import path from "path";
 import fs from "fs";
+import dotenv from "dotenv";
+
+// Load .env so CAPSOLVER_API_KEY and other vars are available outside Next.js
+dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 // We need to set up the module alias for @/ imports
 // since this runs outside of Next.js

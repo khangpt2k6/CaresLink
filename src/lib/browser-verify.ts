@@ -16,21 +16,32 @@ import AdmZip from "adm-zip";
 // Apply stealth patches — hides webdriver, chrome.runtime, permissions, plugins, etc.
 puppeteer.use(StealthPlugin());
 
-// ── CapSolver Chrome Extension setup ──────────────────────────────
-// Loads the CapSolver browser extension directly (bypasses broken plugin build).
-// The extension auto-detects and solves Cloudflare Turnstile + reCAPTCHA v2.
-const CAPSOLVER_API_KEY = process.env.CAPSOLVER_API_KEY;
-const HAS_CAPSOLVER = !!CAPSOLVER_API_KEY;
+// ── CapSolver Chrome Extension setup (lazy) ──────────────────────
+// Prepares the CapSolver extension on first use, not at import time,
+// so env vars loaded by Next.js or dotenv are available.
 let capsolverExtensionPath: string | undefined;
+let capsolverInitialized = false;
 
-if (HAS_CAPSOLVER) {
+function getCapsolverKey(): string | undefined {
+  return process.env.CAPSOLVER_API_KEY || undefined;
+}
+
+function ensureCapsolverExtension(): boolean {
+  if (capsolverInitialized) return !!capsolverExtensionPath;
+  capsolverInitialized = true;
+
+  const apiKey = getCapsolverKey();
+  if (!apiKey) {
+    console.log("[browser-verify] No CAPSOLVER_API_KEY — CAPTCHAs require manual solving");
+    return false;
+  }
+
   try {
     const zipPath = path.join(
       __dirname, "..", "..", "node_modules",
       "puppeteer-extra-plugin-capsolver", "src", "resources",
       "capsolver-extension-v1.15.3.zip"
     );
-    // Also check from cwd in case __dirname doesn't resolve correctly
     const altZipPath = path.join(
       process.cwd(), "node_modules",
       "puppeteer-extra-plugin-capsolver", "src", "resources",
@@ -38,44 +49,43 @@ if (HAS_CAPSOLVER) {
     );
     const resolvedZip = fs.existsSync(zipPath) ? zipPath : altZipPath;
 
-    if (fs.existsSync(resolvedZip)) {
-      const extDir = path.join(os.tmpdir(), "capsolver-extension");
-      if (!fs.existsSync(extDir)) fs.mkdirSync(extDir, { recursive: true });
-      new AdmZip(resolvedZip).extractAllTo(extDir, true);
-
-      // Inject API key into extension config
-      const configPath = path.join(extDir, "assets", "config.js");
-      if (fs.existsSync(configPath)) {
-        let config = fs.readFileSync(configPath, "utf8");
-        config = config.replace(/apiKey: '',/, `apiKey: '${CAPSOLVER_API_KEY}',`);
-        config = config.replace(/appId: '',/, `appId: 'F9E44D7F-A254-4D75-87F6-54B84EE16676',`);
-        config = config.replace(/reCaptchaMode: 'click',/, `reCaptchaMode: 'click',`);
-        config = config.replace(/reCaptchaMode: 'token',/, `reCaptchaMode: 'click',`);
-        // Disable proxy in extension (we handle proxies separately if needed)
-        config = config.replace(/useProxy: true,/, `useProxy: false,`);
-        fs.writeFileSync(configPath, config);
-      }
-
-      // Add http://*/* permission to manifest so extension works on all sites
-      const manifestPath = path.join(extDir, "manifest.json");
-      if (fs.existsSync(manifestPath)) {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-        if (!manifest.permissions.includes("http://*/*")) {
-          manifest.permissions.push("http://*/*");
-          fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-        }
-      }
-
-      capsolverExtensionPath = extDir;
-      console.log("[browser-verify] CapSolver extension prepared at:", extDir);
-    } else {
+    if (!fs.existsSync(resolvedZip)) {
       console.warn("[browser-verify] CapSolver extension zip not found — falling back to manual CAPTCHA solving");
+      return false;
     }
+
+    const extDir = path.join(os.tmpdir(), "capsolver-extension");
+    if (!fs.existsSync(extDir)) fs.mkdirSync(extDir, { recursive: true });
+    new AdmZip(resolvedZip).extractAllTo(extDir, true);
+
+    // Inject API key into extension config
+    const configPath = path.join(extDir, "assets", "config.js");
+    if (fs.existsSync(configPath)) {
+      let config = fs.readFileSync(configPath, "utf8");
+      config = config.replace(/apiKey: '',/, `apiKey: '${apiKey}',`);
+      config = config.replace(/appId: '',/, `appId: 'F9E44D7F-A254-4D75-87F6-54B84EE16676',`);
+      config = config.replace(/reCaptchaMode: 'token',/, `reCaptchaMode: 'click',`);
+      config = config.replace(/useProxy: true,/, `useProxy: false,`);
+      fs.writeFileSync(configPath, config);
+    }
+
+    // Add http://*/* permission to manifest so extension works on all sites
+    const manifestPath = path.join(extDir, "manifest.json");
+    if (fs.existsSync(manifestPath)) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      if (!manifest.permissions.includes("http://*/*")) {
+        manifest.permissions.push("http://*/*");
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+      }
+    }
+
+    capsolverExtensionPath = extDir;
+    console.log("[browser-verify] CapSolver extension prepared — CAPTCHAs will be auto-solved");
+    return true;
   } catch (err) {
     console.warn("[browser-verify] Failed to prepare CapSolver extension:", err);
+    return false;
   }
-} else {
-  console.log("[browser-verify] No CAPSOLVER_API_KEY — CAPTCHAs require manual solving");
 }
 import { notifyCaptchaRequired, notifyVerificationProgress } from "./os-notify";
 
@@ -160,31 +170,106 @@ async function launchBrowser(forceVisible = false, withCapsolver = false): Promi
   });
 }
 
-/** Wait for the CapSolver extension to signal it solved a CAPTCHA.
- *  The extension sets window.captchaSolvedCallbackDone = true when done. */
-async function waitForCapsolverCallback(page: Page, timeout = 30000): Promise<boolean> {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    try {
-      const done = await page.evaluate(() => (window as any).captchaSolvedCallbackDone === true);
-      if (done) return true;
-    } catch {
-      // page.evaluate can fail during navigation — treat as solved
+/** Solve reCAPTCHA v2 via CapSolver REST API.
+ *  Extracts the sitekey from the page, sends it to CapSolver, polls for the token,
+ *  then injects the token into the page. Returns true if solved. */
+async function solveRecaptchaViaAPI(page: Page, pageUrl: string): Promise<boolean> {
+  const apiKey = getCapsolverKey();
+  if (!apiKey) return false;
+
+  // Extract the reCAPTCHA sitekey from the page
+  const sitekey = await page.evaluate(() => {
+    // Try the data-sitekey attribute on the reCAPTCHA div
+    const div = document.querySelector('.g-recaptcha[data-sitekey], [data-sitekey]');
+    if (div) return div.getAttribute('data-sitekey');
+    // Try extracting from the iframe src
+    const iframe = document.querySelector('iframe[src*="recaptcha"]') as HTMLIFrameElement;
+    if (iframe) {
+      const match = iframe.src.match(/[?&]k=([^&]+)/);
+      if (match) return match[1];
+    }
+    return null;
+  }).catch(() => null);
+
+  if (!sitekey) {
+    console.log("[browser-verify] Could not extract reCAPTCHA sitekey from page");
+    return false;
+  }
+  console.log("[browser-verify] reCAPTCHA sitekey:", sitekey);
+
+  // Step 1: Create task
+  const createRes = await fetch("https://api.capsolver.com/createTask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientKey: apiKey,
+      task: {
+        type: "ReCaptchaV2TaskProxyLess",
+        websiteURL: pageUrl,
+        websiteKey: sitekey,
+      },
+    }),
+  });
+  const createData = await createRes.json() as any;
+
+  if (createData.errorId && createData.errorId !== 0) {
+    console.log("[browser-verify] CapSolver createTask error:", createData.errorDescription || createData.errorCode);
+    return false;
+  }
+
+  const taskId = createData.taskId;
+  if (!taskId) {
+    console.log("[browser-verify] CapSolver returned no taskId:", JSON.stringify(createData));
+    return false;
+  }
+  console.log("[browser-verify] CapSolver task created:", taskId);
+
+  // Step 2: Poll for result (max 60s)
+  for (let elapsed = 0; elapsed < 60000; elapsed += 3000) {
+    await wait(3000);
+    const resultRes = await fetch("https://api.capsolver.com/getTaskResult", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientKey: apiKey, taskId }),
+    });
+    const resultData = await resultRes.json() as any;
+
+    if (resultData.status === "ready") {
+      const token = resultData.solution?.gRecaptchaResponse;
+      if (!token) {
+        console.log("[browser-verify] CapSolver returned ready but no token");
+        return false;
+      }
+      console.log("[browser-verify] CapSolver solved reCAPTCHA! Token length:", token.length);
+
+      // Inject the token into the page
+      await page.evaluate((t: string) => {
+        const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
+        if (ta) {
+          ta.value = t;
+          ta.style.display = "block"; // some forms check visibility
+        }
+        // Also try calling the callback if grecaptcha is available
+        try {
+          const cb = (document.querySelector('.g-recaptcha') as any)?.getAttribute('data-callback');
+          if (cb && typeof (window as any)[cb] === 'function') {
+            (window as any)[cb](t);
+          }
+        } catch {}
+      }, token);
       return true;
     }
-    await wait(1000);
-  }
-  return false;
-}
 
-/** Inject the captchaSolvedCallback that the CapSolver extension calls after solving. */
-async function setupCapsolverCallback(page: Page): Promise<void> {
-  await page.evaluateOnNewDocument(() => {
-    (window as any).captchaSolvedCallbackDone = false;
-    (window as any).captchaSolvedCallback = () => {
-      (window as any).captchaSolvedCallbackDone = true;
-    };
-  });
+    if (resultData.errorId && resultData.errorId !== 0) {
+      console.log("[browser-verify] CapSolver solve error:", resultData.errorDescription || resultData.errorCode);
+      return false;
+    }
+
+    console.log(`[browser-verify] CapSolver polling... (${(elapsed / 1000 + 3).toFixed(0)}s)`);
+  }
+
+  console.log("[browser-verify] CapSolver solve timed out after 60s");
+  return false;
 }
 
 let snapCount = 0;
@@ -246,13 +331,12 @@ export async function captureNursysScreenshots(
   let reportPdfPath: string | undefined;
   let reportPdfBase64: string | undefined;
   let extractedReport: NursysBrowserReport | undefined;
+  // Initialize CapSolver extension on first call (reads env vars lazily)
+  const HAS_CAPSOLVER = ensureCapsolverExtension();
   const browser = await launchBrowser(true, HAS_CAPSOLVER); // visible + CapSolver extension if available
 
   try {
     const page = (await browser.pages())[0] || await browser.newPage();
-
-    // Set up CapSolver callback so we can detect when the extension solves a CAPTCHA
-    if (HAS_CAPSOLVER) await setupCapsolverCallback(page);
 
     // Remove automation traces
     await page.evaluateOnNewDocument(() => {
@@ -273,7 +357,7 @@ export async function captureNursysScreenshots(
       console.log("[browser-verify] Initial navigation timeout — checking page state...");
     }
     // Give the page time to render (Cloudflare pages load content via JS)
-    await wait(1500);
+    await wait(2500);
 
     // Check if security check / CAPTCHA page is showing
     let pageText = "";
@@ -281,6 +365,7 @@ export async function captureNursysScreenshots(
     try { pageText = await page.evaluate(() => document.body.innerText || ""); } catch {}
     try { pageHtml = await page.evaluate(() => document.body.innerHTML || ""); } catch {}
     const hasSearchForm = await page.$('#MainContent_txtLastName, input[id*="LastName"]').then((el) => !!el).catch(() => false);
+    const hasTermsContent = await page.$('#MainContent_lbtnContinue, a[id*="Continue"], a[id*="Agree"]').then((el) => !!el).catch(() => false);
     const pageTitle = await page.title().catch(() => "");
     const currentUrl = page.url();
 
@@ -288,6 +373,7 @@ export async function captureNursysScreenshots(
     console.log("[browser-verify] Page URL:", currentUrl);
     console.log("[browser-verify] Page title:", pageTitle);
     console.log("[browser-verify] Has search form:", hasSearchForm);
+    console.log("[browser-verify] Has terms content:", hasTermsContent);
     console.log("[browser-verify] Page text (first 200 chars):", pageText.slice(0, 200).replace(/\n/g, " "));
 
     const securityPatterns = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human|security\s+check\s+is\s+required|identified.*as\s+a\s+bot|automated\s+task|Incomplete/i;
@@ -296,8 +382,8 @@ export async function captureNursysScreenshots(
       securityPatterns.test(pageText) ||
       securityPatterns.test(pageTitle) ||
       securityHtmlPatterns.test(pageHtml) ||
-      // Fallback: we're on the Nursys URL but there's no search form and no terms page
-      (!hasSearchForm && !currentUrl.includes("Terms") && currentUrl.includes("nursys.com"));
+      // Fallback: on Nursys URL but no real page content loaded (Cloudflare can serve at any URL, including /Terms)
+      (!hasSearchForm && !hasTermsContent && currentUrl.includes("nursys.com"));
     const isHardBlocked = /access\s+denied|error\s+15/i.test(pageText) && !isSecurityCheck;
 
     if (isHardBlocked) {
@@ -571,33 +657,15 @@ export async function captureNursysScreenshots(
 
     if (recaptchaFrame) {
       if (HAS_CAPSOLVER) {
-        // CapSolver extension auto-solves reCAPTCHA v2
-        console.log("[browser-verify] reCAPTCHA detected — CapSolver extension solving automatically...");
-
-        // Wait for CapSolver extension callback, then fall back to polling the token
-        const solved = await waitForCapsolverCallback(page, 30000);
+        // Solve reCAPTCHA v2 via CapSolver REST API
+        console.log("[browser-verify] reCAPTCHA detected — solving via CapSolver API...");
+        const solved = await solveRecaptchaViaAPI(page, page.url());
         if (solved) {
-          console.log("[browser-verify] reCAPTCHA solved by CapSolver!");
+          console.log("[browser-verify] reCAPTCHA solved by CapSolver API!");
           notifyVerificationProgress("Nursys® reCAPTCHA", "passed");
         } else {
-          // Callback didn't fire — check if extension solved it anyway (token in textarea)
-          console.log("[browser-verify] CapSolver callback timed out — polling for response token...");
-          let tokenFound = false;
-          for (let elapsed = 0; elapsed < 15000; elapsed += 2000) {
-            await wait(2000);
-            const hasToken = await page.evaluate(() => {
-              const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
-              return ta && ta.value.length > 0;
-            }).catch(() => false);
-            if (hasToken) { tokenFound = true; break; }
-          }
-          if (tokenFound) {
-            console.log("[browser-verify] reCAPTCHA solved (token detected)!");
-            notifyVerificationProgress("Nursys® reCAPTCHA", "passed");
-          } else {
-            console.log("[browser-verify] reCAPTCHA not solved within timeout");
-            notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
-          }
+          console.log("[browser-verify] CapSolver API failed to solve reCAPTCHA");
+          notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
         }
       } else {
         // No CapSolver — fall back to manual solving

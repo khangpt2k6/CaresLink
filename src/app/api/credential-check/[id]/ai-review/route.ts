@@ -47,9 +47,15 @@ export async function POST(
     });
 
     return NextResponse.json(updated);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (err: any) {
     console.error("AI review error:", err);
+    if (err?.status === 429) {
+      return NextResponse.json(
+        { error: "Rate limit reached — please wait a moment and try again." },
+        { status: 429 }
+      );
+    }
+    const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "AI review failed", details: msg }, { status: 500 });
   }
 }
@@ -73,18 +79,27 @@ async function analyzeWithAI({
 }): Promise<{ aiRecommendation: string; aiSummary: string }> {
   const isCNA = roleType === "CNA";
   // Strip screenshots from data before sending to AI (base64 images are huge and waste tokens)
-  const cleanDohData = floridaDohData && typeof floridaDohData === "object"
-    ? (() => { const { screenshots, ...rest } = floridaDohData as Record<string, unknown>; return rest; })()
-    : floridaDohData;
+  // Strip screenshots/large blobs from data before sending to AI
+  const stripBulk = (data: unknown) => {
+    if (!data || typeof data !== "object") return data;
+    const { screenshots, reportPdfBase64, pdfBase64, ...rest } = data as Record<string, unknown>;
+    return rest;
+  };
+  const cleanDohData = stripBulk(floridaDohData);
+  const cleanNursysData = stripBulk(nursysData);
+
+  const sections: string[] = [];
+  if (!isCNA && cleanNursysData) sections.push(`Nursys License Verification: ${JSON.stringify(cleanNursysData)}`);
+  if (isCNA && cleanDohData) sections.push(`Florida DOH CNA License Verification: ${JSON.stringify(cleanDohData)}`);
+  if (!isCNA && oigResult) sections.push(`OIG Exclusion List: ${JSON.stringify(oigResult)}`);
+  if (!isCNA && samGovResult) sections.push(`SAM.gov: ${JSON.stringify(samGovResult)}`);
+
   const prompt = `You are a healthcare compliance analyst. Analyze the following credential verification results for ${firstName} ${lastName} (Role: ${roleType}) and provide:
 1. An employability recommendation: "EMPLOYABLE", "REVIEW_REQUIRED", or "NOT_EMPLOYABLE"
 2. A concise 2-3 sentence summary explaining the recommendation
 
 Verification Results:
-${!isCNA && nursysData ? `Nursys License Verification: ${JSON.stringify(nursysData, null, 2)}` : ""}
-${isCNA && cleanDohData ? `Florida DOH CNA License Verification: ${JSON.stringify(cleanDohData, null, 2)}` : ""}
-${!isCNA && oigResult ? `OIG Exclusion List: ${JSON.stringify(oigResult, null, 2)}` : ""}
-${!isCNA && samGovResult ? `SAM.gov: ${JSON.stringify(samGovResult, null, 2)}` : ""}
+${sections.join("\n")}
 
 Rules for CNA:
 - EMPLOYABLE if: Florida DOH license status is "Clear/Active" or "Active" (not expired)
@@ -100,7 +115,7 @@ Rules for NURSE:
 Respond in JSON format: {"recommendation": "EMPLOYABLE|REVIEW_REQUIRED|NOT_EMPLOYABLE", "summary": "..."}`;
 
   const msg = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 400,
     messages: [{ role: "user", content: prompt }],
   });

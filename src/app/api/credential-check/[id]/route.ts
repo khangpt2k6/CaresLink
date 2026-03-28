@@ -20,7 +20,26 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(check);
+  // Strip the large base64 PDF from nursysData to keep the response small.
+  // The PDF is served separately via /api/credential-check/[id]/nursys-pdf.
+  // Replace with a boolean flag so the UI knows a PDF is available.
+  const result = { ...check } as Record<string, unknown>;
+  if (result.nursysData && typeof result.nursysData === "object") {
+    const nd = { ...(result.nursysData as Record<string, unknown>) };
+    if (nd.reportPdfBase64) {
+      nd.reportPdfBase64 = "__available__"; // flag for UI — actual PDF served via dedicated endpoint
+    }
+    // Also strip screenshot base64 data URLs from the list response (they're huge)
+    if (Array.isArray(nd.screenshots)) {
+      nd.screenshots = (nd.screenshots as { label: string; dataUrl: string }[]).map((s) => ({
+        label: s.label,
+        dataUrl: s.dataUrl.slice(0, 60) + "...", // truncate for listing
+      }));
+    }
+    result.nursysData = nd;
+  }
+
+  return NextResponse.json(result);
 }
 
 // DELETE /api/credential-check/[id]

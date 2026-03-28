@@ -74,6 +74,7 @@ interface CredentialCheck {
 interface NursysResult {
   status: string; matches: NursysMatch[]; selectedMatch?: NursysMatch;
   report?: NursysReport; error?: string; manualUrl: string;
+  reportPdfBase64?: string; browserVerified?: boolean;
 }
 interface NursysMatch { ncsbnId: string; displayName: string; firstName: string; lastName: string; middleName?: string; }
 interface NursysLicense { nameOnLicense: string; type: string; licenseState: string; licenseNumber: string; active: boolean; status: string; originalIssueDate: string; expirationDate: string; compactStatus: string; }
@@ -604,7 +605,7 @@ export default function CredentialCheckDetailPage() {
 
                 {/* ── 2. Nursys (NURSE only) ── */}
                 {!isCNA && check.nursysData && (
-                  <NursysSection data={check.nursysData} />
+                  <NursysSection data={check.nursysData} checkId={check.id} />
                 )}
 
                 {/* ── 3. Florida DOH CNA (CNA only) ── */}
@@ -679,13 +680,31 @@ function ManualRequiredBanner({ url, text }: { url: string; text: string }) {
   );
 }
 
-function NursysSection({ data }: { data: NursysResult }) {
+function NursysSection({ data, checkId }: { data: NursysResult; checkId: string }) {
+  const hasNursysPdf = !!data.reportPdfBase64;
+
+  function openNursysPdf() {
+    // Open the PDF in a new tab via the API endpoint
+    window.open(`/api/credential-check/${checkId}/nursys-pdf`, "_blank");
+  }
+
   return (
     <section className="rounded-xl border border-[#e2e8f0] overflow-hidden">
       <div className="border-b border-[#e2e8f0] bg-[#f8fafc] px-5 py-3 flex items-center justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-[#8a95a3]">1. Nursys® QuickConfirm</p>
-          <p className="text-xs text-[#8a95a3] mt-0.5">Primary Source Boards of Nursing — License Verification</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-[#8a95a3]">1. Nursys® QuickConfirm</p>
+            <p className="text-xs text-[#8a95a3] mt-0.5">Primary Source Boards of Nursing — License Verification</p>
+          </div>
+          {hasNursysPdf && (
+            <button
+              onClick={openNursysPdf}
+              className="flex items-center gap-1.5 rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0077b6] transition-colors shadow-sm"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              View Nursys® PDF
+            </button>
+          )}
         </div>
         <StatusBadge status={data.status} labels={NURSYS_STATUS} />
       </div>
@@ -760,7 +779,7 @@ function NursysSection({ data }: { data: NursysResult }) {
           </>
         ) : (
           <>
-            {data.matches.length > 0 && (
+            {data.matches?.length > 0 && (
               <div className="mb-3">
                 <p className="mb-2 text-xs font-semibold text-[#5a6b7c]">{data.matches.length} match(es) found:</p>
                 <div className="space-y-1.5">
@@ -865,126 +884,125 @@ function FloridaDOHSection({ data, onImageClick }: { data: FloridaDOHResult; onI
   );
 }
 
-function SAMGovSection({ data }: { data: SAMGovResult }) {
+function ComingSoonSection({ number, title, subtitle }: { number: number; title: string; subtitle: string }) {
   return (
-    <section className="rounded-xl border border-[#e2e8f0] overflow-hidden">
-      <div className="border-b border-[#e2e8f0] bg-[#f8fafc] px-5 py-3 flex items-center justify-between">
+    <section className="rounded-xl border border-[#e2e8f0] overflow-hidden relative">
+      {/* Animated gradient background */}
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
+        style={{
+          background: "linear-gradient(135deg, #0090d9, #6366f1, #8b5cf6, #0090d9)",
+          backgroundSize: "400% 400%",
+          animation: "comingSoonGradient 8s ease infinite",
+        }}
+      />
+      <div className="border-b border-[#e2e8f0] bg-[#f8fafc] px-5 py-3 flex items-center justify-between relative">
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-[#8a95a3]">2. SAM.gov Verification</p>
-          <p className="text-xs text-[#8a95a3] mt-0.5">Federal License Verification</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-[#8a95a3]">{number}. {title}</p>
+          <p className="text-xs text-[#8a95a3] mt-0.5">{subtitle}</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold text-amber-700 bg-amber-50 border-amber-200">
-          <AlertCircle className="h-3.5 w-3.5" />Manual Required
-        </span>
+        <motion.span
+          animate={{ scale: [1, 1.05, 1], opacity: [0.9, 1, 0.9] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border-indigo-200"
+        >
+          <Clock className="h-3.5 w-3.5" />Coming Soon
+        </motion.span>
       </div>
-      <div className="p-5">
-        <p className="mb-3 text-sm text-[#374151]">{data.message}</p>
-        {data.details && (
-          <div className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-3">
-            <pre className="text-xs text-[#5a6b7c] whitespace-pre-wrap font-sans">{data.details}</pre>
-          </div>
-        )}
-        <a href={data.manualUrl} target="_blank" rel="noopener noreferrer"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm font-medium text-[#1a2b3c] hover:bg-[#f8fafc] transition-colors">
-          Open SAM.gov <ExternalLink className="h-3.5 w-3.5 text-[#0090d9]" />
-        </a>
+      <div className="relative p-8 flex flex-col items-center justify-center text-center overflow-hidden">
+        {/* Floating particles */}
+        {[...Array(6)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute rounded-full bg-indigo-400/20"
+            style={{
+              width: 4 + (i % 3) * 4,
+              height: 4 + (i % 3) * 4,
+              left: `${15 + i * 14}%`,
+              top: `${20 + (i % 2) * 50}%`,
+            }}
+            animate={{
+              y: [0, -20, 0],
+              x: [0, (i % 2 === 0 ? 10 : -10), 0],
+              opacity: [0.2, 0.6, 0.2],
+              scale: [1, 1.3, 1],
+            }}
+            transition={{
+              duration: 3 + i * 0.5,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: i * 0.4,
+            }}
+          />
+        ))}
+
+        {/* Animated icon ring */}
+        <div className="relative mb-4">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            className="absolute -inset-4 rounded-full border-2 border-dashed border-indigo-200/50"
+          />
+          <motion.div
+            animate={{ rotate: -360 }}
+            transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+            className="absolute -inset-8 rounded-full border border-dashed border-violet-200/30"
+          />
+          <motion.div
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+            className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 shadow-sm"
+          >
+            <ShieldCheck className="h-7 w-7 text-indigo-400" />
+          </motion.div>
+        </div>
+
+        {/* Shimmer text */}
+        <h3
+          className="text-lg font-bold text-transparent bg-clip-text mb-1"
+          style={{
+            backgroundImage: "linear-gradient(90deg, #6366f1 0%, #8b5cf6 25%, #c084fc 50%, #8b5cf6 75%, #6366f1 100%)",
+            backgroundSize: "200% 100%",
+            animation: "comingSoonShimmer 3s linear infinite",
+          }}
+        >
+          Coming Soon
+        </h3>
+        <p className="text-sm text-[#8a95a3] max-w-xs">
+          Automated {title.toLowerCase()} is under development. This feature will be available in an upcoming release.
+        </p>
+
+        {/* Animated progress bar */}
+        <div className="mt-5 w-48 h-1.5 rounded-full bg-[#e2e8f0] overflow-hidden">
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #c084fc)" }}
+            animate={{ x: ["-100%", "100%"] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          />
+        </div>
+        <p className="mt-2 text-[10px] text-[#b0b8c4] uppercase tracking-widest font-medium">In Development</p>
       </div>
+
+      {/* Keyframes injected via style tag */}
+      <style>{`
+        @keyframes comingSoonGradient {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes comingSoonShimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+      `}</style>
     </section>
   );
 }
 
+function SAMGovSection({ data }: { data: SAMGovResult }) {
+  return <ComingSoonSection number={2} title="SAM.gov Verification" subtitle="Federal License Verification" />;
+}
+
 function OIGSection({ data }: { data: OIGResult }) {
-  return (
-    <section className="rounded-xl border border-[#e2e8f0] overflow-hidden">
-      <div className="border-b border-[#e2e8f0] bg-[#f8fafc] px-5 py-3 flex items-center justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-[#8a95a3]">3. OIG Exclusion List</p>
-          <p className="text-xs text-[#8a95a3] mt-0.5">Office of Inspector General · LEIE Database · exclusions.oig.hhs.gov</p>
-        </div>
-        <StatusBadge status={data.status} labels={OIG_STATUS} />
-      </div>
-      <div className="p-5">
-        <p className="mb-2 text-sm text-[#5a6b7c]">
-          Searched: <span className="font-semibold text-[#1a2b3c]">{data.searchedName}</span>
-          {data.checkedAt && <span className="ml-2 text-xs text-[#94a3b8]">· {new Date(data.checkedAt).toLocaleString()}</span>}
-        </p>
-        {data.status === "clear" ? (
-          <div className="flex items-center gap-2.5 rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0" />
-            <p className="text-sm font-semibold text-emerald-800">No exclusions found. This individual does not appear on the OIG exclusion list.</p>
-          </div>
-        ) : data.status === "partial_match" ? (
-          <>
-            <div className="mb-3 rounded-lg bg-amber-50 border border-amber-300 p-3">
-              <div className="flex items-center gap-2.5 mb-1">
-                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
-                <p className="text-sm font-bold text-amber-800">Partial name matches found — manual review required.</p>
-              </div>
-              <p className="text-xs text-amber-700 ml-7">These are similar but NOT exact name matches. Verify these are different individuals before proceeding.</p>
-            </div>
-            {data.partialMatches && data.partialMatches.length > 0 && (
-              <table className="w-full text-sm border-collapse mb-3">
-                <thead><tr className="bg-amber-50">
-                  {["Last Name","First Name","Middle","Exclusion Type","Specialty","State"].map(h => (
-                    <th key={h} className="border border-amber-200 px-3 py-2 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {data.partialMatches.map((m, i) => (
-                    <tr key={i} className="bg-amber-50/30">
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs font-semibold">{m.lastName}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.firstName}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.middleName}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.exclusionType}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.specialty}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.state}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </>
-        ) : data.status === "excluded" ? (
-          <>
-            <div className="mb-3 flex items-center gap-2.5 rounded-lg bg-red-50 border border-red-300 p-3">
-              <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-              <p className="text-sm font-bold text-red-800">EXCLUDED — This individual appears on the OIG exclusion list. DO NOT HIRE.</p>
-            </div>
-            {data.matches.length > 0 && (
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="bg-[#f8fafc]">
-                    {["Last Name", "First Name", "Middle", "Exclusion Type", "Exclusion Date", "Specialty", "State"].map(h => (
-                      <th key={h} className="border border-[#e2e8f0] px-3 py-2 text-left text-xs font-semibold text-[#8a95a3] uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.matches.map((m, i) => (
-                    <tr key={i} className="bg-red-50/50">
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs font-semibold">{m.lastName}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.firstName}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.middleName}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.exclusionType}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.exclusionDate}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.specialty}</td>
-                      <td className="border border-[#e2e8f0] px-3 py-2 text-xs">{m.state}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </>
-        ) : (
-          <ManualRequiredBanner url={data.manualUrl} text={data.error || "Could not automatically check the OIG exclusion list. Please verify manually."} />
-        )}
-        {data.status !== "excluded" && (
-          <a href={data.manualUrl} target="_blank" rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-1.5 text-xs text-[#0090d9] hover:underline">
-            Verify on exclusions.oig.hhs.gov <ExternalLink className="h-3 w-3" />
-          </a>
-        )}
-      </div>
-    </section>
-  );
+  return <ComingSoonSection number={3} title="OIG Exclusion List" subtitle="Office of Inspector General · LEIE Database · exclusions.oig.hhs.gov" />;
 }

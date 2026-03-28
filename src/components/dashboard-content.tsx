@@ -7,7 +7,7 @@ export function DashboardContent({ children }: { children: React.ReactNode }) {
 
   return (
     <main
-      className="min-h-screen bg-[#f5f7fa] pl-56 transition-[padding] duration-300 ease-in-out"
+      className="min-h-screen overflow-x-hidden bg-[#f5f7fa] pl-56 transition-[padding] duration-300 ease-in-out"
       style={{ paddingRight: panelWidth }}
     >
       {children}

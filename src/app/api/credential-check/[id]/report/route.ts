@@ -47,9 +47,18 @@ export async function GET(
   let floridaDohData = check.floridaDohData as unknown as ReportCheckData["floridaDohData"] & { screenshots?: { label: string; dataUrl: string }[] };
 
   if (roleType === "NURSE") {
-    nursysScreenshots = await captureNursysScreenshots(
-      firstName, lastName, licenseState, licenseNumber
-    );
+    // Reuse stored screenshots from verify step if available
+    const nursysStored = check.nursysData as unknown as { screenshots?: { label: string; dataUrl: string }[] };
+    if (nursysStored?.screenshots && nursysStored.screenshots.length > 0) {
+      console.log(`[report] Using ${nursysStored.screenshots.length} stored Nursys screenshots from verify step`);
+      nursysScreenshots = nursysStored.screenshots.map((s) => ({ label: s.label, url: "", dataUrl: s.dataUrl }));
+    } else {
+      // Fallback: run browser verification again
+      const nursysResult = await captureNursysScreenshots(
+        firstName, lastName, licenseState, licenseNumber
+      );
+      nursysScreenshots = nursysResult.screenshots;
+    }
     console.log(`[report] Nursys screenshots: ${nursysScreenshots.length}`);
   } else {
     // CNA: check if verify step already stored screenshots — if so, reuse them (no extra browser)

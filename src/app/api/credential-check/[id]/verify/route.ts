@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { searchNursysRN } from "@/lib/nursys";
 import { checkOIGExclusion } from "@/lib/oig-exclusion";
 import { checkSAMGov } from "@/lib/sam-gov";
-import { captureFloridaDOHScreenshots } from "@/lib/browser-verify";
+import { captureFloridaDOHScreenshots, captureNursysScreenshots } from "@/lib/browser-verify";
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic();
@@ -50,20 +49,37 @@ export async function POST(
     let samGovResult = null;
 
     if (roleType === "NURSE") {
-      // RNs: run all three checks in parallel (unchanged)
-      const [oig, sam, nursys] = await Promise.all([
+      // RNs: run OIG, SAM.gov, and Nursys browser verification ALL in parallel.
+      // Always use browser for Nursys so the user can see the live verification.
+      const [oig, sam, nursysBrowser] = await Promise.all([
         checkOIGExclusion(firstName, lastName, middleName ?? undefined),
         checkSAMGov(firstName, lastName, licenseNumber ?? undefined, licenseState ?? undefined),
-        searchNursysRN(
+        captureNursysScreenshots(
           firstName, lastName,
-          middleName ?? undefined,
-          licenseNumber ?? undefined,
-          licenseState ?? undefined
+          licenseState ?? null,
+          licenseNumber ?? null
         ),
       ]);
       oigResult = oig;
       samGovResult = sam;
-      nursysData = nursys;
+
+      const hasReport = nursysBrowser.report && nursysBrowser.report.licenses.length > 0;
+      nursysData = {
+        status: hasReport || nursysBrowser.screenshots.length > 4 ? "found" : "manual_required",
+        searchedName: `${firstName} ${lastName}`.toUpperCase(),
+        screenshots: nursysBrowser.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
+        reportPdfPath: nursysBrowser.reportPdfPath || null,
+        reportPdfBase64: nursysBrowser.reportPdfBase64 || null,
+        browserVerified: true,
+        report: nursysBrowser.report ? {
+          ncsbnId: nursysBrowser.report.ncsbnId,
+          fullName: nursysBrowser.report.fullName,
+          reportDate: nursysBrowser.report.reportDate,
+          licenses: nursysBrowser.report.licenses,
+          boardMessages: nursysBrowser.report.boardMessages,
+          authorizedStates: nursysBrowser.report.authorizedStates,
+        } : undefined,
+      };
     } else {
       // CNAs: use Puppeteer for accurate FL DOH verification + screenshot capture
       const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber ?? undefined);

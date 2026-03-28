@@ -535,9 +535,12 @@ export async function captureNursysScreenshots(
       securityPatterns.test(pageText) ||
       securityPatterns.test(pageTitle) ||
       securityHtmlPatterns.test(pageHtml) ||
-      // Fallback: on Nursys URL but no real page content loaded (Cloudflare can serve at any URL, including /Terms)
+      // Fallback: on Nursys URL but no real page content loaded (security pages can serve at any URL)
       (!hasSearchForm && !hasTermsContent && currentUrl.includes("nursys.com"));
     const isHardBlocked = /access\s+denied|error\s+15/i.test(pageText) && !isSecurityCheck;
+
+    // Detect Incapsula/Imperva bot protection (different from Cloudflare Turnstile — CapSolver can't solve it)
+    const isIncapsula = /_Incapsula_Resource|incapsula|imperva|reese84/i.test(pageHtml);
 
     if (isHardBlocked) {
       shots.push(await snap(page, "Nursys® — Access Denied"));
@@ -545,8 +548,8 @@ export async function captureNursysScreenshots(
     }
 
     if (isSecurityCheck) {
-      if (HAS_CAPSOLVER) {
-        // Solve Cloudflare Turnstile via CapSolver REST API
+      if (HAS_CAPSOLVER && !isIncapsula) {
+        // Solve Cloudflare Turnstile via CapSolver REST API (only works for Turnstile, not Incapsula)
         console.log("[browser-verify] Security check detected — solving Turnstile via CapSolver API...");
         shots.push(await snap(page, "Nursys® — Security Check (CapSolver solving)"));
 
@@ -577,7 +580,8 @@ export async function captureNursysScreenshots(
           return { screenshots: shots };
         }
       } else {
-        // No CapSolver — fall back to manual solving
+        // Incapsula or no CapSolver — fall back to manual solving
+        if (isIncapsula) console.log("[browser-verify] Incapsula/Imperva detected — CapSolver cannot solve this, falling back to manual...");
         console.log("[browser-verify] Security check detected — waiting for manual verification...");
         notifyCaptchaRequired("Nursys®");
 
@@ -689,7 +693,12 @@ export async function captureNursysScreenshots(
     if (/additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(afterTermsText)) {
       let passedCheck = false;
 
-      if (HAS_CAPSOLVER) {
+      // Re-check for Incapsula in case it appears after terms
+      let afterTermsHtml = "";
+      try { afterTermsHtml = await page.evaluate(() => document.body.innerHTML); } catch {}
+      const isIncapsulaAfterTerms = /_Incapsula_Resource|incapsula|imperva|reese84/i.test(afterTermsHtml);
+
+      if (HAS_CAPSOLVER && !isIncapsulaAfterTerms) {
         console.log("[browser-verify] Security check after terms — solving via CapSolver API...");
         const solved = await solveTurnstileViaAPI(page, page.url());
         if (solved) {
@@ -704,6 +713,7 @@ export async function captureNursysScreenshots(
           }
         }
       } else {
+        if (isIncapsulaAfterTerms) console.log("[browser-verify] Incapsula/Imperva detected after terms — falling back to manual...");
         console.log("[browser-verify] Security check after terms — waiting for manual verification...");
         notifyCaptchaRequired("Nursys® (after terms)");
 

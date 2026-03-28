@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
-    "@azure/msal-node": "^5.0.6",
+    "@azure/msal-node": "^5.1.0",
     "@clerk/nextjs": "^7.0.4",
     "@deepgram/sdk": "^5.0.0",
     "@huggingface/transformers": "^3.8.1",

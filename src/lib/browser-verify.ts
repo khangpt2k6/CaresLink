@@ -679,8 +679,34 @@ export async function captureNursysScreenshots(
       }
 
       if (!contentLoaded) {
-        console.log("[browser-verify] Page content did not load after security check");
-        shots.push(await snap(page, "Nursys® — Page Not Loaded After Security Check"));
+        console.log("[browser-verify] Page content did not load after security check — refreshing page...");
+        // Security overlay may still be blocking DOM content. Reload to get fresh page.
+        try {
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 15000 });
+          await wait(2000);
+          // Check again after reload
+          const hasContentAfterReload = await page.evaluate(() => {
+            return !!(
+              document.querySelector('#MainContent_lbtnContinue, a[id*="Continue"], a[id*="Agree"]') ||
+              document.querySelector('#MainContent_txtLastName, input[id*="LastName"]') ||
+              (document.body.innerText || "").length > 200
+            );
+          }).catch(() => false);
+          if (hasContentAfterReload) {
+            contentLoaded = true;
+            console.log("[browser-verify] Page loaded after refresh");
+          } else {
+            // Last resort: navigate directly to the Terms page
+            console.log("[browser-verify] Still no content — navigating directly to Terms page...");
+            await page.goto("https://www.nursys.com/LQC/LQCTerms.aspx", { waitUntil: "domcontentloaded", timeout: 15000 });
+            await wait(2000);
+          }
+        } catch (e) {
+          console.log("[browser-verify] Reload failed:", (e as Error).message);
+        }
+        if (!contentLoaded) {
+          shots.push(await snap(page, "Nursys® — Page Not Loaded After Security Check"));
+        }
       }
       console.log("[browser-verify] Post-security URL:", page.url());
     }
@@ -689,26 +715,51 @@ export async function captureNursysScreenshots(
     if (page.url().includes("Terms")) {
       shots.push(await snap(page, "Nursys® — Terms & Conditions"));
 
-      // Scroll down before clicking agree
-      await page.evaluate(() => window.scrollBy(0, 600));
-      await wait(300);
-
-      // Find the agree button — try multiple strategies
-      const agreeClicked = await page.evaluate(() => {
-        // Strategy 1: known ID
-        const btn1 = document.querySelector<HTMLElement>("#MainContent_lbtnContinue");
-        if (btn1) { btn1.click(); return "MainContent_lbtnContinue"; }
-
-        // Strategy 2: any link/button containing "agree" or "continue"
-        for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
-          const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
-          if (text.includes("agree") || text.includes("i agree") || text.includes("continue")) {
-            el.click();
-            return `text: "${text.trim().slice(0, 40)}"`;
+      // Try to find and click the agree button — retry up to 3 times with waits
+      let agreeClicked: string | null = null;
+      for (let attempt = 0; attempt < 3 && !agreeClicked; attempt++) {
+        if (attempt > 0) {
+          console.log(`[browser-verify] Agree button retry ${attempt + 1}/3 — waiting for content...`);
+          await wait(3000);
+          // Reload on 2nd retry if still can't find it
+          if (attempt === 2) {
+            try {
+              await page.reload({ waitUntil: "domcontentloaded", timeout: 10000 });
+              await wait(2000);
+            } catch {}
           }
         }
-        return null;
-      });
+
+        // Scroll down before clicking agree
+        await page.evaluate(() => window.scrollBy(0, 600)).catch(() => {});
+        await wait(300);
+
+        // Find the agree button — try multiple strategies
+        agreeClicked = await page.evaluate(() => {
+          // Strategy 1: known ID
+          const btn1 = document.querySelector<HTMLElement>("#MainContent_lbtnContinue");
+          if (btn1) { btn1.click(); return "MainContent_lbtnContinue"; }
+
+          // Strategy 2: checkbox + submit pattern (some ASP.NET forms use this)
+          const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"][id*="chk"], input[type="checkbox"][id*="agree"], input[type="checkbox"][id*="Accept"]');
+          if (checkbox && !checkbox.checked) {
+            checkbox.click();
+            // After checking the checkbox, look for submit button
+            const submit = document.querySelector<HTMLElement>('input[type="submit"], button[type="submit"]');
+            if (submit) { submit.click(); return `checkbox + submit`; }
+          }
+
+          // Strategy 3: any link/button containing "agree" or "continue"
+          for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit'], input[type='button']"))) {
+            const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
+            if (text.includes("agree") || text.includes("i agree") || text.includes("continue") || text.includes("accept")) {
+              el.click();
+              return `text: "${text.trim().slice(0, 40)}"`;
+            }
+          }
+          return null;
+        }).catch(() => null);
+      }
 
       console.log("[browser-verify] Agree button:", agreeClicked || "NOT FOUND");
 
@@ -801,10 +852,39 @@ export async function captureNursysScreenshots(
 
     // Check if form fields exist — if not, page may still be loading
     let formReady = false;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 8; i++) {
       const hasFields = await page.$('#MainContent_txtLastName, input[id*="LastName"]');
       if (hasFields) { formReady = true; break; }
-      await wait(800);
+      await wait(1500);
+    }
+
+    // If still not ready, try navigating directly to the search page
+    if (!formReady) {
+      console.log("[browser-verify] Search form not found — navigating directly to search page...");
+      try {
+        await page.goto("https://www.nursys.com/LQC/LQCSearch.aspx", { waitUntil: "domcontentloaded", timeout: 15000 });
+        await wait(2000);
+        // Check if we got redirected back to Terms (need to accept again)
+        if (page.url().includes("Terms")) {
+          console.log("[browser-verify] Redirected back to Terms — re-accepting...");
+          await page.evaluate(() => {
+            const btn = document.querySelector<HTMLElement>("#MainContent_lbtnContinue");
+            if (btn) { btn.click(); return; }
+            const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"]');
+            if (checkbox && !checkbox.checked) checkbox.click();
+            for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
+              const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
+              if (text.includes("agree") || text.includes("continue") || text.includes("accept")) { el.click(); return; }
+            }
+          }).catch(() => {});
+          try { await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 }); } catch {}
+          await wait(2000);
+        }
+        const hasFields = await page.$('#MainContent_txtLastName, input[id*="LastName"]');
+        if (hasFields) formReady = true;
+      } catch (e) {
+        console.log("[browser-verify] Direct navigation failed:", (e as Error).message);
+      }
     }
 
     if (!formReady) {

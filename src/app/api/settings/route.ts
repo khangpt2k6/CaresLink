@@ -55,6 +55,27 @@ export async function PUT(request: NextRequest) {
       }
       update.groqModel = body.groqModel || null;
     }
+    if (body.rateLimitPerMinute !== undefined) {
+      const val = Number(body.rateLimitPerMinute);
+      if (!Number.isInteger(val) || val < 1 || val > 300) {
+        return NextResponse.json({ error: "Rate limit per minute must be 1-300" }, { status: 400 });
+      }
+      update.rateLimitPerMinute = val;
+    }
+    if (body.rateLimitPerDay !== undefined) {
+      const val = Number(body.rateLimitPerDay);
+      if (!Number.isInteger(val) || val < 1 || val > 100000) {
+        return NextResponse.json({ error: "Rate limit per day must be 1-100000" }, { status: 400 });
+      }
+      update.rateLimitPerDay = val;
+    }
+    if (body.monthlyBudgetCents !== undefined) {
+      const val = Number(body.monthlyBudgetCents);
+      if (!Number.isInteger(val) || val < 0 || val > 1000000) {
+        return NextResponse.json({ error: "Monthly budget must be $0-$10,000" }, { status: 400 });
+      }
+      update.monthlyBudgetCents = val;
+    }
 
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });

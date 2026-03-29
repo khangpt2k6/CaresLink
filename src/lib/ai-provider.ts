@@ -9,6 +9,12 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import Groq from "groq-sdk";
+import type {
+  ChatCompletionTool as GroqTool,
+  ChatCompletionMessageParam as GroqMessage,
+  ChatCompletion as GroqCompletion,
+  ChatCompletionCreateParamsNonStreaming as GroqCreateParams,
+} from "groq-sdk/resources/chat/completions";
 import type { Tool as AnthropicTool, MessageParam } from "@anthropic-ai/sdk/resources/messages";
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -33,14 +39,7 @@ export interface AIResponse {
 /** Tool definition in Anthropic format (our canonical format) */
 export type AITool = AnthropicTool;
 
-/** Options for createMessage */
-export interface CreateMessageOptions {
-  model?: string;
-  system?: string;
-  messages: MessageParam[];
-  tools?: AITool[];
-  maxTokens?: number;
-}
+// CreateMessageOptions is defined below, next to createMessage
 
 // ─── Model mapping ──────────────────────────────────────────────
 
@@ -134,7 +133,7 @@ export function isProviderAvailable(provider: AIProvider): boolean {
 // ─── Format converters ──────────────────────────────────────────
 
 /** Convert Anthropic-format tools to Groq/OpenAI-format tools */
-function toGroqTools(tools: AITool[]): Groq.Chat.CompletionCreateParams.Tool[] {
+function toGroqTools(tools: AITool[]): GroqTool[] {
   return tools.map((t) => ({
     type: "function" as const,
     function: {
@@ -149,8 +148,8 @@ function toGroqTools(tools: AITool[]): Groq.Chat.CompletionCreateParams.Tool[] {
 function toGroqMessages(
   messages: MessageParam[],
   system?: string
-): Groq.Chat.CompletionCreateParams.Message[] {
-  const result: Groq.Chat.CompletionCreateParams.Message[] = [];
+): GroqMessage[] {
+  const result: GroqMessage[] = [];
 
   // System prompt goes as the first message
   if (system) {
@@ -186,7 +185,7 @@ function toGroqMessages(
                 },
               };
             }),
-          } as Groq.Chat.CompletionCreateParams.Message);
+          } as GroqMessage);
         } else {
           result.push({ role: "assistant", content: textContent });
         }
@@ -197,7 +196,7 @@ function toGroqMessages(
       } else if (Array.isArray(msg.content)) {
         // Check for tool_result blocks (Anthropic format)
         const toolResults = msg.content.filter(
-          (b) => (b as Record<string, unknown>).type === "tool_result"
+          (b) => (b as unknown as Record<string, unknown>).type === "tool_result"
         );
         if (toolResults.length > 0) {
           // Convert each tool_result to a Groq "tool" role message
@@ -207,14 +206,14 @@ function toGroqMessages(
               role: "tool",
               tool_call_id: trb.tool_use_id,
               content: typeof trb.content === "string" ? trb.content : JSON.stringify(trb.content),
-            } as Groq.Chat.CompletionCreateParams.Message);
+            } as GroqMessage);
           }
         } else {
           // Text content blocks
           const text = msg.content
             .map((b) => {
-              if ((b as Record<string, unknown>).type === "text") {
-                return (b as { type: "text"; text: string }).text;
+              if ((b as unknown as Record<string, unknown>).type === "text") {
+                return (b as unknown as { type: "text"; text: string }).text;
               }
               return "";
             })
@@ -229,7 +228,7 @@ function toGroqMessages(
 }
 
 /** Convert Groq response to our unified AIResponse format */
-function fromGroqResponse(response: Groq.Chat.ChatCompletion): AIResponse {
+function fromGroqResponse(response: GroqCompletion): AIResponse {
   const choice = response.choices[0];
   if (!choice) {
     return { content: [{ type: "text", text: "" }], stopReason: "end_turn" };
@@ -273,7 +272,79 @@ function fromGroqResponse(response: Groq.Chat.ChatCompletion): AIResponse {
   return { content, stopReason };
 }
 
+// ─── Usage logging ─────────────────────────────────────────────
+
+/** Cost per 1M tokens in cents for each provider/model */
+const COST_PER_1M_TOKENS: Record<string, { input: number; output: number }> = {
+  // Anthropic (cents per 1M tokens)
+  "claude-sonnet-4-6":        { input: 300, output: 1500 },
+  "claude-sonnet-4-20250514": { input: 300, output: 1500 },
+  "claude-haiku-4-5-20251001": { input: 80, output: 400 },
+  // Groq (cents per 1M tokens)
+  "llama-3.3-70b-versatile":  { input: 59, output: 79 },
+  "llama-3.1-70b-versatile":  { input: 59, output: 79 },
+  "llama-3.1-8b-instant":     { input: 5, output: 8 },
+  "mixtral-8x7b-32768":       { input: 24, output: 24 },
+  "gemma2-9b-it":             { input: 20, output: 20 },
+};
+
+function estimateCostCents(model: string, inputTokens: number, outputTokens: number): number {
+  const rates = COST_PER_1M_TOKENS[model] || { input: 100, output: 100 };
+  return (inputTokens * rates.input + outputTokens * rates.output) / 1_000_000;
+}
+
+/** Log AI usage asynchronously (fire-and-forget, never blocks the response) */
+function logUsage(data: {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs: number;
+  endpoint?: string;
+  userId?: string;
+  candidateId?: string;
+  success: boolean;
+  errorMessage?: string;
+}) {
+  const totalTokens = data.inputTokens + data.outputTokens;
+  const costCents = estimateCostCents(data.model, data.inputTokens, data.outputTokens);
+
+  import("./db").then(({ prisma }) =>
+    prisma.aIUsageLog.create({
+      data: {
+        provider: data.provider,
+        model: data.model,
+        inputTokens: data.inputTokens,
+        outputTokens: data.outputTokens,
+        totalTokens,
+        costCents,
+        durationMs: data.durationMs,
+        endpoint: data.endpoint,
+        userId: data.userId,
+        candidateId: data.candidateId,
+        success: data.success,
+        errorMessage: data.errorMessage,
+      },
+    }).catch((e) => console.error("Failed to log AI usage:", e))
+  );
+}
+
 // ─── Main API ───────────────────────────────────────────────────
+
+/** Options passed through for usage tracking */
+export interface CreateMessageOptions {
+  model?: string;
+  system?: string;
+  messages: MessageParam[];
+  tools?: AITool[];
+  maxTokens?: number;
+  /** Which feature triggered this call (e.g. "agent", "screening", "matching") */
+  endpoint?: string;
+  /** User who triggered the call */
+  userId?: string;
+  /** Candidate related to the call */
+  candidateId?: string;
+}
 
 /**
  * Create an AI message (unified interface for both providers).
@@ -285,11 +356,12 @@ export async function createMessage(opts: CreateMessageOptions): Promise<AIRespo
   const provider = await getProvider();
   const model = mapModel(opts.model || "claude-sonnet-4-6", provider);
   const maxTokens = opts.maxTokens || 4096;
+  const startTime = Date.now();
 
   if (provider === "groq") {
     const groq = getGroqClient();
     const groqMessages = toGroqMessages(opts.messages, opts.system);
-    const groqOpts: Groq.Chat.CompletionCreateParams = {
+    const groqOpts: GroqCreateParams = {
       model,
       messages: groqMessages,
       max_tokens: maxTokens,
@@ -300,8 +372,30 @@ export async function createMessage(opts: CreateMessageOptions): Promise<AIRespo
       groqOpts.tool_choice = "auto";
     }
 
-    const response = await groq.chat.completions.create(groqOpts);
-    return fromGroqResponse(response);
+    try {
+      const response = await groq.chat.completions.create(groqOpts);
+      const durationMs = Date.now() - startTime;
+      logUsage({
+        provider: "groq",
+        model,
+        inputTokens: response.usage?.prompt_tokens || 0,
+        outputTokens: response.usage?.completion_tokens || 0,
+        durationMs,
+        endpoint: opts.endpoint,
+        userId: opts.userId,
+        candidateId: opts.candidateId,
+        success: true,
+      });
+      return fromGroqResponse(response);
+    } catch (err) {
+      logUsage({
+        provider: "groq", model, inputTokens: 0, outputTokens: 0,
+        durationMs: Date.now() - startTime,
+        endpoint: opts.endpoint, userId: opts.userId,
+        success: false, errorMessage: (err as Error).message,
+      });
+      throw err;
+    }
   }
 
   // Default: Anthropic
@@ -320,30 +414,52 @@ export async function createMessage(opts: CreateMessageOptions): Promise<AIRespo
     anthropicOpts.tools = opts.tools;
   }
 
-  const response = await anthropic.messages.create(anthropicOpts);
+  try {
+    const response = await anthropic.messages.create(anthropicOpts);
+    const durationMs = Date.now() - startTime;
+    logUsage({
+      provider: "anthropic",
+      model,
+      inputTokens: response.usage?.input_tokens || 0,
+      outputTokens: response.usage?.output_tokens || 0,
+      durationMs,
+      endpoint: opts.endpoint,
+      userId: opts.userId,
+      candidateId: opts.candidateId,
+      success: true,
+    });
 
-  // Convert Anthropic response to unified format
-  const content: ContentBlock[] = response.content.map((block) => {
-    if (block.type === "text") {
-      return { type: "text" as const, text: block.text };
-    }
-    if (block.type === "tool_use") {
-      return {
-        type: "tool_use" as const,
-        id: block.id,
-        name: block.name,
-        input: block.input as Record<string, unknown>,
-      };
-    }
-    return { type: "text" as const, text: "" };
-  });
+    // Convert Anthropic response to unified format
+    const content: ContentBlock[] = response.content.map((block) => {
+      if (block.type === "text") {
+        return { type: "text" as const, text: block.text };
+      }
+      if (block.type === "tool_use") {
+        return {
+          type: "tool_use" as const,
+          id: block.id,
+          name: block.name,
+          input: block.input as Record<string, unknown>,
+        };
+      }
+      return { type: "text" as const, text: "" };
+    });
 
-  const stopReason: AIResponse["stopReason"] =
-    response.stop_reason === "tool_use" ? "tool_use" :
-    response.stop_reason === "max_tokens" ? "max_tokens" :
-    "end_turn";
+    const stopReason: AIResponse["stopReason"] =
+      response.stop_reason === "tool_use" ? "tool_use" :
+      response.stop_reason === "max_tokens" ? "max_tokens" :
+      "end_turn";
 
-  return { content, stopReason };
+    return { content, stopReason };
+  } catch (err) {
+    logUsage({
+      provider: "anthropic", model, inputTokens: 0, outputTokens: 0,
+      durationMs: Date.now() - startTime,
+      endpoint: opts.endpoint, userId: opts.userId,
+      success: false, errorMessage: (err as Error).message,
+    });
+    throw err;
+  }
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   LayoutList,
   FileText,
   ClipboardCheck,
+  Settings,
 } from "lucide-react";
 import { useUser, useClerk } from "@clerk/nextjs";
 
@@ -33,6 +34,7 @@ const employerNav = [
   { href: "/calendar", label: "Calendar", icon: CalendarClock },
   { href: "/credential-check", label: "Credential Check", icon: ClipboardCheck },
   { href: "/insights", label: "Insights", icon: Lightbulb },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 const candidateNav = [
@@ -43,6 +45,7 @@ const candidateNav = [
   { href: "/preferences", label: "Job Preferences", icon: SlidersHorizontal },
   { href: "/interviews", label: "My Interviews", icon: Calendar },
   { href: "/availability", label: "My Availability", icon: Clock },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {

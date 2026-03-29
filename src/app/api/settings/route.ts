@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isProviderAvailable, getGroqModels, type AIProvider } from "@/lib/ai-provider";
 
-const DEFAULTS = { id: "default", timezone: "America/New_York", defaultDuration: 60, videoPlatform: "jitsi", videoLink: null, aiProvider: "anthropic", groqModel: null };
+const DEFAULTS = { id: "default", timezone: "America/New_York", defaultDuration: 60, videoPlatform: "jitsi", videoLink: null, aiProvider: "anthropic", groqModel: null, rateLimitPerMinute: 30, rateLimitPerDay: 1000, monthlyBudgetCents: 5000 };
 const VALID_DURATIONS = [30, 45, 60, 90];
 const VALID_PLATFORMS = ["jitsi", "zoom", "google_meet", "ms_teams"];
 const VALID_AI_PROVIDERS = ["anthropic", "groq"];
@@ -10,7 +10,9 @@ const VALID_AI_PROVIDERS = ["anthropic", "groq"];
 export async function GET() {
   try {
     const settings = await prisma.settings.findUnique({ where: { id: "default" } });
-    return NextResponse.json(settings || DEFAULTS);
+    if (!settings) return NextResponse.json(DEFAULTS);
+    // Merge with defaults so new fields always have values
+    return NextResponse.json({ ...DEFAULTS, ...Object.fromEntries(Object.entries(settings).filter(([, v]) => v !== null && v !== undefined)) });
   } catch {
     return NextResponse.json(DEFAULTS);
   }

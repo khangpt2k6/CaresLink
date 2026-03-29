@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Settings2,
@@ -170,7 +171,17 @@ function GeneralTab() {
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
-      .then((d) => setSettings(d))
+      .then((d) => setSettings({
+        timezone: d.timezone ?? "America/New_York",
+        defaultDuration: d.defaultDuration ?? 60,
+        videoPlatform: d.videoPlatform ?? "jitsi",
+        videoLink: d.videoLink ?? null,
+        aiProvider: d.aiProvider ?? "anthropic",
+        groqModel: d.groqModel ?? null,
+        rateLimitPerMinute: d.rateLimitPerMinute ?? 30,
+        rateLimitPerDay: d.rateLimitPerDay ?? 1000,
+        monthlyBudgetCents: d.monthlyBudgetCents ?? 5000,
+      }))
       .catch(() => setError("Failed to load settings"))
       .finally(() => setLoading(false));
   }, []);
@@ -269,36 +280,63 @@ function GeneralTab() {
       {/* AI Provider */}
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-[#1a2b3c] mb-4">AI Provider</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-xs font-medium text-[#5a6b7c]">Provider</span>
+        <div className="grid gap-3 sm:grid-cols-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setSettings({ ...settings, aiProvider: "anthropic" })}
+            className={cn(
+              "flex items-center gap-3 rounded-lg border-2 p-4 transition-all duration-150 text-left",
+              settings.aiProvider === "anthropic"
+                ? "border-[#0090d9] bg-blue-50/50 shadow-sm"
+                : "border-gray-200 hover:border-gray-300 bg-white"
+            )}
+          >
+            <Image src="/Claude_AI_symbol.svg" alt="Claude" width={32} height={32} className="rounded-lg" />
+            <div>
+              <p className="text-sm font-semibold text-[#1a2b3c]">Anthropic</p>
+              <p className="text-[11px] text-[#5a6b7c]">Claude Sonnet / Haiku</p>
+            </div>
+            {settings.aiProvider === "anthropic" && (
+              <div className="ml-auto h-2.5 w-2.5 rounded-full bg-[#0090d9]" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSettings({ ...settings, aiProvider: "groq" })}
+            className={cn(
+              "flex items-center gap-3 rounded-lg border-2 p-4 transition-all duration-150 text-left",
+              settings.aiProvider === "groq"
+                ? "border-[#0090d9] bg-blue-50/50 shadow-sm"
+                : "border-gray-200 hover:border-gray-300 bg-white"
+            )}
+          >
+            <Image src="/groq.jpg" alt="Groq" width={32} height={32} className="rounded-lg" />
+            <div>
+              <p className="text-sm font-semibold text-[#1a2b3c]">Groq</p>
+              <p className="text-[11px] text-[#5a6b7c]">Llama / Mixtral</p>
+            </div>
+            {settings.aiProvider === "groq" && (
+              <div className="ml-auto h-2.5 w-2.5 rounded-full bg-[#0090d9]" />
+            )}
+          </button>
+        </div>
+        {settings.aiProvider === "groq" && (
+          <label className="block max-w-xs">
+            <span className="text-xs font-medium text-[#5a6b7c]">Groq model</span>
             <select
-              value={settings.aiProvider}
-              onChange={(e) => setSettings({ ...settings, aiProvider: e.target.value })}
+              value={settings.groqModel || ""}
+              onChange={(e) => setSettings({ ...settings, groqModel: e.target.value || null })}
               className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]"
             >
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="groq">Groq (Llama / Mixtral)</option>
+              <option value="">Default (Llama 3.3 70B)</option>
+              <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+              <option value="llama-3.1-70b-versatile">Llama 3.1 70B</option>
+              <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fast)</option>
+              <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+              <option value="gemma2-9b-it">Gemma 2 9B</option>
             </select>
           </label>
-          {settings.aiProvider === "groq" && (
-            <label className="block">
-              <span className="text-xs font-medium text-[#5a6b7c]">Groq model</span>
-              <select
-                value={settings.groqModel || ""}
-                onChange={(e) => setSettings({ ...settings, groqModel: e.target.value || null })}
-                className="mt-1 block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-[#1a2b3c] focus:border-[#0090d9] focus:outline-none focus:ring-1 focus:ring-[#0090d9]"
-              >
-                <option value="">Default (Llama 3.3 70B)</option>
-                <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
-                <option value="llama-3.1-70b-versatile">Llama 3.1 70B</option>
-                <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fast)</option>
-                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-                <option value="gemma2-9b-it">Gemma 2 9B</option>
-              </select>
-            </label>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Rate Limits */}
@@ -396,9 +434,19 @@ function AccountTab() {
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-[#1a2b3c] mb-4">Profile</h2>
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#0090d9] text-xl font-bold text-white ring-4 ring-blue-100">
-            {user.firstName?.charAt(0).toUpperCase() || "U"}
-          </div>
+          {user.imageUrl ? (
+            <Image
+              src={user.imageUrl}
+              alt={user.fullName || "User"}
+              width={56}
+              height={56}
+              className="rounded-full ring-4 ring-blue-100"
+            />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#0090d9] text-xl font-bold text-white ring-4 ring-blue-100">
+              {user.firstName?.charAt(0).toUpperCase() || "U"}
+            </div>
+          )}
           <div className="flex-1 grid gap-4 sm:grid-cols-2">
             <div>
               <span className="text-xs font-medium text-[#5a6b7c]">Full name</span>
@@ -430,20 +478,33 @@ function AccountTab() {
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-[#1a2b3c] mb-4">Authentication</h2>
         <div className="space-y-3">
-          {user.externalAccounts?.map((acc) => (
-            <div key={acc.id} className="flex items-center gap-3 rounded-lg border border-gray-100 p-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
-                <User className="h-4 w-4 text-[#5a6b7c]" />
+          {user.externalAccounts?.map((acc) => {
+            const providerIcon: Record<string, string> = {
+              google: "/google.png",
+              oauth_google: "/google.png",
+            };
+            const iconSrc = providerIcon[acc.provider] || providerIcon["oauth_" + acc.provider];
+            return (
+              <div key={acc.id} className="flex items-center gap-3 rounded-lg border border-gray-100 p-3">
+                {iconSrc ? (
+                  <Image src={iconSrc} alt={acc.provider} width={32} height={32} className="rounded-full" />
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
+                    <User className="h-4 w-4 text-[#5a6b7c]" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium text-[#1a2b3c] capitalize">
+                    {acc.provider.replace("oauth_", "")}
+                  </p>
+                  <p className="text-xs text-[#5a6b7c]">{acc.emailAddress}</p>
+                </div>
+                <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  Connected
+                </span>
               </div>
-              <div>
-                <p className="text-sm font-medium text-[#1a2b3c] capitalize">{acc.provider}</p>
-                <p className="text-xs text-[#5a6b7c]">{acc.emailAddress}</p>
-              </div>
-              <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                Connected
-              </span>
-            </div>
-          ))}
+            );
+          })}
           {(!user.externalAccounts || user.externalAccounts.length === 0) && (
             <p className="text-sm text-[#5a6b7c]">No external accounts connected</p>
           )}
@@ -464,7 +525,13 @@ function UsageTab() {
     setLoading(true);
     fetch(`/api/settings/usage?days=${days}`)
       .then((r) => r.json())
-      .then((d) => setUsage(d))
+      .then((d) => {
+        if (d.error || !d.rateLimits) {
+          setUsage(null);
+        } else {
+          setUsage(d);
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [days]);
@@ -477,16 +544,24 @@ function UsageTab() {
     );
   }
 
-  if (!usage) return null;
+  if (!usage) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+        <p>No usage data available yet.</p>
+        <p className="mt-1 text-xs text-gray-400">Usage tracking starts automatically when AI calls are made. If you just added the Groq/AI provider, restart the dev server after running <code className="bg-gray-100 px-1 rounded">npx prisma generate</code>.</p>
+      </div>
+    );
+  }
 
-  const budgetPct = usage.rateLimits.monthlyBudgetCents > 0
-    ? Math.min(100, (usage.thisMonth.costCents / usage.rateLimits.monthlyBudgetCents) * 100)
+  const limits = usage.rateLimits ?? { monthlyBudgetCents: 5000, perDay: 1000, perMinute: 30 };
+  const budgetPct = limits.monthlyBudgetCents > 0
+    ? Math.min(100, (usage.thisMonth.costCents / limits.monthlyBudgetCents) * 100)
     : 0;
-  const dailyPct = usage.rateLimits.perDay > 0
-    ? Math.min(100, (usage.today.requests / usage.rateLimits.perDay) * 100)
+  const dailyPct = limits.perDay > 0
+    ? Math.min(100, (usage.today.requests / limits.perDay) * 100)
     : 0;
-  const minutePct = usage.rateLimits.perMinute > 0
-    ? Math.min(100, (usage.thisMinute.requests / usage.rateLimits.perMinute) * 100)
+  const minutePct = limits.perMinute > 0
+    ? Math.min(100, (usage.thisMinute.requests / limits.perMinute) * 100)
     : 0;
 
   return (
@@ -511,7 +586,7 @@ function UsageTab() {
         <RateLimitGauge
           label="This minute"
           current={usage.thisMinute.requests}
-          limit={usage.rateLimits.perMinute}
+          limit={limits.perMinute}
           pct={minutePct}
           icon={Gauge}
           unit="req"
@@ -519,7 +594,7 @@ function UsageTab() {
         <RateLimitGauge
           label="Today"
           current={usage.today.requests}
-          limit={usage.rateLimits.perDay}
+          limit={limits.perDay}
           pct={dailyPct}
           icon={Activity}
           unit="req"
@@ -527,7 +602,7 @@ function UsageTab() {
         <RateLimitGauge
           label="Monthly budget"
           current={usage.thisMonth.costCents}
-          limit={usage.rateLimits.monthlyBudgetCents}
+          limit={limits.monthlyBudgetCents}
           pct={budgetPct}
           icon={DollarSign}
           unit="cents"

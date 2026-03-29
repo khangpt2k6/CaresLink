@@ -19,6 +19,8 @@ import {
   Gauge,
   TrendingUp,
   CircleDot,
+  Plug,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -71,11 +73,12 @@ interface UsageData {
   }[];
 }
 
-type Tab = "general" | "account" | "usage";
+type Tab = "general" | "account" | "connectors" | "usage";
 
 const tabs: { id: Tab; label: string; icon: typeof Settings2 }[] = [
   { id: "general", label: "General", icon: Settings2 },
   { id: "account", label: "Account", icon: User },
+  { id: "connectors", label: "Connectors", icon: Plug },
   { id: "usage", label: "Usage", icon: BarChart3 },
 ];
 
@@ -150,6 +153,7 @@ export default function SettingsPage() {
             >
               {activeTab === "general" && <GeneralTab />}
               {activeTab === "account" && <AccountTab />}
+              {activeTab === "connectors" && <ConnectorsTab />}
               {activeTab === "usage" && <UsageTab />}
             </motion.div>
           </AnimatePresence>
@@ -510,6 +514,137 @@ function AccountTab() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Connectors Tab ─────────────────────────────────────────────
+
+interface ConnectorData {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  status: "connected" | "not_connected" | "manual";
+  detail?: string;
+  actionUrl?: string;
+  actionLabel?: string;
+}
+
+const categoryLabels: Record<string, string> = {
+  calendar: "Calendar",
+  video: "Video Conferencing",
+  ai: "AI & Intelligence",
+  communication: "Communication",
+  infrastructure: "Infrastructure",
+};
+
+const categoryOrder = ["calendar", "video", "ai", "communication", "infrastructure"];
+
+function ConnectorsTab() {
+  const [connectors, setConnectors] = useState<ConnectorData[]>([]);
+  const [summary, setSummary] = useState({ total: 0, connected: 0, notConnected: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/settings/connectors")
+      .then((r) => r.json())
+      .then((d) => {
+        setConnectors(d.connectors || []);
+        setSummary(d.summary || { total: 0, connected: 0, notConnected: 0 });
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-5 w-5 animate-spin text-[#0090d9]" />
+      </div>
+    );
+  }
+
+  const grouped = categoryOrder
+    .map((cat) => ({
+      category: cat,
+      label: categoryLabels[cat] || cat,
+      items: connectors.filter((c) => c.category === cat),
+    }))
+    .filter((g) => g.items.length > 0);
+
+  return (
+    <div className="space-y-5">
+      {/* Summary bar */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1.5">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="text-xs font-medium text-emerald-700">{summary.connected} connected</span>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5">
+          <span className="h-2 w-2 rounded-full bg-gray-400" />
+          <span className="text-xs font-medium text-[#5a6b7c]">{summary.notConnected} not connected</span>
+        </div>
+      </div>
+
+      {/* Grouped connectors */}
+      {grouped.map((group) => (
+        <div key={group.category}>
+          <h3 className="text-xs font-semibold text-[#5a6b7c] uppercase tracking-wider mb-2">
+            {group.label}
+          </h3>
+          <div className="card divide-y divide-gray-100">
+            {group.items.map((connector) => (
+              <div key={connector.id} className="flex items-center gap-4 px-5 py-4">
+                <Image
+                  src={connector.icon}
+                  alt={connector.name}
+                  width={36}
+                  height={36}
+                  className="rounded-lg"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[#1a2b3c]">{connector.name}</p>
+                  <p className="text-[11px] text-[#5a6b7c] truncate">{connector.description}</p>
+                </div>
+                {connector.detail && (
+                  <span className="hidden sm:block text-[11px] text-[#5a6b7c] max-w-[180px] truncate">
+                    {connector.detail}
+                  </span>
+                )}
+                <div className="flex items-center gap-2.5 shrink-0">
+                  {connector.status === "connected" ? (
+                    <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Connected
+                    </span>
+                  ) : connector.status === "manual" ? (
+                    <span className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      Manual
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-[#5a6b7c]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+                      Not connected
+                    </span>
+                  )}
+                  {connector.actionUrl && connector.status !== "connected" && (
+                    <a
+                      href={connector.actionUrl}
+                      className="flex items-center gap-1 rounded-lg bg-[#0090d9] px-3 py-1.5 text-[11px] font-medium text-white hover:bg-[#007bbd] transition-colors"
+                    >
+                      {connector.actionLabel || "Connect"}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

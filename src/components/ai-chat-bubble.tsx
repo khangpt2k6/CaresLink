@@ -638,7 +638,7 @@ export function AiChatBubble() {
           onClick={toggle}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.94 }}
-          className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg hover:shadow-xl transition-shadow overflow-hidden ring-1 ring-black/5"
+          className="fixed bottom-8 right-8 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg hover:shadow-xl transition-shadow overflow-hidden ring-1 ring-black/5"
           style={{ boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)" }}
         >
           <img src="/ai-logo.png" alt="CaresLink AI" className="h-9 w-9 object-contain" />

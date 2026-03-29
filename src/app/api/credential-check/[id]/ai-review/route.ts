@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic();
+import { textCompletion } from "@/lib/ai-provider";
 
 // POST /api/credential-check/[id]/ai-review — re-run AI analysis on existing verification data
 export async function POST(
@@ -114,13 +112,11 @@ Rules for NURSE:
 
 Respond in JSON format: {"recommendation": "EMPLOYABLE|REVIEW_REQUIRED|NOT_EMPLOYABLE", "summary": "..."}`;
 
-  const msg = await anthropic.messages.create({
+  const text = await textCompletion({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 400,
+    maxTokens: 400,
     messages: [{ role: "user", content: prompt }],
   });
-
-  const text = (msg.content[0] as { type: string; text: string }).text;
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     const parsed = JSON.parse(jsonMatch[0]);

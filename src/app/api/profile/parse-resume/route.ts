@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCandidate } from "@/lib/clerk-auth";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+import { textCompletion } from "@/lib/ai-provider";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -41,10 +39,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Could not extract text from the file." }, { status: 400 });
     }
 
-    // Use Claude to extract structured profile data
-    const message = await anthropic.messages.create({
+    // Use AI to extract structured profile data
+    const raw = await textCompletion({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1500,
+      maxTokens: 1500,
       messages: [
         {
           role: "user",
@@ -92,8 +90,6 @@ Return this exact JSON structure (use null for missing fields, empty arrays for 
         },
       ],
     });
-
-    const raw = message.content[0].type === "text" ? message.content[0].text : "";
     // Strip any accidental markdown fences
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(cleaned);

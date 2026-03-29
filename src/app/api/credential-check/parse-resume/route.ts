@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic();
+import { textCompletion } from "@/lib/ai-provider";
 
 // POST /api/credential-check/parse-resume
 // Accepts multipart/form-data with a "file" field (PDF or DOCX)
@@ -46,9 +44,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Use AI to extract structured data
-    const msg = await anthropic.messages.create({
+    const raw = await textCompletion({
       model: "claude-sonnet-4-6",
-      max_tokens: 600,
+      maxTokens: 600,
       messages: [
         {
           role: "user",
@@ -73,8 +71,6 @@ ${textContent.slice(0, 4000)}`,
         },
       ],
     });
-
-    const raw = (msg.content[0] as { type: string; text: string }).text;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return NextResponse.json({ error: "AI could not parse resume" }, { status: 422 });

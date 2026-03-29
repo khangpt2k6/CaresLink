@@ -26,9 +26,9 @@ export async function POST(
     .map((t) => `[${t.speaker}]: ${t.content}`)
     .join("\n");
 
-  const message = await anthropic.messages.create({
+  const rawText = await textCompletion({
     model: "claude-sonnet-4-6",
-    max_tokens: 1024,
+    maxTokens: 1024,
     messages: [
       {
         role: "user",
@@ -51,8 +51,6 @@ ${fullTranscript}`,
       },
     ],
   });
-
-  const rawText = message.content[0].type === "text" ? message.content[0].text : "[]";
 
   let parsed: { content: string; category: string }[] = [];
   try {

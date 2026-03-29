@@ -243,11 +243,7 @@ export async function reembedCandidateByUserId(userId: string): Promise<void> {
 // Uses Claude to score candidates, but batches them in ONE API call per job.
 // Cost: ~$0.01-0.03 per job (scores ALL candidates in a single prompt).
 
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
+import { textCompletion } from "./ai-provider";
 
 /**
  * When a candidate changes, re-score them against all open jobs using Claude.
@@ -255,7 +251,6 @@ const anthropic = process.env.ANTHROPIC_API_KEY
  */
 async function autoMatchCandidateToJobs(candidateId: string, _embedding: number[]): Promise<void> {
   try {
-    if (!anthropic) return;
 
     const candidate = await prisma.candidate.findUnique({ where: { id: candidateId } });
     if (!candidate) return;
@@ -276,10 +271,10 @@ async function autoMatchCandidateToJobs(candidateId: string, _embedding: number[
 
     if (openJobs.length === 0) return;
 
-    // ONE Claude call to score this candidate against ALL jobs
-    const response = await anthropic.messages.create({
+    // ONE AI call to score this candidate against ALL jobs
+    const text = await textCompletion({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 2048,
+      maxTokens: 2048,
       messages: [{
         role: "user",
         content: `Score this healthcare candidate against each job. Be accurate and realistic.
@@ -294,8 +289,6 @@ Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 5
 [{"jobId":"id","score":85,"label":"Good fit","reason":"1 sentence"}]`,
       }],
     });
-
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
     const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
     const scores: { jobId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
 
@@ -324,7 +317,6 @@ Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 5
  */
 async function autoMatchJobToCandidates(jobId: string): Promise<void> {
   try {
-    if (!anthropic) return;
 
     const job = await prisma.job.findUnique({ where: { id: jobId } });
     if (!job) return;
@@ -348,10 +340,10 @@ async function autoMatchJobToCandidates(jobId: string): Promise<void> {
       })
     );
 
-    // ONE Claude call to score all candidates
-    const response = await anthropic.messages.create({
+    // ONE AI call to score all candidates
+    const text = await textCompletion({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      maxTokens: 4096,
       messages: [{
         role: "user",
         content: `Score each candidate against this job. Be accurate and realistic.
@@ -367,8 +359,6 @@ Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 5
 [{"candidateId":"id","score":85,"label":"Good fit","reason":"1 sentence"}]`,
       }],
     });
-
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
     const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
     const scores: { candidateId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
 

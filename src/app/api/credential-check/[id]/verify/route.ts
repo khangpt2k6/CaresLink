@@ -5,9 +5,7 @@ import { prisma } from "@/lib/db";
 import { checkOIGExclusion } from "@/lib/oig-exclusion";
 import { checkSAMGov } from "@/lib/sam-gov";
 import { captureFloridaDOHScreenshots, captureNursysScreenshots } from "@/lib/browser-verify";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic();
+import { textCompletion } from "@/lib/ai-provider";
 
 export const maxDuration = 120; // Puppeteer for CNA needs extra time
 
@@ -184,13 +182,11 @@ Rules for NURSE:
 
 Respond in JSON format: {"recommendation": "EMPLOYABLE|REVIEW_REQUIRED|NOT_EMPLOYABLE", "summary": "..."}`;
 
-    const msg = await anthropic.messages.create({
+    const text = await textCompletion({
       model: "claude-sonnet-4-6",
-      max_tokens: 400,
+      maxTokens: 400,
       messages: [{ role: "user", content: prompt }],
     });
-
-    const text = (msg.content[0] as { type: string; text: string }).text;
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);

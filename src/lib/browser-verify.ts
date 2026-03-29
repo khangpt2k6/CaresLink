@@ -242,18 +242,42 @@ async function solveRecaptchaViaAPI(page: Page, pageUrl: string): Promise<boolea
       }
       console.log("[browser-verify] CapSolver solved reCAPTCHA! Token length:", token.length);
 
-      // Inject the token into the page
+      // Inject the token and trigger reCAPTCHA solved state
       await page.evaluate((t: string) => {
-        const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
-        if (ta) {
+        // Set ALL g-recaptcha-response textareas (some pages have multiple)
+        document.querySelectorAll<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]').forEach((ta) => {
           ta.value = t;
-          ta.style.display = "block"; // some forms check visibility
-        }
-        // Also try calling the callback if grecaptcha is available
+        });
+
+        // Method 1: data-callback attribute on the .g-recaptcha div
         try {
-          const cb = (document.querySelector('.g-recaptcha') as any)?.getAttribute('data-callback');
+          const cb = document.querySelector('.g-recaptcha')?.getAttribute('data-callback');
           if (cb && typeof (window as any)[cb] === 'function') {
             (window as any)[cb](t);
+            return; // callback fired — it should handle form state
+          }
+        } catch {}
+
+        // Method 2: Find callback inside grecaptcha internal config
+        try {
+          const cfg = (window as any).___grecaptcha_cfg;
+          if (cfg?.clients) {
+            for (const cid of Object.keys(cfg.clients)) {
+              const client = cfg.clients[cid];
+              // Walk the nested objects to find a callback function
+              for (const k1 of Object.keys(client)) {
+                const v1 = client[k1];
+                if (v1 && typeof v1 === 'object') {
+                  for (const k2 of Object.keys(v1)) {
+                    const v2 = v1[k2];
+                    if (v2 && typeof v2 === 'object' && typeof v2.callback === 'function') {
+                      v2.callback(t);
+                      return;
+                    }
+                  }
+                }
+              }
+            }
           }
         } catch {}
       }, token);
@@ -629,14 +653,36 @@ export async function captureNursysScreenshots(
       console.log("[browser-verify] Security check passed! Continuing...");
       notifyVerificationProgress("Nursys®", "passed");
 
-      // Wait for the redirected page to fully settle
-      await wait(1000);
+      // Wait for the redirected page to fully settle — the page may have already navigated
+      // during the polling loop, so waitForNavigation can miss it. Instead, wait for real
+      // page content (Terms agree button or search form) to appear.
+      await wait(2000);
       try {
-        await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 });
+        await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 });
       } catch {
         // Navigation may have already completed
       }
-      await wait(DELAY);
+
+      // Wait for actual page content to render (up to 15s)
+      let contentLoaded = false;
+      for (let i = 0; i < 10; i++) {
+        await wait(1500);
+        const hasContent = await page.evaluate(() => {
+          // Check for terms page agree button OR search form
+          return !!(
+            document.querySelector('#MainContent_lbtnContinue, a[id*="Continue"], a[id*="Agree"]') ||
+            document.querySelector('#MainContent_txtLastName, input[id*="LastName"]') ||
+            (document.body.innerText || "").length > 200
+          );
+        }).catch(() => false);
+        if (hasContent) { contentLoaded = true; break; }
+      }
+
+      if (!contentLoaded) {
+        console.log("[browser-verify] Page content did not load after security check");
+        shots.push(await snap(page, "Nursys® — Page Not Loaded After Security Check"));
+      }
+      console.log("[browser-verify] Post-security URL:", page.url());
     }
 
     // ── Step 2: Handle terms page if redirected ───────────────
@@ -895,24 +941,35 @@ export async function captureNursysScreenshots(
     // ── Step 5: Submit search ─────────────────────────────────
     // reCAPTCHA callback may have already triggered form submission (ASP.NET postback).
     // Wait briefly for any in-flight navigation to settle before trying to click search.
-    await wait(1000);
-    try {
-      await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 5000 });
-    } catch {
-      // No navigation happened — we need to click the search button manually
+    await wait(2000);
+
+    // Check if already navigated away from search (callback auto-submitted)
+    let stillOnSearch = page.url().includes("LQCSearch");
+    if (stillOnSearch) {
+      // Try waiting for a navigation that might be in progress
+      try {
+        await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 5000 });
+        stillOnSearch = page.url().includes("LQCSearch");
+      } catch {
+        // No navigation happened — we need to click the search button manually
+      }
     }
 
-    // Only click search if we're still on the search page (not already navigated to results)
-    const stillOnSearch = page.url().includes("LQCSearch");
+    console.log("[browser-verify] After reCAPTCHA — still on search page:", stillOnSearch, "URL:", page.url());
+
     if (stillOnSearch) {
+      // Click the search button explicitly
       const searchBtn = await page.$('#MainContent_ibtnSearchName').catch(() => null);
+      console.log("[browser-verify] Search button found:", !!searchBtn);
       if (searchBtn) {
         await Promise.all([
           page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {}),
           searchBtn.click(),
         ]);
+        console.log("[browser-verify] Search button clicked, now at:", page.url());
       } else {
         // Fallback: click any Search link/button
+        console.log("[browser-verify] Search button not found — trying fallback...");
         await page.evaluate(() => {
           for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
             const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
@@ -925,13 +982,43 @@ export async function captureNursysScreenshots(
 
     shots.push(await snap(page, "Nursys® — Search Results"));
 
-    // ── Step 6: Click first result for full report ────────────
+    // ── Step 6: Click the correct result for full report ───────
+    // If we have a license number, find the row that matches it instead of clicking the first result.
+    const resultLink = await page.evaluate((targetLicense: string | null) => {
+      const allLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="ViewRpt"], a[href*="Report"], a[href*="ncsbnid"]'));
+      if (allLinks.length === 0) return null;
 
-    const resultLink = await page.$('a[href*="ViewRpt"], a[href*="Report"], a[href*="ncsbnid"]');
-    if (resultLink) {
+      if (targetLicense) {
+        // Walk up from each "View Report" link to find the one whose card/table contains the license number
+        for (const link of allLinks) {
+          const container = link.closest('div, tr, section, article')
+            || link.parentElement?.parentElement?.parentElement;
+          if (container && container.textContent?.includes(targetLicense)) {
+            link.setAttribute('data-careslink-match', 'true');
+            return 'matched';
+          }
+        }
+        // Fallback: search all text blocks on the page for the license number and click the nearest link
+        const body = document.body.innerText;
+        if (body.includes(targetLicense)) {
+          // License exists on page but we couldn't match it to a specific link — click first
+          allLinks[0].setAttribute('data-careslink-match', 'true');
+          return 'fallback-first';
+        }
+      }
+
+      // No license number provided or not found — click first result
+      allLinks[0].setAttribute('data-careslink-match', 'true');
+      return 'first';
+    }, licenseNumber ?? null);
+
+    console.log("[browser-verify] Result selection:", resultLink, "| license filter:", licenseNumber ?? "none");
+
+    const matchedLink = await page.$('a[data-careslink-match="true"]');
+    if (matchedLink) {
       await Promise.all([
         page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {}),
-        resultLink.click(),
+        matchedLink.click(),
       ]);
       shots.push(await snap(page, "Nursys® — Full License Report"));
 

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { isProviderAvailable, getGroqModels, type AIProvider } from "@/lib/ai-provider";
 
-const DEFAULTS = { id: "default", timezone: "America/New_York", defaultDuration: 60, videoPlatform: "jitsi", videoLink: null };
+const DEFAULTS = { id: "default", timezone: "America/New_York", defaultDuration: 60, videoPlatform: "jitsi", videoLink: null, aiProvider: "anthropic", groqModel: null };
 const VALID_DURATIONS = [30, 45, 60, 90];
 const VALID_PLATFORMS = ["jitsi", "zoom", "google_meet", "ms_teams"];
+const VALID_AI_PROVIDERS = ["anthropic", "groq"];
 
 export async function GET() {
   try {
@@ -36,6 +38,23 @@ export async function PUT(request: NextRequest) {
     if (videoLink !== undefined) {
       update.videoLink = videoLink || null;
     }
+    if (body.aiProvider !== undefined) {
+      if (!VALID_AI_PROVIDERS.includes(body.aiProvider)) {
+        return NextResponse.json({ error: "AI provider must be 'anthropic' or 'groq'" }, { status: 400 });
+      }
+      if (!isProviderAvailable(body.aiProvider as AIProvider)) {
+        const keyName = body.aiProvider === "groq" ? "GROQ_API_KEY" : "ANTHROPIC_API_KEY";
+        return NextResponse.json({ error: `${keyName} is not configured. Add it to your .env file.` }, { status: 400 });
+      }
+      update.aiProvider = body.aiProvider;
+    }
+    if (body.groqModel !== undefined) {
+      const validModels = getGroqModels().map((m) => m.id);
+      if (body.groqModel && !validModels.includes(body.groqModel)) {
+        return NextResponse.json({ error: `Invalid Groq model. Valid: ${validModels.join(", ")}` }, { status: 400 });
+      }
+      update.groqModel = body.groqModel || null;
+    }
 
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
@@ -44,7 +63,7 @@ export async function PUT(request: NextRequest) {
     const settings = await prisma.settings.upsert({
       where: { id: "default" },
       update,
-      create: { id: "default", timezone: timezone || "America/New_York", defaultDuration: defaultDuration || 60, videoPlatform: videoPlatform || "jitsi", videoLink: videoLink || null },
+      create: { id: "default", timezone: timezone || "America/New_York", defaultDuration: defaultDuration || 60, videoPlatform: videoPlatform || "jitsi", videoLink: videoLink || null, aiProvider: body.aiProvider || "anthropic", groqModel: body.groqModel || null },
     });
 
     return NextResponse.json(settings);

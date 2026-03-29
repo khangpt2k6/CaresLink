@@ -46,6 +46,7 @@
     "date-fns": "^4.1.0",
     "framer-motion": "^12.36.0",
     "googleapis": "^171.4.0",
+    "groq-sdk": "^1.1.2",
     "html2canvas": "^1.4.1",
     "ioredis": "^5.10.1",
     "jspdf": "^4.2.1",

@@ -261,6 +261,8 @@ model Settings {
   videoLink       String? // custom meeting link for zoom/teams (optional)
   scheduleVersion Int     @default(0) // bumped when recruiter updates availability
   emailTemplates  Json?   // { linkedin: {subject,body}, not_a_fit: {...}, good_fit: {...}, waitlist: {...} }
+  aiProvider      String  @default("anthropic") // "anthropic" or "groq"
+  groqModel       String? // override Groq model (default: llama-3.3-70b-versatile)
 }
 
 // Google Calendar OAuth tokens (single row for the recruiter)

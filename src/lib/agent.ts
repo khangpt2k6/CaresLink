@@ -1,18 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, Tool } from "@anthropic-ai/sdk/resources/messages";
+import { createMessage, getProvider, getProviderName, type AITool } from "./ai-provider";
 import { prisma } from "./db";
 import { sendEmail } from "./sendgrid";
 import { sendReminder, scheduleInterview, findMutualAvailableSlots } from "./scheduling";
 import { generateEmbedding, buildCandidateText, buildJobText } from "./embeddings";
 import { searchSimilarCandidates, searchSimilarJobs, getJobEmbeddingVector } from "./vector-store";
 import { rememberFact, recallFacts } from "./agent-memory";
-
-const apiKey = process.env.ANTHROPIC_API_KEY;
-if (!apiKey) {
-  console.warn("ANTHROPIC_API_KEY not set - AI agent disabled");
-}
-
-const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
 
 const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant for healthcare. You help employers manage candidates, schedule interviews, verify nursing licenses, run credential checks, and match candidates to jobs.
 
@@ -921,8 +914,14 @@ async function executeFunction(name: string, args: Record<string, unknown>, user
 }
 
 export async function runAgent(userMessage: string, sessionId?: string, userId?: string): Promise<string> {
-  if (!anthropic || !apiKey) {
+  const provider = await getProvider();
+  const providerName = await getProviderName();
+  const apiKeyVar = provider === "groq" ? "GROQ_API_KEY" : "ANTHROPIC_API_KEY";
+  if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
     return "AI agent is not configured. Set ANTHROPIC_API_KEY in .env.local";
+  }
+  if (provider === "groq" && !process.env.GROQ_API_KEY) {
+    return "AI agent is not configured. Set GROQ_API_KEY in .env.local (free at https://console.groq.com)";
   }
 
   let messages: MessageParam[] = [{ role: "user", content: userMessage }];
@@ -975,11 +974,11 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
 
   try {
     while (turns < maxTurns) {
-      const response = await anthropic.messages.create({
+      const response = await createMessage({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
+        maxTokens: 4096,
         system: systemPrompt,
-        tools: TOOLS,
+        tools: TOOLS as AITool[],
         messages,
       });
 
@@ -987,26 +986,37 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
       const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
 
       if (textBlocks.length > 0) {
-        lastText = (textBlocks[0] as { type: "text"; text: string }).text;
+        lastText = textBlocks[0].text || "";
       }
 
       if (toolUseBlocks.length === 0) {
+        // Store response content in Anthropic MessageParam format for history
+        const contentForHistory = response.content.map((b) =>
+          b.type === "text"
+            ? { type: "text" as const, text: b.text || "" }
+            : { type: "tool_use" as const, id: b.id!, name: b.name!, input: b.input || {} }
+        );
         await saveHistory([
           ...messages,
-          { role: "assistant", content: response.content },
+          { role: "assistant", content: contentForHistory },
         ]);
         return lastText || "Done.";
       }
 
-      const assistantMsg: MessageParam = { role: "assistant", content: response.content };
+      // Build assistant message with content blocks for history
+      const contentForHistory = response.content.map((b) =>
+        b.type === "text"
+          ? { type: "text" as const, text: b.text || "" }
+          : { type: "tool_use" as const, id: b.id!, name: b.name!, input: b.input || {} }
+      );
+      const assistantMsg: MessageParam = { role: "assistant", content: contentForHistory };
       const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
 
       for (const block of toolUseBlocks) {
-        if (block.type !== "tool_use") continue;
-        const result = await executeFunction(block.name, (block.input ?? {}) as Record<string, unknown>, userId);
+        const result = await executeFunction(block.name!, (block.input ?? {}) as Record<string, unknown>, userId);
         toolResults.push({
           type: "tool_result",
-          tool_use_id: block.id,
+          tool_use_id: block.id!,
           content: JSON.stringify(result),
         });
       }
@@ -1025,10 +1035,10 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("429") || msg.includes("overloaded") || msg.includes("rate")) {
-      return "Anthropic API rate limit exceeded. Please wait a moment and try again.";
+      return `${providerName} API rate limit exceeded. Please wait a moment and try again.`;
     }
     if (msg.includes("401") || msg.includes("invalid_api_key") || msg.includes("authentication")) {
-      return "Anthropic API key is invalid. Please check ANTHROPIC_API_KEY in your .env file.";
+      return `${providerName} API key is invalid. Please check ${apiKeyVar} in your .env file.`;
     }
     throw err;
   }

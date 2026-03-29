@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { textCompletion } from "@/lib/ai-provider";
 
 // POST /api/interviews/[id]/notes — generate AI notes from current transcript
 export async function POST(

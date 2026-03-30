@@ -1,8 +1,5 @@
 import { prisma } from "@/lib/db";
-import Anthropic from "@anthropic-ai/sdk";
-
-const apiKey = process.env.ANTHROPIC_API_KEY;
-const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
+import { textCompletion } from "@/lib/ai-provider";
 
 /**
  * Compute match scores for a job against all candidates,
@@ -11,7 +8,6 @@ const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
  * Returns the stored matches sorted by score descending.
  */
 export async function computeAndStoreMatches(jobId: string) {
-  if (!anthropic) throw new Error("AI not configured");
 
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) throw new Error("Job not found");
@@ -188,15 +184,12 @@ ${
 
 Evaluate ALL ${candidateProfiles.length} candidates against the "${job.title}" position. Return the JSON array sorted by score descending.`;
 
-  const response = await anthropic.messages.create({
+  const text = await textCompletion({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
+    maxTokens: 4096,
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   });
-
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
 
   // Parse AI response
   const cleaned = text
@@ -249,7 +242,6 @@ Evaluate ALL ${candidateProfiles.length} candidates against the "${job.title}" p
  * Falls back to legacy computeAndStoreMatches if no embeddings exist.
  */
 export async function computeAndStoreMatchesRAG(jobId: string, topK: number = 20) {
-  if (!anthropic) throw new Error("AI not configured");
 
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) throw new Error("Job not found");
@@ -391,14 +383,13 @@ ${c.interviewSummary ? `- **Interview:** Overall ${c.interviewSummary.ratings.ov
   )
   .join("\n")}`;
 
-  const response = await anthropic.messages.create({
+  const text = await textCompletion({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
+    maxTokens: 4096,
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   });
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "";
   const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
   const matches: { candidateId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
 

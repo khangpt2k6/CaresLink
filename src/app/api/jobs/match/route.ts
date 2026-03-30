@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
-import Anthropic from "@anthropic-ai/sdk";
-
-const apiKey = process.env.ANTHROPIC_API_KEY;
-const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
+import { textCompletion } from "@/lib/ai-provider";
 
 export async function POST(request: NextRequest) {
   const auth = await requireEmployer(request);
   if ("error" in auth) return auth.error;
-
-  if (!anthropic) {
-    return NextResponse.json({ error: "AI not configured" }, { status: 500 });
-  }
 
   try {
     const { jobId } = await request.json();
@@ -216,15 +209,12 @@ ${
 
 Evaluate ALL ${candidateProfiles.length} candidates against the "${job.title}" position. Return the JSON array sorted by score descending (best matches first).`;
 
-    const response = await anthropic.messages.create({
+    const text = await textCompletion({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      maxTokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     });
-
-    const text =
-      response.content[0].type === "text" ? response.content[0].text : "";
 
     // Parse the JSON response
     let matches: { candidateId: string; score: number; label: string; reason: string }[];

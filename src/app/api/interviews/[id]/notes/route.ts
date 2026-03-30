@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { textCompletion } from "@/lib/ai-provider";
 
 // POST /api/interviews/[id]/notes — generate AI notes from current transcript
 export async function POST(
@@ -28,9 +26,9 @@ export async function POST(
     .map((t) => `[${t.speaker}]: ${t.content}`)
     .join("\n");
 
-  const message = await anthropic.messages.create({
+  const rawText = await textCompletion({
     model: "claude-sonnet-4-6",
-    max_tokens: 1024,
+    maxTokens: 1024,
     messages: [
       {
         role: "user",
@@ -53,8 +51,6 @@ ${fullTranscript}`,
       },
     ],
   });
-
-  const rawText = message.content[0].type === "text" ? message.content[0].text : "[]";
 
   let parsed: { content: string; category: string }[] = [];
   try {

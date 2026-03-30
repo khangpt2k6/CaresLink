@@ -388,171 +388,169 @@ export default function CredentialCheckPage() {
 
               {/* Only show input form when no results are showing */}
               {inlineResults.length === 0 && (
-                <>
-                  {/* Target state */}
-                  <div className="mb-4 rounded-xl border border-[#e2e8f0] bg-white p-4">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#8a95a3]">Target State</p>
-                    <div className="flex gap-2">
-                      {["FLORIDA"].map((s) => (
-                        <button key={s} onClick={() => setTargetState(s)}
-                          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${targetState === s ? "border-[#0090d9] bg-[#e8f4fd] text-[#0090d9]" : "border-[#e2e8f0] text-[#5a6b7c] hover:bg-[#f8fafc]"}`}>
-                          {s.charAt(0) + s.slice(1).toLowerCase()}
-                        </button>
-                      ))}
-                      <span className="flex items-center rounded-lg border border-dashed border-[#e2e8f0] px-4 py-2 text-xs text-[#94a3b8]">
-                        Texas & Georgia coming soon
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Input method */}
-                  <div className="mb-4 rounded-xl border border-[#e2e8f0] bg-white p-4">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#8a95a3]">Input Method</p>
-                    <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl border border-[#e2e8f0] bg-white overflow-hidden">
+                  {/* Card header: target state + input method tabs */}
+                  <div className="flex items-center justify-between border-b border-[#e2e8f0] bg-[#f8fafc] px-5 py-3">
+                    <div className="flex items-center gap-3">
                       {([
-                        { id: "resume", label: "Upload Resume(s)", icon: FileText,        desc: "PDF or DOCX, AI-parsed" },
-                        { id: "csv",    label: "Upload CSV",        icon: FileSpreadsheet, desc: "Bulk candidate list" },
-                        { id: "manual", label: "Manual Entry",      icon: Users,           desc: "Enter details directly" },
+                        { id: "manual", label: "Manual", icon: Users },
+                        { id: "resume", label: "Resume", icon: Upload },
+                        { id: "csv",    label: "CSV",    icon: FileSpreadsheet },
                       ] as const).map((m) => (
                         <button key={m.id} onClick={() => { setInputMode(m.id); setPendingCandidates([]); setParseError(""); }}
-                          className={`rounded-xl border-2 p-4 text-left transition-all ${inputMode === m.id ? "border-[#0090d9] bg-[#e8f4fd]" : "border-[#e2e8f0] hover:border-[#0090d9]/40"}`}>
-                          <m.icon className={`mb-2 h-5 w-5 ${inputMode === m.id ? "text-[#0090d9]" : "text-[#8a95a3]"}`} />
-                          <p className={`text-sm font-semibold ${inputMode === m.id ? "text-[#0090d9]" : "text-[#1a2b3c]"}`}>{m.label}</p>
-                          <p className="text-xs text-[#8a95a3]">{m.desc}</p>
+                          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${inputMode === m.id ? "bg-[#0090d9] text-white shadow-sm" : "text-[#5a6b7c] hover:bg-white hover:shadow-sm"}`}>
+                          <m.icon className="h-3.5 w-3.5" />
+                          {m.label}
                         </button>
                       ))}
                     </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-wider text-[#94a3b8]">State:</span>
+                      <span className="rounded-full border border-[#0090d9]/30 bg-[#e8f4fd] px-2.5 py-0.5 text-[11px] font-semibold text-[#0090d9]">Florida</span>
+                    </div>
                   </div>
 
-                  {/* Input area */}
-                  <div className="mb-4 rounded-xl border border-[#e2e8f0] bg-white p-5">
+                  {/* Card body */}
+                  <div className="p-5">
                     {inputMode === "manual" && (
                       <div>
-                        {/* Candidate selector */}
+                        {/* Candidate search */}
                         <div className="mb-4" ref={candidateDropdownRef}>
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm font-semibold text-[#1a2b3c]">Candidate Information</p>
-                            {existingCandidates.length > 0 && (
-                              <span className="text-xs text-[#8a95a3]">{existingCandidates.length} candidate{existingCandidates.length !== 1 ? "s" : ""} available</span>
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94a3b8]" />
+                            <input
+                              value={candidateSearch}
+                              onChange={(e) => { setCandidateSearch(e.target.value); setShowCandidateDropdown(true); }}
+                              onFocus={() => setShowCandidateDropdown(true)}
+                              placeholder="Search existing candidates by name or email..."
+                              className="w-full rounded-lg border border-[#e2e8f0] pl-9 pr-3 py-2 text-sm outline-none focus:border-[#0090d9] focus:ring-1 focus:ring-[#0090d9]/20 bg-[#f8fafc]"
+                            />
+                            {loadingCandidates && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-[#94a3b8]" />}
+                            {!loadingCandidates && existingCandidates.length > 0 && (
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#94a3b8]">{existingCandidates.length} available</span>
                             )}
                           </div>
-                          <div className="relative mb-3">
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94a3b8]" />
-                              <input
-                                value={candidateSearch}
-                                onChange={(e) => { setCandidateSearch(e.target.value); setShowCandidateDropdown(true); }}
-                                onFocus={() => setShowCandidateDropdown(true)}
-                                placeholder="Search existing candidates by name or email..."
-                                className="w-full rounded-lg border border-[#e2e8f0] pl-9 pr-3 py-2 text-sm outline-none focus:border-[#0090d9] focus:ring-1 focus:ring-[#0090d9]/20 bg-[#f8fafc]"
-                              />
-                              {loadingCandidates && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-[#94a3b8]" />}
+                          {showCandidateDropdown && filteredCandidates.length > 0 && (
+                            <div className="absolute z-20 mt-1 w-[calc(100%-2.5rem)] max-h-52 overflow-y-auto rounded-lg border border-[#e2e8f0] bg-white shadow-lg">
+                              {filteredCandidates.map((c) => (
+                                <button key={c.id + c.source} onClick={() => selectCandidate(c)}
+                                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[#f0f4f8] transition-colors border-b border-[#f1f5f9] last:border-0">
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f4fd] text-[#0090d9] flex-shrink-0">
+                                    <UserCheck className="h-3.5 w-3.5" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-[#1a2b3c] truncate">{c.firstName} {c.lastName}</p>
+                                    <p className="text-xs text-[#8a95a3] truncate">{c.email}{c.position ? ` · ${c.position}` : ""}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${c.roleType === "NURSE" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
+                                      {c.roleType === "NURSE" ? "RN" : "CNA"}
+                                    </span>
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${c.source === "both" ? "bg-emerald-100 text-emerald-700" : c.source === "registered" ? "bg-sky-100 text-sky-700" : "bg-gray-100 text-gray-600"}`}>
+                                      {c.source === "both" ? "Matched" : c.source === "registered" ? "Profile" : "Pipeline"}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
                             </div>
-                            {showCandidateDropdown && filteredCandidates.length > 0 && (
-                              <div className="absolute z-20 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-[#e2e8f0] bg-white shadow-lg">
-                                {filteredCandidates.map((c) => (
-                                  <button key={c.id + c.source} onClick={() => selectCandidate(c)}
-                                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[#f0f4f8] transition-colors border-b border-[#f1f5f9] last:border-0">
-                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f4fd] text-[#0090d9] flex-shrink-0">
-                                      <UserCheck className="h-3.5 w-3.5" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium text-[#1a2b3c] truncate">{c.firstName} {c.lastName}</p>
-                                      <p className="text-xs text-[#8a95a3] truncate">{c.email}{c.position ? ` · ${c.position}` : ""}</p>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${c.roleType === "NURSE" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-                                        {c.roleType === "NURSE" ? "RN" : "CNA"}
-                                      </span>
-                                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${c.source === "both" ? "bg-emerald-100 text-emerald-700" : c.source === "registered" ? "bg-sky-100 text-sky-700" : "bg-gray-100 text-gray-600"}`}>
-                                        {c.source === "both" ? "Matched" : c.source === "registered" ? "Profile" : "Pipeline"}
-                                      </span>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            {showCandidateDropdown && candidateSearch && filteredCandidates.length === 0 && !loadingCandidates && (
-                              <div className="absolute z-20 mt-1 w-full rounded-lg border border-[#e2e8f0] bg-white p-4 text-center shadow-lg">
-                                <p className="text-xs text-[#8a95a3]">No candidates found. Enter details manually below.</p>
-                              </div>
-                            )}
-                          </div>
+                          )}
+                          {showCandidateDropdown && candidateSearch && filteredCandidates.length === 0 && !loadingCandidates && (
+                            <div className="absolute z-20 mt-1 w-[calc(100%-2.5rem)] rounded-lg border border-[#e2e8f0] bg-white p-3 text-center shadow-lg">
+                              <p className="text-xs text-[#8a95a3]">No candidates found. Enter details manually below.</p>
+                            </div>
+                          )}
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3 mb-3">
-                          {(["firstName", "middleName", "lastName"] as const).map((f) => (
-                            <div key={f}>
-                              <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">
-                                {f === "firstName" ? "First Name *" : f === "middleName" ? "Middle Name" : "Last Name *"}
-                              </label>
-                              <input
-                                value={(manualForm as unknown as Record<string, string | null | undefined>)[f] ?? ""}
-                                onChange={(e) => setManualForm((p) => ({ ...p, [f]: e.target.value }))}
-                                className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9] focus:ring-1 focus:ring-[#0090d9]/20"
-                              />
-                            </div>
-                          ))}
+                        {/* Compact form grid */}
+                        <div className="grid grid-cols-6 gap-3 mb-3">
+                          <div className="col-span-2">
+                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">First Name *</label>
+                            <input value={manualForm.firstName} onChange={(e) => setManualForm((p) => ({ ...p, firstName: e.target.value }))}
+                              className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9] focus:ring-1 focus:ring-[#0090d9]/20" />
+                          </div>
+                          <div className="col-span-1">
+                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">Middle</label>
+                            <input value={manualForm.middleName ?? ""} onChange={(e) => setManualForm((p) => ({ ...p, middleName: e.target.value }))}
+                              className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9] focus:ring-1 focus:ring-[#0090d9]/20" />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">Last Name *</label>
+                            <input value={manualForm.lastName} onChange={(e) => setManualForm((p) => ({ ...p, lastName: e.target.value }))}
+                              className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9] focus:ring-1 focus:ring-[#0090d9]/20" />
+                          </div>
+                          <div className="col-span-1">
+                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">Role *</label>
+                            <select value={manualForm.roleType} onChange={(e) => setManualForm((p) => ({ ...p, roleType: e.target.value as RoleType }))}
+                              className="w-full rounded-lg border border-[#e2e8f0] px-2 py-2 text-sm outline-none focus:border-[#0090d9]">
+                              <option value="CNA">CNA</option>
+                              <option value="NURSE">RN</option>
+                            </select>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-3 mb-3">
-                          <div>
+                        <div className="grid grid-cols-6 gap-3">
+                          <div className="col-span-2">
                             <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">Email</label>
                             <input value={manualForm.email ?? ""} onChange={(e) => setManualForm((p) => ({ ...p, email: e.target.value }))}
                               type="email" className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9]" />
                           </div>
-                          <div>
+                          <div className="col-span-1">
                             <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">Phone</label>
                             <input value={manualForm.phone ?? ""} onChange={(e) => setManualForm((p) => ({ ...p, phone: e.target.value }))}
                               className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9]" />
                           </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">Role Type *</label>
-                            <select value={manualForm.roleType} onChange={(e) => setManualForm((p) => ({ ...p, roleType: e.target.value as RoleType }))}
-                              className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9]">
-                              <option value="CNA">CNA</option>
-                              <option value="NURSE">Nurse (RN)</option>
-                            </select>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">License Number</label>
+                          <div className="col-span-2">
+                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">License #</label>
                             <input value={manualForm.licenseNumber ?? ""} onChange={(e) => setManualForm((p) => ({ ...p, licenseNumber: e.target.value }))}
                               className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9]" />
                           </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">License State</label>
+                          <div className="col-span-1">
+                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">State</label>
                             <input value={manualForm.licenseState ?? ""} onChange={(e) => setManualForm((p) => ({ ...p, licenseState: e.target.value }))}
-                              placeholder="e.g. FL" maxLength={2}
+                              placeholder="FL" maxLength={2}
                               className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9] uppercase" />
                           </div>
                         </div>
-                        <button
-                          disabled={!manualForm.firstName || !manualForm.lastName || runningAll}
-                          onClick={() => runVerificationInline([manualForm])}
-                          className="mt-4 flex items-center gap-2 rounded-lg bg-[#0090d9] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-50 transition-colors">
-                          {runningAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                          Run Verification
-                        </button>
+
+                        {/* Run button */}
+                        <div className="mt-4 flex items-center justify-between border-t border-[#f1f5f9] pt-4">
+                          <p className="text-xs text-[#94a3b8]">
+                            {manualForm.roleType === "CNA" ? "Will verify via Florida DOH" : "Will verify via Nursys® + OIG + SAM.gov"}
+                          </p>
+                          <button
+                            disabled={!manualForm.firstName || !manualForm.lastName || runningAll}
+                            onClick={() => runVerificationInline([manualForm])}
+                            className="flex items-center gap-2 rounded-lg bg-[#0090d9] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0077b6] disabled:opacity-50 transition-colors">
+                            {runningAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                            Run Verification
+                          </button>
+                        </div>
                       </div>
                     )}
 
                     {inputMode === "resume" && (
                       <div>
                         {pendingCandidates.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#e2e8f0] p-10 text-center cursor-pointer hover:border-[#0090d9]/50 transition-colors"
-                            onClick={() => resumeInputRef.current?.click()}>
-                            {parsing
-                              ? <><Loader2 className="mb-3 h-8 w-8 animate-spin text-[#0090d9]" /><p className="text-sm text-[#5a6b7c]">Parsing resume(s)...</p></>
-                              : <>
-                                  <Upload className="mb-3 h-8 w-8 text-[#94a3b8]" />
-                                  <p className="text-sm font-semibold text-[#1a2b3c]">Upload Resume(s)</p>
-                                  <p className="mt-1 text-xs text-[#8a95a3]">PDF or DOCX · Multiple files supported</p>
-                                  {parseError && <p className="mt-2 text-xs text-red-500">{parseError}</p>}
-                                </>}
-                            <input ref={resumeInputRef} type="file" multiple accept=".pdf,.docx" className="hidden"
-                              onChange={(e) => e.target.files && handleResumeUpload(e.target.files)} />
-                          </div>
+                          <>
+                            <div className="flex items-center gap-4 rounded-xl border-2 border-dashed border-[#e2e8f0] p-6 cursor-pointer hover:border-[#0090d9]/50 transition-colors"
+                              onClick={() => resumeInputRef.current?.click()}>
+                              {parsing ? (
+                                <><Loader2 className="h-8 w-8 animate-spin text-[#0090d9] shrink-0" /><div><p className="text-sm font-medium text-[#5a6b7c]">Parsing resume(s)...</p></div></>
+                              ) : (
+                                <>
+                                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#e8f4fd]">
+                                    <Upload className="h-5 w-5 text-[#0090d9]" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-[#1a2b3c]">Drop resume files here or click to browse</p>
+                                    <p className="text-xs text-[#8a95a3]">PDF or DOCX · Multiple files supported · AI will extract candidate info automatically</p>
+                                    {parseError && <p className="mt-1 text-xs text-red-500">{parseError}</p>}
+                                  </div>
+                                </>
+                              )}
+                              <input ref={resumeInputRef} type="file" multiple accept=".pdf,.docx" className="hidden"
+                                onChange={(e) => e.target.files && handleResumeUpload(e.target.files)} />
+                            </div>
+                          </>
                         ) : (
                           <ParsedCandidateList candidates={pendingCandidates}
                             onRemove={(i) => setPendingCandidates(p => p.filter((_, idx) => idx !== i))}
@@ -566,25 +564,27 @@ export default function CredentialCheckPage() {
                     {inputMode === "csv" && (
                       <div>
                         {pendingCandidates.length === 0 ? (
-                          <div>
-                            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#e2e8f0] p-10 text-center cursor-pointer hover:border-[#0090d9]/50 transition-colors"
+                          <>
+                            <div className="flex items-center gap-4 rounded-xl border-2 border-dashed border-[#e2e8f0] p-6 cursor-pointer hover:border-[#0090d9]/50 transition-colors"
                               onClick={() => csvInputRef.current?.click()}>
-                              {parsing
-                                ? <><Loader2 className="mb-3 h-8 w-8 animate-spin text-[#0090d9]" /><p className="text-sm text-[#5a6b7c]">Parsing CSV...</p></>
-                                : <>
-                                    <FileSpreadsheet className="mb-3 h-8 w-8 text-[#94a3b8]" />
-                                    <p className="text-sm font-semibold text-[#1a2b3c]">Upload CSV File</p>
-                                    <p className="mt-1 text-xs text-[#8a95a3]">Required: First Name, Last Name · Optional: Middle Name, Email, Phone, License #, License State, Role Type</p>
-                                    {parseError && <p className="mt-2 text-xs text-red-500">{parseError}</p>}
-                                  </>}
+                              {parsing ? (
+                                <><Loader2 className="h-8 w-8 animate-spin text-[#0090d9] shrink-0" /><div><p className="text-sm font-medium text-[#5a6b7c]">Parsing CSV...</p></div></>
+                              ) : (
+                                <>
+                                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#e8f4fd]">
+                                    <FileSpreadsheet className="h-5 w-5 text-[#0090d9]" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-[#1a2b3c]">Drop CSV file here or click to browse</p>
+                                    <p className="text-xs text-[#8a95a3]">Columns: First Name, Last Name, Email, Phone, License #, License State, Role Type</p>
+                                    {parseError && <p className="mt-1 text-xs text-red-500">{parseError}</p>}
+                                  </div>
+                                </>
+                              )}
                               <input ref={csvInputRef} type="file" accept=".csv" className="hidden"
                                 onChange={(e) => e.target.files?.[0] && handleCSVUpload(e.target.files[0])} />
                             </div>
-                            <div className="mt-3 rounded-lg bg-[#f8fafc] border border-[#e2e8f0] p-3">
-                              <p className="text-xs font-semibold text-[#5a6b7c] mb-1">Expected CSV columns:</p>
-                              <p className="text-xs text-[#8a95a3] font-mono">First Name, Middle Name, Last Name, Email Address, RN License Number, Phone Number, License State</p>
-                            </div>
-                          </div>
+                          </>
                         ) : (
                           <ParsedCandidateList candidates={pendingCandidates}
                             onRemove={(i) => setPendingCandidates(p => p.filter((_, idx) => idx !== i))}
@@ -595,7 +595,7 @@ export default function CredentialCheckPage() {
                       </div>
                     )}
                   </div>
-                </>
+                </div>
               )}
             </motion.div>
           ) : (

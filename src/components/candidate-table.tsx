@@ -231,13 +231,13 @@ export function CandidateTable({
         <thead>
           <tr className="border-b border-[#e2e8f0]">
             <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Candidate</th>
-            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Position</th>
-            {matchScores && <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Match</th>}
-            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Fit</th>
-            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Send</th>
+            <th className="hidden md:table-cell px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Position</th>
+            {matchScores && <th className="hidden lg:table-cell px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Match</th>}
+            <th className="hidden lg:table-cell px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Fit</th>
+            <th className="hidden xl:table-cell px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Send</th>
             <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Profile</th>
             <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Status</th>
-            <th className="px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Actions</th>
+            <th className="sticky right-0 bg-white shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)] px-3 py-3.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[#94a3b8] lg:px-5">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#f1f5f9]">
@@ -281,7 +281,7 @@ export function CandidateTable({
                     </div>
                   )}
                 </td>
-                <td className="px-3 py-3 align-middle lg:px-5">
+                <td className="hidden md:table-cell px-3 py-3 align-middle lg:px-5">
                   {editingId === c.id ? (
                     <input value={editForm.position} onChange={(e) => setEditForm((f) => ({ ...f, position: e.target.value }))} placeholder="Position" className={inputClass} style={{ minWidth: 140 }} />
                   ) : (
@@ -289,7 +289,7 @@ export function CandidateTable({
                   )}
                 </td>
                 {matchScores && (
-                  <td className="px-3 py-3 align-middle lg:px-5">
+                  <td className="hidden lg:table-cell px-3 py-3 align-middle lg:px-5">
                     {matchScores[c.id] ? (
                       <MatchScoreBadge match={matchScores[c.id]} />
                     ) : (
@@ -297,7 +297,7 @@ export function CandidateTable({
                     )}
                   </td>
                 )}
-                <td className="px-3 py-3 align-middle lg:px-5">
+                <td className="hidden lg:table-cell px-3 py-3 align-middle lg:px-5">
                   {onFitStatusChange ? (
                     <FitDropdown
                       value={c.fitStatus ?? null}
@@ -311,7 +311,7 @@ export function CandidateTable({
                     <span className="text-xs text-[#94a3b8]">—</span>
                   )}
                 </td>
-                <td className="px-3 py-3 align-middle text-center lg:px-5">
+                <td className="hidden xl:table-cell px-3 py-3 align-middle text-center lg:px-5">
                   {onSendTemplate && (
                     <button
                       onClick={() => {
@@ -353,7 +353,7 @@ export function CandidateTable({
                     {status.label}
                   </span>
                 </td>
-                <td className="px-3 py-3 align-middle text-right lg:px-5">
+                <td className="sticky right-0 bg-white shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)] px-3 py-3 align-middle text-right lg:px-5 group-hover:bg-[#fafbfc]">
                   <div className="inline-flex items-center gap-1">
                     {editingId === c.id ? (
                       <>

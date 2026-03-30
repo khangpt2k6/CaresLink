@@ -242,18 +242,42 @@ async function solveRecaptchaViaAPI(page: Page, pageUrl: string): Promise<boolea
       }
       console.log("[browser-verify] CapSolver solved reCAPTCHA! Token length:", token.length);
 
-      // Inject the token into the page
+      // Inject the token and trigger reCAPTCHA solved state
       await page.evaluate((t: string) => {
-        const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
-        if (ta) {
+        // Set ALL g-recaptcha-response textareas (some pages have multiple)
+        document.querySelectorAll<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]').forEach((ta) => {
           ta.value = t;
-          ta.style.display = "block"; // some forms check visibility
-        }
-        // Also try calling the callback if grecaptcha is available
+        });
+
+        // Method 1: data-callback attribute on the .g-recaptcha div
         try {
-          const cb = (document.querySelector('.g-recaptcha') as any)?.getAttribute('data-callback');
+          const cb = document.querySelector('.g-recaptcha')?.getAttribute('data-callback');
           if (cb && typeof (window as any)[cb] === 'function') {
             (window as any)[cb](t);
+            return; // callback fired — it should handle form state
+          }
+        } catch {}
+
+        // Method 2: Find callback inside grecaptcha internal config
+        try {
+          const cfg = (window as any).___grecaptcha_cfg;
+          if (cfg?.clients) {
+            for (const cid of Object.keys(cfg.clients)) {
+              const client = cfg.clients[cid];
+              // Walk the nested objects to find a callback function
+              for (const k1 of Object.keys(client)) {
+                const v1 = client[k1];
+                if (v1 && typeof v1 === 'object') {
+                  for (const k2 of Object.keys(v1)) {
+                    const v2 = v1[k2];
+                    if (v2 && typeof v2 === 'object' && typeof v2.callback === 'function') {
+                      v2.callback(t);
+                      return;
+                    }
+                  }
+                }
+              }
+            }
           }
         } catch {}
       }, token);
@@ -425,6 +449,133 @@ async function solveTurnstileViaAPI(page: Page, pageUrl: string): Promise<boolea
   return false;
 }
 
+// ─── Human-like mouse movement to bypass GeeTest / Incapsula ───
+
+/** Generate a random number between min and max */
+function rand(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/** Move mouse along a bezier-curved path to simulate human motion */
+async function humanMouseMove(page: Page, toX: number, toY: number, steps = 25) {
+  const from = await page.evaluate(() => ({ x: 0, y: 0 })); // start from origin
+  // Use mouse.move with steps for smooth Bezier-like motion
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    // Add slight randomness to the path (simulates hand tremor)
+    const jitterX = rand(-3, 3);
+    const jitterY = rand(-2, 2);
+    const x = Math.round(from.x + (toX - from.x) * t + jitterX * Math.sin(t * Math.PI));
+    const y = Math.round(from.y + (toY - from.y) * t + jitterY * Math.sin(t * Math.PI));
+    await page.mouse.move(x, y);
+    await wait(rand(8, 30)); // random delay between each micro-movement
+  }
+}
+
+/** Move mouse randomly around the page to build trust with bot detection */
+async function randomMouseWander(page: Page, durationMs = 3000) {
+  const viewport = await page.evaluate(() => ({
+    w: window.innerWidth || 1280,
+    h: window.innerHeight || 900,
+  }));
+
+  const startTime = Date.now();
+  while (Date.now() - startTime < durationMs) {
+    const targetX = rand(50, viewport.w - 50);
+    const targetY = rand(50, viewport.h - 50);
+    const steps = rand(15, 35);
+    await humanMouseMove(page, targetX, targetY, steps);
+    // Pause randomly between movements (like a person reading the page)
+    await wait(rand(200, 800));
+  }
+}
+
+/** Try to solve GeeTest CAPTCHA by simulating human mouse behavior.
+ *  Wanders the mouse around the page, then clicks the "Click to verify" button.
+ *  Returns true if the security check was passed. */
+async function solveGeeTestWithMouse(page: Page): Promise<boolean> {
+  console.log("[browser-verify] Attempting GeeTest solve with human-like mouse movement...");
+
+  // Step 0: Wait for the GeeTest widget to load (it's injected asynchronously by Incapsula JS)
+  let geetestBtn = null;
+  for (let waitTime = 0; waitTime < 20000; waitTime += 2000) {
+    geetestBtn = await page.$('.geetest_radar_btn').catch(() => null);
+    if (geetestBtn) break;
+    console.log(`[browser-verify] Waiting for GeeTest widget to load... (${(waitTime / 1000 + 2).toFixed(0)}s)`);
+    await wait(2000);
+  }
+  if (!geetestBtn) {
+    console.log("[browser-verify] GeeTest button (.geetest_radar_btn) not found after 20s");
+    return false;
+  }
+  console.log("[browser-verify] GeeTest widget loaded!");
+
+  // Step 1: Wander mouse randomly around the page for 2-4 seconds
+  await randomMouseWander(page, rand(2000, 4000));
+
+  // Step 2: Re-query button (fresh reference after mouse wandering)
+  geetestBtn = await page.$('.geetest_radar_btn').catch(() => null);
+  if (!geetestBtn) return false;
+
+  // Step 3: Get button position and move to it with human-like curve
+  const box = await geetestBtn.boundingBox();
+  if (!box) {
+    console.log("[browser-verify] GeeTest button has no bounding box");
+    return false;
+  }
+
+  // Move to the button area with slight random offset (don't hit dead center)
+  const clickX = box.x + box.width / 2 + rand(-10, 10);
+  const clickY = box.y + box.height / 2 + rand(-5, 5);
+  await humanMouseMove(page, clickX, clickY, rand(20, 40));
+
+  // Step 4: Small hesitation before click (like a human)
+  await wait(rand(300, 700));
+
+  // Step 5: Click
+  await page.mouse.click(clickX, clickY);
+  console.log("[browser-verify] Clicked GeeTest verify button");
+
+  // Step 6: Wait and check if it passed (up to 15s)
+  for (let elapsed = 0; elapsed < 15000; elapsed += 2000) {
+    await wait(2000);
+
+    // Check if GeeTest shows success state
+    const result = await page.evaluate(() => {
+      // Success: the button gets a success class
+      const successEl = document.querySelector('.geetest_success_radar_tip, .geetest_success_btn, .geetest_success');
+      if (successEl) return "success";
+
+      // Still verifying
+      const tip = document.querySelector('.geetest_radar_tip_content');
+      const tipText = tip?.textContent || "";
+      if (tipText.includes("Click to verify")) return "pending";
+
+      // Check if we've navigated away from the security page entirely
+      const bodyText = document.body.innerText || "";
+      const stillOnCheck = /additional\s+security\s+check|security\s+check\s+is\s+required/i.test(bodyText);
+      if (!stillOnCheck && bodyText.length > 200) return "navigated";
+
+      return "pending";
+    }).catch(() => "error");
+
+    if (result === "success" || result === "navigated") {
+      console.log("[browser-verify] GeeTest solved via mouse simulation!");
+      return true;
+    }
+
+    // If a slide puzzle appears, we can't solve it automatically
+    const hasSlidePuzzle = await page.$('.geetest_slider_button, .geetest_popup_wrap').then(el => !!el).catch(() => false);
+    if (hasSlidePuzzle) {
+      console.log("[browser-verify] GeeTest triggered slide puzzle — cannot auto-solve");
+      return false;
+    }
+  }
+
+  console.log("[browser-verify] GeeTest did not pass within 15s");
+  return false;
+}
+
 let snapCount = 0;
 async function snap(page: Page, label: string): Promise<VerificationScreenshot> {
   await wait(200);
@@ -580,89 +731,182 @@ export async function captureNursysScreenshots(
           return { screenshots: shots };
         }
       } else {
-        // Incapsula or no CapSolver — fall back to manual solving
-        if (isIncapsula) console.log("[browser-verify] Incapsula/Imperva detected — CapSolver cannot solve this, falling back to manual...");
-        console.log("[browser-verify] Security check detected — waiting for manual verification...");
-        notifyCaptchaRequired("Nursys®");
+        // Incapsula / GeeTest or no CapSolver — try human-like mouse click first
+        if (isIncapsula) console.log("[browser-verify] Incapsula/Imperva + GeeTest detected — attempting mouse simulation...");
 
-        try {
-          await page.evaluate(() => {
-            const overlay = document.createElement("div");
-            overlay.id = "careslink-security-alert";
-            overlay.innerHTML = `
-              <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
-                <span style="font-size:22px;">🔒</span>
-                <span>CaresLink: Please complete the security check below, then wait — automation will continue.</span>
-              </div>
-            `;
-            document.body.appendChild(overlay);
-          });
-        } catch {}
+        // GeeTest widget loads asynchronously — always attempt to solve it
+        // (solveGeeTestWithMouse will wait up to 20s for the widget to appear)
+        let geetestPassed = false;
 
-        shots.push(await snap(page, "Nursys® — Security Check (waiting for you)"));
+        {
+          shots.push(await snap(page, "Nursys® — Waiting for GeeTest widget"));
+          geetestPassed = await solveGeeTestWithMouse(page);
 
-        let passedCheck = false;
-        for (let elapsed = 0; elapsed < 120000; elapsed += 2000) {
-          await wait(2000);
-          try {
-            const currentUrl = page.url();
-            const currentText = await page.evaluate(() => document.body.innerText).catch(() => "");
-            const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|verify\s+you\s+are\s+human/i.test(currentText);
-            if (!stillOnCheck || currentUrl.includes("Terms") || currentUrl.includes("LQCSearch")) {
-              if (!stillOnCheck) { passedCheck = true; break; }
+          if (geetestPassed) {
+            console.log("[browser-verify] GeeTest passed via mouse simulation — no human intervention needed!");
+            // Wait for page to settle after passing
+            await wait(3000);
+
+            // Check if we're past the security page
+            const postGeeTestText = await page.evaluate(() => document.body.innerText || "").catch(() => "");
+            const stillBlocked = /additional\s+security\s+check|security\s+check\s+is\s+required/i.test(postGeeTestText);
+            if (stillBlocked) {
+              // GeeTest passed but Incapsula may need more time to redirect
+              try {
+                await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 });
+              } catch {}
+              await wait(2000);
             }
-          } catch {
-            await wait(2000);
-            passedCheck = true;
-            break;
           }
         }
 
-        if (!passedCheck) {
-          console.log("[browser-verify] Security check not completed within 120s");
-          notifyVerificationProgress("Nursys®", "timeout");
-          shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
-          return { screenshots: shots };
+        if (!geetestPassed) {
+          // First attempt failed — retry mouse simulation up to 2 more times
+          // with longer random wandering each time to build more trust
+          for (let retry = 1; retry <= 2 && !geetestPassed; retry++) {
+            console.log(`[browser-verify] GeeTest retry ${retry}/2 — wandering longer before click...`);
+            await wait(rand(1500, 3000));
+
+            // Scroll around the page randomly (simulates reading)
+            await page.evaluate(() => {
+              window.scrollBy(0, Math.random() * 300);
+            }).catch(() => {});
+            await wait(rand(500, 1000));
+            await page.evaluate(() => {
+              window.scrollBy(0, -(Math.random() * 200));
+            }).catch(() => {});
+
+            geetestPassed = await solveGeeTestWithMouse(page);
+
+            if (geetestPassed) {
+              console.log(`[browser-verify] GeeTest passed on retry ${retry}!`);
+              await wait(3000);
+              try {
+                await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 });
+              } catch {}
+              await wait(2000);
+            }
+          }
+
+          if (!geetestPassed) {
+            console.log("[browser-verify] GeeTest could not be solved automatically after 3 attempts");
+            notifyVerificationProgress("Nursys®", "timeout");
+            shots.push(await snap(page, "Nursys® — GeeTest Auto-Solve Failed"));
+            return { screenshots: shots };
+          }
         }
       }
 
       console.log("[browser-verify] Security check passed! Continuing...");
       notifyVerificationProgress("Nursys®", "passed");
 
-      // Wait for the redirected page to fully settle
-      await wait(1000);
+      // Wait for the redirected page to fully settle — the page may have already navigated
+      // during the polling loop, so waitForNavigation can miss it. Instead, wait for real
+      // page content (Terms agree button or search form) to appear.
+      await wait(2000);
       try {
-        await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 15000 });
+        await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 });
       } catch {
         // Navigation may have already completed
       }
-      await wait(DELAY);
+
+      // Wait for actual page content to render (up to 15s)
+      let contentLoaded = false;
+      for (let i = 0; i < 10; i++) {
+        await wait(1500);
+        const hasContent = await page.evaluate(() => {
+          // Check for terms page agree button OR search form
+          return !!(
+            document.querySelector('#MainContent_lbtnContinue, a[id*="Continue"], a[id*="Agree"]') ||
+            document.querySelector('#MainContent_txtLastName, input[id*="LastName"]') ||
+            (document.body.innerText || "").length > 200
+          );
+        }).catch(() => false);
+        if (hasContent) { contentLoaded = true; break; }
+      }
+
+      if (!contentLoaded) {
+        console.log("[browser-verify] Page content did not load after security check — refreshing page...");
+        // Security overlay may still be blocking DOM content. Reload to get fresh page.
+        try {
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 15000 });
+          await wait(2000);
+          // Check again after reload
+          const hasContentAfterReload = await page.evaluate(() => {
+            return !!(
+              document.querySelector('#MainContent_lbtnContinue, a[id*="Continue"], a[id*="Agree"]') ||
+              document.querySelector('#MainContent_txtLastName, input[id*="LastName"]') ||
+              (document.body.innerText || "").length > 200
+            );
+          }).catch(() => false);
+          if (hasContentAfterReload) {
+            contentLoaded = true;
+            console.log("[browser-verify] Page loaded after refresh");
+          } else {
+            // Last resort: navigate directly to the Terms page
+            console.log("[browser-verify] Still no content — navigating directly to Terms page...");
+            await page.goto("https://www.nursys.com/LQC/LQCTerms.aspx", { waitUntil: "domcontentloaded", timeout: 15000 });
+            await wait(2000);
+          }
+        } catch (e) {
+          console.log("[browser-verify] Reload failed:", (e as Error).message);
+        }
+        if (!contentLoaded) {
+          shots.push(await snap(page, "Nursys® — Page Not Loaded After Security Check"));
+        }
+      }
+      console.log("[browser-verify] Post-security URL:", page.url());
     }
 
     // ── Step 2: Handle terms page if redirected ───────────────
     if (page.url().includes("Terms")) {
       shots.push(await snap(page, "Nursys® — Terms & Conditions"));
 
-      // Scroll down before clicking agree
-      await page.evaluate(() => window.scrollBy(0, 600));
-      await wait(300);
-
-      // Find the agree button — try multiple strategies
-      const agreeClicked = await page.evaluate(() => {
-        // Strategy 1: known ID
-        const btn1 = document.querySelector<HTMLElement>("#MainContent_lbtnContinue");
-        if (btn1) { btn1.click(); return "MainContent_lbtnContinue"; }
-
-        // Strategy 2: any link/button containing "agree" or "continue"
-        for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
-          const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
-          if (text.includes("agree") || text.includes("i agree") || text.includes("continue")) {
-            el.click();
-            return `text: "${text.trim().slice(0, 40)}"`;
+      // Try to find and click the agree button — retry up to 3 times with waits
+      let agreeClicked: string | null = null;
+      for (let attempt = 0; attempt < 3 && !agreeClicked; attempt++) {
+        if (attempt > 0) {
+          console.log(`[browser-verify] Agree button retry ${attempt + 1}/3 — waiting for content...`);
+          await wait(3000);
+          // Reload on 2nd retry if still can't find it
+          if (attempt === 2) {
+            try {
+              await page.reload({ waitUntil: "domcontentloaded", timeout: 10000 });
+              await wait(2000);
+            } catch {}
           }
         }
-        return null;
-      });
+
+        // Scroll down before clicking agree
+        await page.evaluate(() => window.scrollBy(0, 600)).catch(() => {});
+        await wait(300);
+
+        // Find the agree button — try multiple strategies
+        agreeClicked = await page.evaluate(() => {
+          // Strategy 1: known ID
+          const btn1 = document.querySelector<HTMLElement>("#MainContent_lbtnContinue");
+          if (btn1) { btn1.click(); return "MainContent_lbtnContinue"; }
+
+          // Strategy 2: checkbox + submit pattern (some ASP.NET forms use this)
+          const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"][id*="chk"], input[type="checkbox"][id*="agree"], input[type="checkbox"][id*="Accept"]');
+          if (checkbox && !checkbox.checked) {
+            checkbox.click();
+            // After checking the checkbox, look for submit button
+            const submit = document.querySelector<HTMLElement>('input[type="submit"], button[type="submit"]');
+            if (submit) { submit.click(); return `checkbox + submit`; }
+          }
+
+          // Strategy 3: any link/button containing "agree" or "continue"
+          for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit'], input[type='button']"))) {
+            const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
+            if (text.includes("agree") || text.includes("i agree") || text.includes("continue") || text.includes("accept")) {
+              el.click();
+              return `text: "${text.trim().slice(0, 40)}"`;
+            }
+          }
+          return null;
+        }).catch(() => null);
+      }
 
       console.log("[browser-verify] Agree button:", agreeClicked || "NOT FOUND");
 
@@ -755,10 +999,39 @@ export async function captureNursysScreenshots(
 
     // Check if form fields exist — if not, page may still be loading
     let formReady = false;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 8; i++) {
       const hasFields = await page.$('#MainContent_txtLastName, input[id*="LastName"]');
       if (hasFields) { formReady = true; break; }
-      await wait(800);
+      await wait(1500);
+    }
+
+    // If still not ready, try navigating directly to the search page
+    if (!formReady) {
+      console.log("[browser-verify] Search form not found — navigating directly to search page...");
+      try {
+        await page.goto("https://www.nursys.com/LQC/LQCSearch.aspx", { waitUntil: "domcontentloaded", timeout: 15000 });
+        await wait(2000);
+        // Check if we got redirected back to Terms (need to accept again)
+        if (page.url().includes("Terms")) {
+          console.log("[browser-verify] Redirected back to Terms — re-accepting...");
+          await page.evaluate(() => {
+            const btn = document.querySelector<HTMLElement>("#MainContent_lbtnContinue");
+            if (btn) { btn.click(); return; }
+            const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"]');
+            if (checkbox && !checkbox.checked) checkbox.click();
+            for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
+              const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
+              if (text.includes("agree") || text.includes("continue") || text.includes("accept")) { el.click(); return; }
+            }
+          }).catch(() => {});
+          try { await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 }); } catch {}
+          await wait(2000);
+        }
+        const hasFields = await page.$('#MainContent_txtLastName, input[id*="LastName"]');
+        if (hasFields) formReady = true;
+      } catch (e) {
+        console.log("[browser-verify] Direct navigation failed:", (e as Error).message);
+      }
     }
 
     if (!formReady) {
@@ -895,24 +1168,35 @@ export async function captureNursysScreenshots(
     // ── Step 5: Submit search ─────────────────────────────────
     // reCAPTCHA callback may have already triggered form submission (ASP.NET postback).
     // Wait briefly for any in-flight navigation to settle before trying to click search.
-    await wait(1000);
-    try {
-      await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 5000 });
-    } catch {
-      // No navigation happened — we need to click the search button manually
+    await wait(2000);
+
+    // Check if already navigated away from search (callback auto-submitted)
+    let stillOnSearch = page.url().includes("LQCSearch");
+    if (stillOnSearch) {
+      // Try waiting for a navigation that might be in progress
+      try {
+        await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 5000 });
+        stillOnSearch = page.url().includes("LQCSearch");
+      } catch {
+        // No navigation happened — we need to click the search button manually
+      }
     }
 
-    // Only click search if we're still on the search page (not already navigated to results)
-    const stillOnSearch = page.url().includes("LQCSearch");
+    console.log("[browser-verify] After reCAPTCHA — still on search page:", stillOnSearch, "URL:", page.url());
+
     if (stillOnSearch) {
+      // Click the search button explicitly
       const searchBtn = await page.$('#MainContent_ibtnSearchName').catch(() => null);
+      console.log("[browser-verify] Search button found:", !!searchBtn);
       if (searchBtn) {
         await Promise.all([
           page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {}),
           searchBtn.click(),
         ]);
+        console.log("[browser-verify] Search button clicked, now at:", page.url());
       } else {
         // Fallback: click any Search link/button
+        console.log("[browser-verify] Search button not found — trying fallback...");
         await page.evaluate(() => {
           for (const el of Array.from(document.querySelectorAll<HTMLElement>("a, button, input[type='submit']"))) {
             const text = ((el as HTMLInputElement).value || el.textContent || "").toLowerCase();
@@ -925,13 +1209,43 @@ export async function captureNursysScreenshots(
 
     shots.push(await snap(page, "Nursys® — Search Results"));
 
-    // ── Step 6: Click first result for full report ────────────
+    // ── Step 6: Click the correct result for full report ───────
+    // If we have a license number, find the row that matches it instead of clicking the first result.
+    const resultLink = await page.evaluate((targetLicense: string | null) => {
+      const allLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="ViewRpt"], a[href*="Report"], a[href*="ncsbnid"]'));
+      if (allLinks.length === 0) return null;
 
-    const resultLink = await page.$('a[href*="ViewRpt"], a[href*="Report"], a[href*="ncsbnid"]');
-    if (resultLink) {
+      if (targetLicense) {
+        // Walk up from each "View Report" link to find the one whose card/table contains the license number
+        for (const link of allLinks) {
+          const container = link.closest('div, tr, section, article')
+            || link.parentElement?.parentElement?.parentElement;
+          if (container && container.textContent?.includes(targetLicense)) {
+            link.setAttribute('data-careslink-match', 'true');
+            return 'matched';
+          }
+        }
+        // Fallback: search all text blocks on the page for the license number and click the nearest link
+        const body = document.body.innerText;
+        if (body.includes(targetLicense)) {
+          // License exists on page but we couldn't match it to a specific link — click first
+          allLinks[0].setAttribute('data-careslink-match', 'true');
+          return 'fallback-first';
+        }
+      }
+
+      // No license number provided or not found — click first result
+      allLinks[0].setAttribute('data-careslink-match', 'true');
+      return 'first';
+    }, licenseNumber ?? null);
+
+    console.log("[browser-verify] Result selection:", resultLink, "| license filter:", licenseNumber ?? "none");
+
+    const matchedLink = await page.$('a[data-careslink-match="true"]');
+    if (matchedLink) {
       await Promise.all([
         page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {}),
-        resultLink.click(),
+        matchedLink.click(),
       ]);
       shots.push(await snap(page, "Nursys® — Full License Report"));
 

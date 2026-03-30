@@ -261,6 +261,35 @@ model Settings {
   videoLink       String? // custom meeting link for zoom/teams (optional)
   scheduleVersion Int     @default(0) // bumped when recruiter updates availability
   emailTemplates  Json?   // { linkedin: {subject,body}, not_a_fit: {...}, good_fit: {...}, waitlist: {...} }
+  aiProvider      String  @default("anthropic") // "anthropic" or "groq"
+  groqModel       String? // override Groq model (default: llama-3.3-70b-versatile)
+
+  // Rate limits (user-configurable)
+  rateLimitPerMinute  Int @default(30)  // max AI requests per minute
+  rateLimitPerDay     Int @default(1000) // max AI requests per day
+  monthlyBudgetCents  Int @default(2000) // monthly spending cap in cents ($20 default)
+}
+
+// AI usage tracking per request
+model AIUsageLog {
+  id              String   @id @default(cuid())
+  provider        String   // "anthropic" or "groq"
+  model           String   // model used (e.g. "claude-sonnet-4-6", "llama-3.3-70b-versatile")
+  inputTokens     Int      @default(0)
+  outputTokens    Int      @default(0)
+  totalTokens     Int      @default(0)
+  costCents       Float    @default(0) // estimated cost in cents
+  durationMs      Int      @default(0) // request duration
+  endpoint        String?  // which feature triggered this (e.g. "agent", "screening", "matching")
+  candidateId     String?  // optional link to candidate
+  userId          String?  // who triggered it
+  success         Boolean  @default(true)
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([provider])
 }
 
 // Google Calendar OAuth tokens (single row for the recruiter)

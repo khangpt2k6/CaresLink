@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { textCompletion } from "@/lib/ai-provider";
 
 interface ChatMessage {
   role: "assistant" | "user";
@@ -96,15 +94,13 @@ export async function POST(
     }
   }
 
-  // Call Claude
-  const response = await anthropic.messages.create({
+  // Call AI
+  const aiResponse = await textCompletion({
     model: "claude-sonnet-4-6",
-    max_tokens: 512,
+    maxTokens: 512,
     system: systemPrompt,
     messages: claudeMessages,
   });
-
-  const aiResponse = response.content[0].type === "text" ? response.content[0].text : "";
   const isComplete = aiResponse.includes("[SCREENING_COMPLETE]");
   const cleanResponse = aiResponse.replace("[SCREENING_COMPLETE]", "").trim();
 
@@ -135,9 +131,9 @@ export async function POST(
     updateData.completedAt = new Date();
 
     // Generate structured answers summary
-    const summaryResponse = await anthropic.messages.create({
+    const summaryText = await textCompletion({
       model: "claude-sonnet-4-6",
-      max_tokens: 1024,
+      maxTokens: 1024,
       messages: [
         {
           role: "user",
@@ -165,8 +161,6 @@ Set "flagged" to true ONLY if: candidate was unresponsive, gave contradictory in
         },
       ],
     });
-
-    const summaryText = summaryResponse.content[0].type === "text" ? summaryResponse.content[0].text : "{}";
     try {
       const jsonMatch = summaryText.match(/\{[\s\S]*\}/);
       const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;

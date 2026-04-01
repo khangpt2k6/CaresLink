@@ -159,6 +159,7 @@ async function launchBrowser(forceVisible = false, withCapsolver = false): Promi
       args: baseArgs,
       defaultViewport: headless ? { width: 1280, height: 900 } : null,
       ignoreDefaultArgs: ["--enable-automation"],
+      protocolTimeout: 120_000,
     });
   }
 
@@ -167,6 +168,7 @@ async function launchBrowser(forceVisible = false, withCapsolver = false): Promi
     headless,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", ...baseArgs],
     defaultViewport: { width: 1280, height: 900 },
+    protocolTimeout: 120_000,
   });
 }
 

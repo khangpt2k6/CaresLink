@@ -142,13 +142,6 @@ async function launchBrowser(forceVisible = false, _withCapsolver = false): Prom
     "--disable-renderer-backgrounding",
   ];
 
-  // Inject CapSolver extension into Chrome launch args
-  if (loadExtension) {
-    const extPath = capsolverExtensionPath!.replace(/\\/g, "/");
-    baseArgs.push(`--disable-extensions-except=${extPath}`);
-    baseArgs.push(`--load-extension=${extPath}`);
-  }
-
   if (chromePath) {
     return puppeteer.launch({
       headless,
@@ -956,9 +949,9 @@ export async function captureNursysScreenshots(
   let reportPdfPath: string | undefined;
   let reportPdfBase64: string | undefined;
   let extractedReport: NursysBrowserReport | undefined;
-  // Initialize CapSolver extension on first call (reads env vars lazily)
-  const HAS_CAPSOLVER = ensureCapsolverExtension();
-  const browser = await launchBrowser(true, HAS_CAPSOLVER); // visible + CapSolver extension if available
+  // Check CapSolver API key availability (REST API, no extension needed)
+  const HAS_CAPSOLVER = !!getCapsolverKey();
+  const browser = await launchBrowser(); // headless — CapSolver REST API solves CAPTCHAs remotely
 
   try {
     const page = (await browser.pages())[0] || await browser.newPage();

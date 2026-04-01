@@ -1536,9 +1536,11 @@ export async function captureNursysScreenshots(
       console.log("[browser-verify] Search button found:", !!searchBtn);
       if (searchBtn) {
         await Promise.all([
-          page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {}),
+          page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {}),
           searchBtn.click(),
         ]);
+        // ASP.NET postback may keep network busy — give page time to render results
+        await wait(2000);
         console.log("[browser-verify] Search button clicked, now at:", page.url());
       } else {
         // Fallback: click any Search link/button
@@ -1590,9 +1592,10 @@ export async function captureNursysScreenshots(
     const matchedLink = await page.$('a[data-careslink-match="true"]');
     if (matchedLink) {
       await Promise.all([
-        page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {}),
+        page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => {}),
         matchedLink.click(),
       ]);
+      await wait(2000);
       shots.push(await snap(page, "Nursys® — Full License Report"));
 
       // Scroll to license table

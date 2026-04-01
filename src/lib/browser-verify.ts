@@ -122,16 +122,14 @@ function findChrome(): string | undefined {
   return undefined;
 }
 
-/** Launch browser — real Chrome in dev (visible), headless in prod.
- *  Pass forceVisible=true to always open visible (e.g. Nursys needs manual CAPTCHA).
- *  Pass withCapsolver=true to load the CapSolver extension (forces visible mode). */
-async function launchBrowser(forceVisible = false, withCapsolver = false): Promise<Browser> {
+/** Launch browser — always headless. CapSolver REST API works without the extension.
+ *  Pass forceVisible=true only for local debugging (not used in normal flow). */
+async function launchBrowser(forceVisible = false, _withCapsolver = false): Promise<Browser> {
   const chromePath = findChrome();
   const tmpProfile = path.join(os.tmpdir(), "careslink-chrome-profile");
-  const loadExtension = withCapsolver && !!capsolverExtensionPath;
 
-  // CapSolver extension requires visible mode (headless can't load extensions)
-  const headless = (forceVisible || loadExtension) ? false : IS_PROD;
+  // Always headless — CapSolver REST API solves CAPTCHAs server-side, no extension needed
+  const headless = forceVisible ? false : true;
 
   const baseArgs = [
     "--disable-blink-features=AutomationControlled",

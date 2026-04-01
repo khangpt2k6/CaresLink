@@ -449,6 +449,221 @@ async function solveTurnstileViaAPI(page: Page, pageUrl: string): Promise<boolea
   return false;
 }
 
+/** Solve Incapsula/Imperva bot detection via CapSolver REST API (AntiImpervaTaskProxyLess).
+ *  Extracts the Incapsula reese84 script URL and cookies from the page, sends to CapSolver,
+ *  polls for the solution cookies, then injects them into the browser. Returns true if solved. */
+async function solveImpervaViaAPI(page: Page, pageUrl: string): Promise<boolean> {
+  const apiKey = getCapsolverKey();
+  if (!apiKey) return false;
+
+  console.log("[browser-verify] Solving Incapsula/Imperva via CapSolver AntiImpervaTaskProxyLess...");
+
+  // Step 1: Extract the reese84 script URL and current cookies from the page
+  const pageData = await page.evaluate(() => {
+    // Find the reese84 script — Imperva injects a script tag whose URL contains a long hex path
+    const scripts = Array.from(document.querySelectorAll('script[src]'));
+    let reeseScriptUrl: string | null = null;
+
+    for (const s of scripts) {
+      const src = (s as HTMLScriptElement).src;
+      // reese84 scripts typically match patterns like /[hex]-[hex] or contain reese84
+      if (/reese84/i.test(src) || /\/[a-f0-9]{20,}/i.test(src)) {
+        reeseScriptUrl = src;
+        break;
+      }
+    }
+
+    // Also check inline scripts and HTML for the reese84 endpoint
+    if (!reeseScriptUrl) {
+      const html = document.documentElement.innerHTML;
+      // Look for src="..." patterns that contain the reese84 path
+      const scriptMatch = html.match(/src=["'](https?:\/\/[^"']*?(?:reese84|\/[a-f0-9]{32,})[^"']*?)["']/i);
+      if (scriptMatch) reeseScriptUrl = scriptMatch[1];
+    }
+
+    // Also look for ___utmvc script
+    if (!reeseScriptUrl) {
+      const html = document.documentElement.innerHTML;
+      const utmvcMatch = html.match(/src=["'](https?:\/\/[^"']*?___utmvc[^"']*?)["']/i);
+      if (utmvcMatch) reeseScriptUrl = utmvcMatch[1];
+    }
+
+    return {
+      reeseScriptUrl,
+      cookies: document.cookie,
+      userAgent: navigator.userAgent,
+    };
+  }).catch(() => null);
+
+  if (!pageData) {
+    console.log("[browser-verify] Failed to extract page data for Imperva solve");
+    return false;
+  }
+
+  // Get cookies via CDP for more complete cookie access
+  const client = await page.createCDPSession();
+  const { cookies: cdpCookies } = await client.send("Network.getAllCookies");
+  await client.detach();
+
+  // Build cookies array for CapSolver
+  const cookiesForApi = cdpCookies
+    .filter((c: any) => {
+      const domain = c.domain || "";
+      return domain.includes("nursys") || domain.includes("incapsula") || domain.includes("imperva");
+    })
+    .map((c: any) => `${c.name}=${c.value}`)
+    .join("; ");
+
+  console.log("[browser-verify] Imperva reese84 script URL:", pageData.reeseScriptUrl || "(not found)");
+  console.log("[browser-verify] Cookies count:", cdpCookies.length);
+
+  // Step 2: Create CapSolver task
+  const taskPayload: any = {
+    type: "AntiImpervaTaskProxyLess",
+    websiteURL: pageUrl,
+    userAgent: pageData.userAgent,
+  };
+
+  // Add reese84 script URL if found
+  if (pageData.reeseScriptUrl) {
+    // CapSolver expects the full script URL as "reeseScriptUrl" or in metadata
+    taskPayload.reeseScriptUrl = pageData.reeseScriptUrl;
+  }
+
+  // Add cookies if available
+  if (cookiesForApi) {
+    taskPayload.cookies = cookiesForApi;
+  }
+
+  const createRes = await fetch("https://api.capsolver.com/createTask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientKey: apiKey,
+      task: taskPayload,
+    }),
+  });
+  const createData = await createRes.json() as any;
+
+  if (createData.errorId && createData.errorId !== 0) {
+    console.log("[browser-verify] CapSolver Imperva createTask error:", createData.errorDescription || createData.errorCode);
+    return false;
+  }
+
+  const taskId = createData.taskId;
+  if (!taskId) {
+    console.log("[browser-verify] CapSolver Imperva returned no taskId:", JSON.stringify(createData));
+    return false;
+  }
+  console.log("[browser-verify] CapSolver Imperva task created:", taskId);
+
+  // Step 3: Poll for result (max 60s — Imperva solving can be slower)
+  for (let elapsed = 0; elapsed < 60000; elapsed += 4000) {
+    await wait(4000);
+    const resultRes = await fetch("https://api.capsolver.com/getTaskResult", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientKey: apiKey, taskId }),
+    });
+    const resultData = await resultRes.json() as any;
+
+    if (resultData.status === "ready") {
+      const solution = resultData.solution;
+      if (!solution) {
+        console.log("[browser-verify] CapSolver Imperva returned ready but no solution");
+        return false;
+      }
+      console.log("[browser-verify] CapSolver solved Imperva! Injecting cookies...");
+
+      // Step 4: Inject the solution cookies into the browser
+      // CapSolver returns cookies that bypass Incapsula (reese84, visid_incap, incap_ses, etc.)
+      const solutionCookies: Record<string, string> = {};
+
+      // Handle different solution formats from CapSolver
+      if (solution.cookies) {
+        // cookies may be an object { name: value } or array
+        if (Array.isArray(solution.cookies)) {
+          for (const c of solution.cookies) {
+            if (c.name && c.value) solutionCookies[c.name] = c.value;
+          }
+        } else if (typeof solution.cookies === "object") {
+          Object.assign(solutionCookies, solution.cookies);
+        }
+      }
+      // Also check for individual cookie fields
+      if (solution.reese84) solutionCookies["reese84"] = solution.reese84;
+      if (solution.visid_incap) solutionCookies["visid_incap"] = solution.visid_incap;
+      if (solution.incap_ses) solutionCookies["incap_ses"] = solution.incap_ses;
+      // Some solutions return a userAgent that must match
+      if (solution.userAgent) {
+        await page.setUserAgent(solution.userAgent);
+      }
+
+      // Inject cookies via CDP
+      const cdp = await page.createCDPSession();
+      const domain = new URL(pageUrl).hostname;
+      for (const [name, value] of Object.entries(solutionCookies)) {
+        if (!value) continue;
+        await cdp.send("Network.setCookie", {
+          name,
+          value,
+          domain: `.${domain}`,
+          path: "/",
+          httpOnly: false,
+          secure: true,
+        }).catch(() => {
+          // Try without secure flag
+          return cdp.send("Network.setCookie", {
+            name,
+            value,
+            domain: `.${domain}`,
+            path: "/",
+          }).catch(() => {});
+        });
+        console.log(`[browser-verify] Injected cookie: ${name}=${value.slice(0, 30)}...`);
+      }
+      await cdp.detach();
+
+      // Also inject via document.cookie as fallback
+      await page.evaluate((cookies: Record<string, string>, dom: string) => {
+        for (const [name, value] of Object.entries(cookies)) {
+          document.cookie = `${name}=${value}; domain=.${dom}; path=/; secure`;
+        }
+      }, solutionCookies, domain).catch(() => {});
+
+      // Step 5: Reload the page — the new cookies should bypass Incapsula
+      console.log("[browser-verify] Reloading page with Imperva solution cookies...");
+      try {
+        await page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+      } catch {
+        console.log("[browser-verify] Navigation after cookie inject timed out — checking page...");
+      }
+      await wait(3000);
+
+      // Verify we passed the security check
+      const postText = await page.evaluate(() => document.body.innerText || "").catch(() => "");
+      const stillBlocked = /additional\s+security\s+check|click\s+to\s+verify|security\s+check\s+is\s+required/i.test(postText);
+      if (!stillBlocked) {
+        console.log("[browser-verify] Imperva security check bypassed via CapSolver!");
+        return true;
+      }
+
+      console.log("[browser-verify] Page still shows security check after cookie injection — may need retry");
+      return false;
+    }
+
+    if (resultData.errorId && resultData.errorId !== 0) {
+      console.log("[browser-verify] CapSolver Imperva error:", resultData.errorDescription || resultData.errorCode);
+      return false;
+    }
+
+    console.log(`[browser-verify] CapSolver Imperva polling... (${(elapsed / 1000 + 4).toFixed(0)}s)`);
+  }
+
+  console.log("[browser-verify] CapSolver Imperva timed out after 60s");
+  return false;
+}
+
 // ─── Human-like mouse movement to bypass GeeTest / Incapsula ───
 
 /** Generate a random number between min and max */
@@ -502,10 +717,10 @@ async function solveIncapsulaWithMouse(page: Page): Promise<boolean> {
   // Step 1: Wander mouse randomly to build trust with bot detection
   await randomMouseWander(page, rand(2000, 4000));
 
-  // Step 2: Find the "Click to verify" button — try multiple selectors
-  const btnInfo = await page.evaluate(() => {
-    // Look for any clickable element containing "verify" text
-    const candidates = Array.from(document.querySelectorAll<HTMLElement>('a, button, div, span, input'));
+  // Step 2: Find the "Click to verify" button — search main frame AND all iframes
+  // Incapsula often renders its challenge widget inside an iframe
+  const findVerifyButton = () => {
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>('a, button, div, span, input, label'));
     for (const el of candidates) {
       const text = (el.textContent || "").trim().toLowerCase();
       if (text.includes("click to verify") || text === "verify") {
@@ -515,13 +730,11 @@ async function solveIncapsulaWithMouse(page: Page): Promise<boolean> {
         }
       }
     }
-    // Also try GeeTest selectors in case it IS GeeTest
     const geeBtn = document.querySelector('.geetest_radar_btn, .geetest_btn');
     if (geeBtn) {
       const rect = geeBtn.getBoundingClientRect();
       return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, found: "geetest" };
     }
-    // Try any button-like element in the challenge area
     const challengeArea = document.querySelector('[class*="challenge"], [id*="challenge"], [class*="captcha"]');
     if (challengeArea) {
       const btn = challengeArea.querySelector('button, a, [role="button"], input[type="submit"]');
@@ -531,10 +744,122 @@ async function solveIncapsulaWithMouse(page: Page): Promise<boolean> {
       }
     }
     return null;
-  }).catch(() => null);
+  };
+
+  // First try main frame
+  let btnInfo = await page.evaluate(findVerifyButton).catch(() => null);
+
+  // If not found in main frame, search inside iframes (Incapsula embeds its widget in iframes)
+  if (!btnInfo) {
+    console.log("[browser-verify] Button not in main frame — checking iframes...");
+    const frames = page.frames();
+    for (const frame of frames) {
+      if (frame === page.mainFrame()) continue;
+      try {
+        // Check if this frame contains the verify widget
+        const frameResult = await frame.evaluate(() => {
+          const candidates = Array.from(document.querySelectorAll<HTMLElement>('a, button, div, span, input, label'));
+          for (const el of candidates) {
+            const text = (el.textContent || "").trim().toLowerCase();
+            if (text.includes("click to verify") || text === "verify") {
+              const rect = el.getBoundingClientRect();
+              if (rect.width > 10 && rect.height > 10) {
+                return { w: rect.width, h: rect.height, found: "iframe-text-match" };
+              }
+            }
+          }
+          return null;
+        }).catch(() => null);
+
+        if (frameResult) {
+          // Found the button inside an iframe — we need to get the iframe's position
+          // on the main page, then calculate absolute coordinates
+          const iframeHandle = await page.evaluateHandle((frameUrl: string) => {
+            const iframes = Array.from(document.querySelectorAll('iframe'));
+            for (const iframe of iframes) {
+              if (iframe.src === frameUrl || iframe.contentWindow) {
+                return iframe;
+              }
+            }
+            // Fallback: return the first iframe we find
+            return iframes[0] || null;
+          }, frame.url()).catch(() => null);
+
+          if (iframeHandle) {
+            const iframeRect = await (iframeHandle as any).evaluate((el: HTMLIFrameElement) => {
+              const rect = el.getBoundingClientRect();
+              return { x: rect.x, y: rect.y };
+            }).catch(() => null);
+
+            if (iframeRect) {
+              // Get button position within the iframe
+              const innerPos = await frame.evaluate(() => {
+                const candidates = Array.from(document.querySelectorAll<HTMLElement>('a, button, div, span, input, label'));
+                for (const el of candidates) {
+                  const text = (el.textContent || "").trim().toLowerCase();
+                  if (text.includes("click to verify") || text === "verify") {
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width > 10 && rect.height > 10) {
+                      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+                    }
+                  }
+                }
+                return null;
+              }).catch(() => null);
+
+              if (innerPos) {
+                btnInfo = {
+                  x: iframeRect.x + innerPos.x,
+                  y: iframeRect.y + innerPos.y,
+                  found: "iframe-text-match",
+                };
+              }
+            }
+          }
+          if (btnInfo) break;
+        }
+      } catch { /* frame may have detached */ }
+    }
+  }
+
+  // Final fallback: look for the Incapsula checkbox/button by known selectors
+  if (!btnInfo) {
+    console.log("[browser-verify] Trying Incapsula-specific selectors...");
+    btnInfo = await page.evaluate(() => {
+      // Incapsula uses various selectors for its challenge widget
+      const selectors = [
+        'iframe[src*="geo.captcha-delivery"]',
+        'iframe[src*="captcha"]',
+        'iframe[src*="challenge"]',
+        '#checkbox',
+        '.checkbox',
+        '[data-callback]',
+        '#recaptcha-anchor',
+      ];
+      for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 5 && rect.height > 5) {
+            return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, found: `selector:${sel}` };
+          }
+        }
+      }
+      return null;
+    }).catch(() => null);
+  }
 
   if (!btnInfo) {
     console.log("[browser-verify] Could not find 'Click to verify' button on page");
+    // Debug: log all iframes on page
+    const iframeInfo = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('iframe')).map(f => ({
+        src: f.src?.slice(0, 120),
+        w: f.getBoundingClientRect().width,
+        h: f.getBoundingClientRect().height,
+      }));
+    }).catch(() => []);
+    console.log("[browser-verify] Iframes on page:", JSON.stringify(iframeInfo));
     return false;
   }
   console.log("[browser-verify] Found verify button via:", btnInfo.found);
@@ -686,7 +1011,7 @@ export async function captureNursysScreenshots(
       (!hasSearchForm && !hasTermsContent && currentUrl.includes("nursys.com"));
     const isHardBlocked = /access\s+denied|error\s+15/i.test(pageText) && !isSecurityCheck;
 
-    // Detect Incapsula/Imperva bot protection (different from Cloudflare Turnstile — CapSolver can't solve it)
+    // Detect Incapsula/Imperva bot protection (different from Cloudflare Turnstile)
     const isIncapsula = /_Incapsula_Resource|incapsula|imperva|reese84/i.test(pageHtml);
 
     if (isHardBlocked) {
@@ -726,12 +1051,51 @@ export async function captureNursysScreenshots(
           shots.push(await snap(page, "Nursys® — Security Check Timed Out"));
           return { screenshots: shots };
         }
-      } else {
-        // Incapsula / GeeTest or no CapSolver — try human-like mouse click first
-        if (isIncapsula) console.log("[browser-verify] Incapsula/Imperva detected — attempting mouse click...");
+      } else if (HAS_CAPSOLVER && isIncapsula) {
+        // Solve Incapsula/Imperva via CapSolver AntiImperva API first, then fall back to mouse
+        console.log("[browser-verify] Incapsula/Imperva detected — solving via CapSolver AntiImperva API...");
+        shots.push(await snap(page, "Nursys® — Incapsula Detected (CapSolver solving)"));
 
-        // Incapsula verify loads asynchronously — always attempt to solve it
-        // (solveIncapsulaWithMouse will wait up to 20s for the widget to appear)
+        let impervaSolved = await solveImpervaViaAPI(page, page.url());
+
+        if (!impervaSolved) {
+          // API failed — fall back to mouse simulation as backup
+          console.log("[browser-verify] CapSolver Imperva API failed — falling back to mouse simulation...");
+          shots.push(await snap(page, "Nursys® — Trying mouse simulation fallback"));
+
+          for (let attempt = 0; attempt < 3 && !impervaSolved; attempt++) {
+            if (attempt > 0) {
+              console.log(`[browser-verify] Incapsula mouse retry ${attempt}/2 — wandering longer...`);
+              await wait(rand(1500, 3000));
+              await page.evaluate(() => window.scrollBy(0, Math.random() * 300)).catch(() => {});
+              await wait(rand(500, 1000));
+              await page.evaluate(() => window.scrollBy(0, -(Math.random() * 200))).catch(() => {});
+            }
+
+            impervaSolved = await solveIncapsulaWithMouse(page);
+
+            if (impervaSolved) {
+              console.log(`[browser-verify] Incapsula passed via mouse simulation (attempt ${attempt + 1})!`);
+              await wait(3000);
+              const postText = await page.evaluate(() => document.body.innerText || "").catch(() => "");
+              if (/additional\s+security\s+check|security\s+check\s+is\s+required/i.test(postText)) {
+                try { await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 }); } catch {}
+                await wait(2000);
+              }
+            }
+          }
+        }
+
+        if (!impervaSolved) {
+          console.log("[browser-verify] Incapsula could not be solved (API + mouse both failed)");
+          notifyVerificationProgress("Nursys®", "timeout");
+          shots.push(await snap(page, "Nursys® — Incapsula Auto-Solve Failed"));
+          return { screenshots: shots };
+        }
+      } else {
+        // No CapSolver available — try mouse simulation only
+        if (isIncapsula) console.log("[browser-verify] Incapsula/Imperva detected (no CapSolver) — attempting mouse click...");
+
         let geetestPassed = false;
 
         {
@@ -740,46 +1104,30 @@ export async function captureNursysScreenshots(
 
           if (geetestPassed) {
             console.log("[browser-verify] Incapsula passed via mouse simulation — no human intervention needed!");
-            // Wait for page to settle after passing
             await wait(3000);
-
-            // Check if we're past the security page
             const postGeeTestText = await page.evaluate(() => document.body.innerText || "").catch(() => "");
             const stillBlocked = /additional\s+security\s+check|security\s+check\s+is\s+required/i.test(postGeeTestText);
             if (stillBlocked) {
-              // Incapsula passed but Incapsula may need more time to redirect
-              try {
-                await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 });
-              } catch {}
+              try { await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 }); } catch {}
               await wait(2000);
             }
           }
         }
 
         if (!geetestPassed) {
-          // First attempt failed — retry mouse simulation up to 2 more times
-          // with longer random wandering each time to build more trust
           for (let retry = 1; retry <= 2 && !geetestPassed; retry++) {
             console.log(`[browser-verify] Incapsula retry ${retry}/2 — wandering longer before click...`);
             await wait(rand(1500, 3000));
-
-            // Scroll around the page randomly (simulates reading)
-            await page.evaluate(() => {
-              window.scrollBy(0, Math.random() * 300);
-            }).catch(() => {});
+            await page.evaluate(() => window.scrollBy(0, Math.random() * 300)).catch(() => {});
             await wait(rand(500, 1000));
-            await page.evaluate(() => {
-              window.scrollBy(0, -(Math.random() * 200));
-            }).catch(() => {});
+            await page.evaluate(() => window.scrollBy(0, -(Math.random() * 200))).catch(() => {});
 
             geetestPassed = await solveIncapsulaWithMouse(page);
 
             if (geetestPassed) {
               console.log(`[browser-verify] Incapsula passed on retry ${retry}!`);
               await wait(3000);
-              try {
-                await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 });
-              } catch {}
+              try { await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 }); } catch {}
               await wait(2000);
             }
           }

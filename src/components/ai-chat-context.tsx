@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback } from "react";
+import { WIDTH_DEFAULT, WIDTH_EXPANDED } from "./ai-chat-constants";
 
 interface AiChatState {
   open: boolean;
@@ -19,9 +20,6 @@ const AiChatContext = createContext<AiChatState>({
   toggleExpand: () => {},
   panelWidth: 0,
 });
-
-const WIDTH_DEFAULT = 370;
-const WIDTH_EXPANDED = 540;
 
 export function AiChatProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);

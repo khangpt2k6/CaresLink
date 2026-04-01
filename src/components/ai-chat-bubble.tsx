@@ -23,6 +23,26 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAiChat } from "./ai-chat-context";
+import { CaresLinkIcon } from "./ai-chat-icon";
+import {
+  panelTransition,
+  messageTransition,
+  welcomeTransition,
+  quickActionTransition,
+  dropdownVariants,
+  dropdownTransition,
+  integrationsPanelVariants,
+  integrationsPanelTransition,
+  loadingDotAnimate,
+  loadingDotTransition,
+  buttonHover,
+  buttonTap,
+  fabHover,
+  fabTap,
+  sendHover,
+  sendTap,
+  deleteHover,
+} from "./ai-chat-constants";
 
 const quickActions = [
   { icon: Users, label: "List all candidates", prompt: "List all candidates" },
@@ -312,7 +332,7 @@ export function AiChatBubble() {
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panelWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            transition={panelTransition}
             className="fixed bottom-0 right-0 top-0 z-40 flex flex-col border-l border-[#e2e8f0] bg-white shadow-xl overflow-hidden"
           >
             {/* Header */}
@@ -320,8 +340,8 @@ export function AiChatBubble() {
               <div className="flex items-center gap-2 min-w-0">
                 {/* Expand/Shrink toggle */}
                 <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
+                  whileHover={buttonHover}
+                  whileTap={buttonTap}
                   onClick={toggleExpand}
                   className="rounded-lg p-1 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
                   title={expanded ? "Shrink panel" : "Expand panel"}
@@ -329,7 +349,7 @@ export function AiChatBubble() {
                   {expanded ? <ChevronsRight className="h-3.5 w-3.5" /> : <ChevronsLeft className="h-3.5 w-3.5" />}
                 </motion.button>
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white overflow-hidden">
-                  <img src="/ai-logo.png" alt="CaresLink AI" className="h-5 w-5 object-contain" />
+                  <CaresLinkIcon size={20} />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-white truncate">CaresLink AI</p>
@@ -341,8 +361,8 @@ export function AiChatBubble() {
               </div>
               <div className="flex items-center gap-0.5">
                 <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
+                  whileHover={buttonHover}
+                  whileTap={buttonTap}
                   onClick={() => { setShowIntegrations(!showIntegrations); setShowHistory(false); }}
                   className={`rounded-lg p-1 transition-colors ${showIntegrations ? "bg-white/25 text-white" : "text-white/60 hover:bg-white/15 hover:text-white"}`}
                   title="Integrations"
@@ -350,8 +370,8 @@ export function AiChatBubble() {
                   <Link2 className="h-3.5 w-3.5" />
                 </motion.button>
                 <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
+                  whileHover={buttonHover}
+                  whileTap={buttonTap}
                   onClick={createNewChat}
                   className="rounded-lg p-1 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
                   title="New chat"
@@ -359,8 +379,8 @@ export function AiChatBubble() {
                   <Plus className="h-3.5 w-3.5" />
                 </motion.button>
                 <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
+                  whileHover={buttonHover}
+                  whileTap={buttonTap}
                   onClick={() => setOpen(false)}
                   className="rounded-lg p-1 text-white/60 hover:bg-white/15 hover:text-white transition-colors"
                   title="Close panel"
@@ -374,10 +394,11 @@ export function AiChatBubble() {
             <AnimatePresence>
               {showIntegrations && (
                 <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
+                  initial="hidden"
+                  animate="visible"
+                  exit="hidden"
+                  variants={integrationsPanelVariants}
+                  transition={integrationsPanelTransition}
                   className="overflow-hidden border-b border-[#e2e8f0] bg-[#fafbfc]"
                 >
                   <div className="p-4">
@@ -441,10 +462,11 @@ export function AiChatBubble() {
               <AnimatePresence>
                 {showHistory && (
                   <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
+                    initial="hidden"
+                    animate="visible"
+                    exit="hidden"
+                    variants={dropdownVariants}
+                    transition={dropdownTransition}
                     className="absolute left-0 right-0 top-full z-10 max-h-[320px] overflow-y-auto border-b border-[#e2e8f0] bg-white shadow-lg"
                   >
                     <button
@@ -484,8 +506,8 @@ export function AiChatBubble() {
                               </p>
                             </div>
                             <motion.button
-                              whileHover={{ scale: 1.15 }}
-                              whileTap={{ scale: 0.9 }}
+                              whileHover={deleteHover}
+                              whileTap={buttonTap}
                               onClick={(e) => deleteSession(session.id, e)}
                               className="rounded p-1 text-[#b0bec8] opacity-0 transition-opacity hover:bg-red-50 hover:text-red-400 group-hover:opacity-100"
                             >
@@ -516,11 +538,11 @@ export function AiChatBubble() {
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15, duration: 0.3 }}
+                    transition={welcomeTransition}
                     className="flex flex-col items-center justify-center pt-4 pb-2 text-center"
                   >
                     <div className="mb-2.5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f4fd] overflow-hidden">
-                      <img src="/ai-logo.png" alt="CaresLink AI" className="h-7 w-7 object-contain" />
+                      <CaresLinkIcon size={28} animate />
                     </div>
                     <p className="text-sm font-semibold text-[#1a2b3c]">Hi! How can I help?</p>
                     <p className="mt-1 text-xs text-[#8a95a3] max-w-[260px]">
@@ -534,7 +556,7 @@ export function AiChatBubble() {
                           key={action.label}
                           initial={{ opacity: 0, y: 6 }}
                           animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.2 + i * 0.05, duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                          transition={quickActionTransition(i)}
                           onClick={() => sendMessage(action.prompt)}
                           disabled={loading}
                           className="flex w-full items-center gap-2.5 rounded-lg border border-[#e2e8f0] px-3 py-2 text-left transition-all duration-150 hover:border-[#0090d9]/30 hover:bg-[#f5faff] hover:shadow-sm disabled:opacity-50"
@@ -553,12 +575,12 @@ export function AiChatBubble() {
                     key={i}
                     initial={{ opacity: 0, y: 8, scale: 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                    transition={messageTransition}
                     className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {m.role === "ai" && (
                       <div className="mr-1.5 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#e8f4fd] overflow-hidden">
-                        <img src="/ai-logo.png" alt="AI" className="h-4 w-4 object-contain" />
+                        <CaresLinkIcon size={16} />
                       </div>
                     )}
                     <div
@@ -590,8 +612,8 @@ export function AiChatBubble() {
                         <motion.span
                           key={i}
                           className="h-1.5 w-1.5 rounded-full bg-[#8a95a3]"
-                          animate={{ y: [0, -4, 0] }}
-                          transition={{ delay: i * 0.15, repeat: Infinity, duration: 0.8, ease: "easeInOut" }}
+                          animate={loadingDotAnimate}
+                          transition={loadingDotTransition(i)}
                         />
                       ))}
                     </div>
@@ -617,8 +639,8 @@ export function AiChatBubble() {
                 <motion.button
                   type="submit"
                   disabled={loading || !input.trim()}
-                  whileHover={{ scale: 1.08 }}
-                  whileTap={{ scale: 0.92 }}
+                  whileHover={sendHover}
+                  whileTap={sendTap}
                   className="absolute bottom-2 right-2 rounded-md bg-[#0090d9] p-1.5 text-white hover:bg-[#0077b6] transition-colors disabled:opacity-30"
                 >
                   <Send className="h-3.5 w-3.5" />
@@ -636,12 +658,12 @@ export function AiChatBubble() {
       {!open && (
         <motion.button
           onClick={toggle}
-          whileHover={{ scale: 1.06 }}
-          whileTap={{ scale: 0.94 }}
+          whileHover={fabHover}
+          whileTap={fabTap}
           className="fixed bottom-8 right-8 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg hover:shadow-xl transition-shadow overflow-hidden ring-1 ring-black/5"
           style={{ boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)" }}
         >
-          <img src="/ai-logo.png" alt="CaresLink AI" className="h-9 w-9 object-contain" />
+          <CaresLinkIcon size={36} animate />
         </motion.button>
       )}
     </>

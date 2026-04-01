@@ -490,43 +490,58 @@ async function randomMouseWander(page: Page, durationMs = 3000) {
   }
 }
 
-/** Try to solve GeeTest CAPTCHA by simulating human mouse behavior.
- *  Wanders the mouse around the page, then clicks the "Click to verify" button.
+/** Try to solve Incapsula's "Click to verify" challenge by simulating human mouse behavior.
+ *  Wanders the mouse around the page, then clicks the verify button.
  *  Returns true if the security check was passed. */
-async function solveGeeTestWithMouse(page: Page): Promise<boolean> {
-  console.log("[browser-verify] Attempting GeeTest solve with human-like mouse movement...");
+async function solveIncapsulaWithMouse(page: Page): Promise<boolean> {
+  console.log("[browser-verify] Attempting Incapsula solve with human-like mouse movement...");
 
-  // Step 0: Wait for the GeeTest widget to load (it's injected asynchronously by Incapsula JS)
-  let geetestBtn = null;
-  for (let waitTime = 0; waitTime < 20000; waitTime += 2000) {
-    geetestBtn = await page.$('.geetest_radar_btn').catch(() => null);
-    if (geetestBtn) break;
-    console.log(`[browser-verify] Waiting for GeeTest widget to load... (${(waitTime / 1000 + 2).toFixed(0)}s)`);
-    await wait(2000);
-  }
-  if (!geetestBtn) {
-    console.log("[browser-verify] GeeTest button (.geetest_radar_btn) not found after 20s");
-    return false;
-  }
-  console.log("[browser-verify] GeeTest widget loaded!");
+  // Wait for the page to fully render (Incapsula loads JS asynchronously)
+  await wait(3000);
 
-  // Step 1: Wander mouse randomly around the page for 2-4 seconds
+  // Step 1: Wander mouse randomly to build trust with bot detection
   await randomMouseWander(page, rand(2000, 4000));
 
-  // Step 2: Re-query button (fresh reference after mouse wandering)
-  geetestBtn = await page.$('.geetest_radar_btn').catch(() => null);
-  if (!geetestBtn) return false;
+  // Step 2: Find the "Click to verify" button — try multiple selectors
+  const btnInfo = await page.evaluate(() => {
+    // Look for any clickable element containing "verify" text
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>('a, button, div, span, input'));
+    for (const el of candidates) {
+      const text = (el.textContent || "").trim().toLowerCase();
+      if (text.includes("click to verify") || text === "verify") {
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 10 && rect.height > 10) {
+          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, found: "text-match" };
+        }
+      }
+    }
+    // Also try GeeTest selectors in case it IS GeeTest
+    const geeBtn = document.querySelector('.geetest_radar_btn, .geetest_btn');
+    if (geeBtn) {
+      const rect = geeBtn.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, found: "geetest" };
+    }
+    // Try any button-like element in the challenge area
+    const challengeArea = document.querySelector('[class*="challenge"], [id*="challenge"], [class*="captcha"]');
+    if (challengeArea) {
+      const btn = challengeArea.querySelector('button, a, [role="button"], input[type="submit"]');
+      if (btn) {
+        const rect = btn.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, found: "challenge-area" };
+      }
+    }
+    return null;
+  }).catch(() => null);
 
-  // Step 3: Get button position and move to it with human-like curve
-  const box = await geetestBtn.boundingBox();
-  if (!box) {
-    console.log("[browser-verify] GeeTest button has no bounding box");
+  if (!btnInfo) {
+    console.log("[browser-verify] Could not find 'Click to verify' button on page");
     return false;
   }
+  console.log("[browser-verify] Found verify button via:", btnInfo.found);
 
-  // Move to the button area with slight random offset (don't hit dead center)
-  const clickX = box.x + box.width / 2 + rand(-10, 10);
-  const clickY = box.y + box.height / 2 + rand(-5, 5);
+  // Step 3: Move to the button with human-like curve + random offset
+  const clickX = btnInfo.x + rand(-8, 8);
+  const clickY = btnInfo.y + rand(-4, 4);
   await humanMouseMove(page, clickX, clickY, rand(20, 40));
 
   // Step 4: Small hesitation before click (like a human)
@@ -534,45 +549,26 @@ async function solveGeeTestWithMouse(page: Page): Promise<boolean> {
 
   // Step 5: Click
   await page.mouse.click(clickX, clickY);
-  console.log("[browser-verify] Clicked GeeTest verify button");
+  console.log("[browser-verify] Clicked verify button at", Math.round(clickX), Math.round(clickY));
 
-  // Step 6: Wait and check if it passed (up to 15s)
-  for (let elapsed = 0; elapsed < 15000; elapsed += 2000) {
+  // Step 6: Wait and check if it passed (up to 20s)
+  for (let elapsed = 0; elapsed < 20000; elapsed += 2000) {
     await wait(2000);
-
-    // Check if GeeTest shows success state
-    const result = await page.evaluate(() => {
-      // Success: the button gets a success class
-      const successEl = document.querySelector('.geetest_success_radar_tip, .geetest_success_btn, .geetest_success');
-      if (successEl) return "success";
-
-      // Still verifying
-      const tip = document.querySelector('.geetest_radar_tip_content');
-      const tipText = tip?.textContent || "";
-      if (tipText.includes("Click to verify")) return "pending";
-
-      // Check if we've navigated away from the security page entirely
-      const bodyText = document.body.innerText || "";
-      const stillOnCheck = /additional\s+security\s+check|security\s+check\s+is\s+required/i.test(bodyText);
-      if (!stillOnCheck && bodyText.length > 200) return "navigated";
-
-      return "pending";
-    }).catch(() => "error");
-
-    if (result === "success" || result === "navigated") {
-      console.log("[browser-verify] GeeTest solved via mouse simulation!");
+    try {
+      const bodyText = await page.evaluate(() => document.body.innerText || "").catch(() => "");
+      const stillOnCheck = /additional\s+security\s+check|click\s+to\s+verify|security\s+check\s+is\s+required/i.test(bodyText);
+      if (!stillOnCheck) {
+        console.log("[browser-verify] Security check passed via mouse click!");
+        return true;
+      }
+    } catch {
+      // page.evaluate failed — page is navigating (good!)
+      await wait(2000);
       return true;
-    }
-
-    // If a slide puzzle appears, we can't solve it automatically
-    const hasSlidePuzzle = await page.$('.geetest_slider_button, .geetest_popup_wrap').then(el => !!el).catch(() => false);
-    if (hasSlidePuzzle) {
-      console.log("[browser-verify] GeeTest triggered slide puzzle — cannot auto-solve");
-      return false;
     }
   }
 
-  console.log("[browser-verify] GeeTest did not pass within 15s");
+  console.log("[browser-verify] Security check did not pass within 20s after clicking");
   return false;
 }
 
@@ -732,18 +728,18 @@ export async function captureNursysScreenshots(
         }
       } else {
         // Incapsula / GeeTest or no CapSolver — try human-like mouse click first
-        if (isIncapsula) console.log("[browser-verify] Incapsula/Imperva + GeeTest detected — attempting mouse simulation...");
+        if (isIncapsula) console.log("[browser-verify] Incapsula/Imperva detected — attempting mouse click...");
 
-        // GeeTest widget loads asynchronously — always attempt to solve it
-        // (solveGeeTestWithMouse will wait up to 20s for the widget to appear)
+        // Incapsula verify loads asynchronously — always attempt to solve it
+        // (solveIncapsulaWithMouse will wait up to 20s for the widget to appear)
         let geetestPassed = false;
 
         {
-          shots.push(await snap(page, "Nursys® — Waiting for GeeTest widget"));
-          geetestPassed = await solveGeeTestWithMouse(page);
+          shots.push(await snap(page, "Nursys® — Waiting for Incapsula verify"));
+          geetestPassed = await solveIncapsulaWithMouse(page);
 
           if (geetestPassed) {
-            console.log("[browser-verify] GeeTest passed via mouse simulation — no human intervention needed!");
+            console.log("[browser-verify] Incapsula passed via mouse simulation — no human intervention needed!");
             // Wait for page to settle after passing
             await wait(3000);
 
@@ -751,7 +747,7 @@ export async function captureNursysScreenshots(
             const postGeeTestText = await page.evaluate(() => document.body.innerText || "").catch(() => "");
             const stillBlocked = /additional\s+security\s+check|security\s+check\s+is\s+required/i.test(postGeeTestText);
             if (stillBlocked) {
-              // GeeTest passed but Incapsula may need more time to redirect
+              // Incapsula passed but Incapsula may need more time to redirect
               try {
                 await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 });
               } catch {}
@@ -764,7 +760,7 @@ export async function captureNursysScreenshots(
           // First attempt failed — retry mouse simulation up to 2 more times
           // with longer random wandering each time to build more trust
           for (let retry = 1; retry <= 2 && !geetestPassed; retry++) {
-            console.log(`[browser-verify] GeeTest retry ${retry}/2 — wandering longer before click...`);
+            console.log(`[browser-verify] Incapsula retry ${retry}/2 — wandering longer before click...`);
             await wait(rand(1500, 3000));
 
             // Scroll around the page randomly (simulates reading)
@@ -776,10 +772,10 @@ export async function captureNursysScreenshots(
               window.scrollBy(0, -(Math.random() * 200));
             }).catch(() => {});
 
-            geetestPassed = await solveGeeTestWithMouse(page);
+            geetestPassed = await solveIncapsulaWithMouse(page);
 
             if (geetestPassed) {
-              console.log(`[browser-verify] GeeTest passed on retry ${retry}!`);
+              console.log(`[browser-verify] Incapsula passed on retry ${retry}!`);
               await wait(3000);
               try {
                 await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 });
@@ -789,9 +785,9 @@ export async function captureNursysScreenshots(
           }
 
           if (!geetestPassed) {
-            console.log("[browser-verify] GeeTest could not be solved automatically after 3 attempts");
+            console.log("[browser-verify] Incapsula could not be solved automatically after 3 attempts");
             notifyVerificationProgress("Nursys®", "timeout");
-            shots.push(await snap(page, "Nursys® — GeeTest Auto-Solve Failed"));
+            shots.push(await snap(page, "Nursys® — Incapsula Auto-Solve Failed"));
             return { screenshots: shots };
           }
         }

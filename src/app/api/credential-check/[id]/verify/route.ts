@@ -36,68 +36,82 @@ export async function POST(
   try {
     const { firstName, middleName, lastName, licenseNumber, licenseState, roleType } = check;
 
-    // ── TEMPORARY: Florida DOH only mode for CNA testing ──────────────────
-    // OIG and SAM.gov are disabled for CNA until Florida DOH is fully verified.
-    // Re-enable by restoring the parallel Promise.all block below.
-    // ─────────────────────────────────────────────────────────────────────
-
     let nursysData = null;
     let floridaDohData = null;
     let oigResult = null;
     let samGovResult = null;
 
-    if (roleType === "NURSE") {
-      // RNs: run OIG, SAM.gov, and Nursys browser verification ALL in parallel.
-      // Always use browser for Nursys so the user can see the live verification.
-      const [oig, sam, nursysBrowser] = await Promise.all([
-        checkOIGExclusion(firstName, lastName, middleName ?? undefined),
-        checkSAMGov(firstName, lastName, licenseNumber ?? undefined, licenseState ?? undefined),
-        captureNursysScreenshots(
-          firstName, lastName,
-          licenseState ?? null,
-          licenseNumber ?? null
-        ),
-      ]);
-      oigResult = oig;
-      samGovResult = sam;
+    // ── Cache: reuse a COMPLETED check for the same person from the last 24h ──
+    const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const cached = await prisma.credentialCheck.findFirst({
+      where: {
+        id: { not: id }, // exclude ourselves
+        firstName: { equals: firstName, mode: "insensitive" },
+        lastName: { equals: lastName, mode: "insensitive" },
+        roleType,
+        status: "COMPLETED",
+        updatedAt: { gte: new Date(Date.now() - CACHE_TTL_MS) },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
 
-      const hasReport = nursysBrowser.report && nursysBrowser.report.licenses.length > 0;
-      nursysData = {
-        status: hasReport || nursysBrowser.screenshots.length > 4 ? "found" : "manual_required",
-        searchedName: `${firstName} ${lastName}`.toUpperCase(),
-        screenshots: nursysBrowser.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
-        reportPdfPath: nursysBrowser.reportPdfPath || null,
-        reportPdfBase64: nursysBrowser.reportPdfBase64 || null,
-        browserVerified: true,
-        report: nursysBrowser.report ? {
-          ncsbnId: nursysBrowser.report.ncsbnId,
-          fullName: nursysBrowser.report.fullName,
-          reportDate: nursysBrowser.report.reportDate,
-          licenses: nursysBrowser.report.licenses,
-          boardMessages: nursysBrowser.report.boardMessages,
-          authorizedStates: nursysBrowser.report.authorizedStates,
-        } : undefined,
-      };
+    if (cached) {
+      console.log(`[verify] Cache hit — reusing verification from ${cached.id} (${cached.updatedAt.toISOString()})`);
+      nursysData = cached.nursysData;
+      floridaDohData = cached.floridaDohData;
+      oigResult = cached.oigData;
+      samGovResult = cached.samGovData;
     } else {
-      // CNAs: use Puppeteer for accurate FL DOH verification + screenshot capture
-      const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber ?? undefined);
-      floridaDohData = {
-        status: dohResult.found ? "found" : "not_found",
-        searchedName: `${firstName} ${lastName}`.toUpperCase(),
-        licenseType: "Certified Nursing Assistant",
-        matches: dohResult.matches.map((m) => ({
-          name: m.name,
-          licenseNumber: m.licenseNumber,
-          licenseType: m.licenseType || "Certified Nursing Assistant",
-          status: m.status,
-          expirationDate: m.expirationDate,
-          county: m.county || undefined,
-        })),
-        manualUrl: "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders",
-        checkedAt: new Date().toISOString(),
-        // Store screenshots so the UI can display them without re-running Puppeteer
-        screenshots: dohResult.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
-      };
+      // ── No cache — run live verification ──
+      if (roleType === "NURSE") {
+        const [oig, sam, nursysBrowser] = await Promise.all([
+          checkOIGExclusion(firstName, lastName, middleName ?? undefined),
+          checkSAMGov(firstName, lastName, licenseNumber ?? undefined, licenseState ?? undefined),
+          captureNursysScreenshots(
+            firstName, lastName,
+            licenseState ?? null,
+            licenseNumber ?? null
+          ),
+        ]);
+        oigResult = oig;
+        samGovResult = sam;
+
+        const hasReport = nursysBrowser.report && nursysBrowser.report.licenses.length > 0;
+        nursysData = {
+          status: hasReport || nursysBrowser.screenshots.length > 4 ? "found" : "manual_required",
+          searchedName: `${firstName} ${lastName}`.toUpperCase(),
+          screenshots: nursysBrowser.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
+          reportPdfPath: nursysBrowser.reportPdfPath || null,
+          reportPdfBase64: nursysBrowser.reportPdfBase64 || null,
+          browserVerified: true,
+          report: nursysBrowser.report ? {
+            ncsbnId: nursysBrowser.report.ncsbnId,
+            fullName: nursysBrowser.report.fullName,
+            reportDate: nursysBrowser.report.reportDate,
+            licenses: nursysBrowser.report.licenses,
+            boardMessages: nursysBrowser.report.boardMessages,
+            authorizedStates: nursysBrowser.report.authorizedStates,
+          } : undefined,
+        };
+      } else {
+        const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber ?? undefined);
+        floridaDohData = {
+          status: dohResult.found ? "found" : "not_found",
+          searchedName: `${firstName} ${lastName}`.toUpperCase(),
+          licenseType: "Certified Nursing Assistant",
+          matches: dohResult.matches.map((m) => ({
+            name: m.name,
+            licenseNumber: m.licenseNumber,
+            licenseType: m.licenseType || "Certified Nursing Assistant",
+            status: m.status,
+            expirationDate: m.expirationDate,
+            county: m.county || undefined,
+          })),
+          manualUrl: "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders",
+          checkedAt: new Date().toISOString(),
+          screenshots: dohResult.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
+        };
+      }
     }
 
     // AI analysis

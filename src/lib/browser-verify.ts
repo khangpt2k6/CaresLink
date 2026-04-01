@@ -1456,45 +1456,9 @@ export async function captureNursysScreenshots(
           notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
         }
       } else {
-        // No CapSolver — fall back to manual solving
-        console.log("[browser-verify] reCAPTCHA detected — prompting user to solve it manually...");
-        notifyCaptchaRequired("Nursys® reCAPTCHA");
-
-        await page.evaluate(() => {
-          const overlay = document.createElement("div");
-          overlay.id = "careslink-captcha-alert";
-          overlay.innerHTML = `
-            <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e40af;color:#fff;padding:14px 24px;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
-              <span style="font-size:22px;">🔒</span>
-              <span>CaresLink: Please complete the reCAPTCHA below, then wait — automation will continue.</span>
-            </div>
-          `;
-          document.body.appendChild(overlay);
-        });
-
-        const captchaSolved = await page.evaluate(() => {
-          return new Promise<boolean>((resolve) => {
-            let elapsed = 0;
-            const interval = setInterval(() => {
-              elapsed += 1000;
-              const ta = document.querySelector<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"]');
-              if (ta && ta.value.length > 0) { clearInterval(interval); resolve(true); }
-              if (elapsed >= 90000) { clearInterval(interval); resolve(false); }
-            }, 1000);
-          });
-        });
-
-        await page.evaluate(() => {
-          document.getElementById("careslink-captcha-alert")?.remove();
-        });
-
-        if (captchaSolved) {
-          console.log("[browser-verify] reCAPTCHA solved by user!");
-          notifyVerificationProgress("Nursys® reCAPTCHA", "passed");
-        } else {
-          console.log("[browser-verify] reCAPTCHA not solved within 90s");
-          notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
-        }
+        // No CapSolver API key — cannot solve reCAPTCHA in headless mode
+        console.log("[browser-verify] reCAPTCHA detected but no CAPSOLVER_API_KEY set — cannot solve in headless mode");
+        notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
       }
 
       shots.push(await snap(page, "Nursys® — reCAPTCHA").catch(() => ({

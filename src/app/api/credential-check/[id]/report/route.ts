@@ -7,7 +7,7 @@ import {
   type VerificationScreenshot,
 } from "@/lib/browser-verify";
 import { buildReportHTML, type AllScreenshots, type ReportCheckData } from "@/lib/report-html";
-import puppeteer from "puppeteer";
+import { chromium } from "playwright";
 
 export const maxDuration = 300; // 5 minutes — browser automation takes time
 
@@ -67,7 +67,7 @@ export async function GET(
       console.log(`[report] Using ${storedShots.length} stored FL DOH screenshots from verify step`);
       floridaDohScreenshots = storedShots.map((s) => ({ label: s.label, url: "", dataUrl: s.dataUrl }));
     } else {
-      // Fallback: run Puppeteer if no screenshots stored
+      // Fallback: run browser verification again if no screenshots stored
       const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
       floridaDohScreenshots = dohResult.screenshots;
       console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}`);
@@ -104,25 +104,23 @@ export async function GET(
 
   const html = buildReportHTML(reportData, screenshots);
 
-  // ── 3. Render HTML → PDF with headless Puppeteer ─────────────────────
+  // ── 3. Render HTML → PDF with headless Playwright ────────────────────
   console.log(`[report] Generating PDF for ${firstName} ${lastName}`);
 
-  const browser = await puppeteer.launch({
-    headless: true, // always headless for PDF generation
+  const browser = await chromium.launch({
+    headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 60000 });
+    await page.setContent(html, { waitUntil: "networkidle", timeout: 60000 });
 
-    const pdfUint8 = await page.pdf({
+    const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: { top: "0", bottom: "12mm", left: "0", right: "0" },
     });
-
-    const pdfBuffer = Buffer.from(pdfUint8);
     const name = `${lastName}_${firstName}`;
     const date = new Date().toISOString().slice(0, 10);
 

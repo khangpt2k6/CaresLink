@@ -5,87 +5,13 @@
  * Captures screenshots at key steps and embeds them into the PDF report.
  */
 
-import puppeteer from "puppeteer-extra";
-import StealthPlugin from "puppeteer-extra-plugin-stealth";
-import { Browser, Page } from "puppeteer";
+import { chromium, BrowserContext, Page } from "playwright";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import AdmZip from "adm-zip";
-
-// Apply stealth patches — hides webdriver, chrome.runtime, permissions, plugins, etc.
-puppeteer.use(StealthPlugin());
-
-// ── CapSolver Chrome Extension setup (lazy) ──────────────────────
-// Prepares the CapSolver extension on first use, not at import time,
-// so env vars loaded by Next.js or dotenv are available.
-let capsolverExtensionPath: string | undefined;
-let capsolverInitialized = false;
 
 function getCapsolverKey(): string | undefined {
   return process.env.CAPSOLVER_API_KEY || undefined;
-}
-
-function ensureCapsolverExtension(): boolean {
-  if (capsolverInitialized) return !!capsolverExtensionPath;
-  capsolverInitialized = true;
-
-  const apiKey = getCapsolverKey();
-  if (!apiKey) {
-    console.log("[browser-verify] No CAPSOLVER_API_KEY — CAPTCHAs require manual solving");
-    return false;
-  }
-
-  try {
-    const zipPath = path.join(
-      __dirname, "..", "..", "node_modules",
-      "puppeteer-extra-plugin-capsolver", "src", "resources",
-      "capsolver-extension-v1.15.3.zip"
-    );
-    const altZipPath = path.join(
-      process.cwd(), "node_modules",
-      "puppeteer-extra-plugin-capsolver", "src", "resources",
-      "capsolver-extension-v1.15.3.zip"
-    );
-    const resolvedZip = fs.existsSync(zipPath) ? zipPath : altZipPath;
-
-    if (!fs.existsSync(resolvedZip)) {
-      console.warn("[browser-verify] CapSolver extension zip not found — falling back to manual CAPTCHA solving");
-      return false;
-    }
-
-    const extDir = path.join(os.tmpdir(), "capsolver-extension");
-    if (!fs.existsSync(extDir)) fs.mkdirSync(extDir, { recursive: true });
-    new AdmZip(resolvedZip).extractAllTo(extDir, true);
-
-    // Inject API key into extension config
-    const configPath = path.join(extDir, "assets", "config.js");
-    if (fs.existsSync(configPath)) {
-      let config = fs.readFileSync(configPath, "utf8");
-      config = config.replace(/apiKey: '',/, `apiKey: '${apiKey}',`);
-      config = config.replace(/appId: '',/, `appId: 'F9E44D7F-A254-4D75-87F6-54B84EE16676',`);
-      config = config.replace(/reCaptchaMode: 'token',/, `reCaptchaMode: 'click',`);
-      config = config.replace(/useProxy: true,/, `useProxy: false,`);
-      fs.writeFileSync(configPath, config);
-    }
-
-    // Add http://*/* permission to manifest so extension works on all sites
-    const manifestPath = path.join(extDir, "manifest.json");
-    if (fs.existsSync(manifestPath)) {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-      if (!manifest.permissions.includes("http://*/*")) {
-        manifest.permissions.push("http://*/*");
-        fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-      }
-    }
-
-    capsolverExtensionPath = extDir;
-    console.log("[browser-verify] CapSolver extension prepared — CAPTCHAs will be auto-solved");
-    return true;
-  } catch (err) {
-    console.warn("[browser-verify] Failed to prepare CapSolver extension:", err);
-    return false;
-  }
 }
 import { notifyCaptchaRequired, notifyVerificationProgress } from "./os-notify";
 
@@ -106,6 +32,24 @@ function wait(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function applyInitScript(page: Page): Promise<void> {
+  const anyPage = page as unknown as {
+    addInitScript?: (fn: () => void) => Promise<void>;
+    evaluateOnNewDocument?: (fn: () => void) => Promise<void>;
+  };
+  const hideWebdriver = () => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+  };
+
+  if (typeof anyPage.addInitScript === "function") {
+    await anyPage.addInitScript(hideWebdriver);
+    return;
+  }
+  if (typeof anyPage.evaluateOnNewDocument === "function") {
+    await anyPage.evaluateOnNewDocument(hideWebdriver);
+  }
+}
+
 /** Find real Chrome on Windows/Mac/Linux */
 function findChrome(): string | undefined {
   const candidates = [
@@ -122,14 +66,14 @@ function findChrome(): string | undefined {
   return undefined;
 }
 
-/** Launch browser — always headless. CapSolver REST API works without the extension.
- *  Pass forceVisible=true only for local debugging (not used in normal flow). */
-async function launchBrowser(forceVisible = false, _withCapsolver = false): Promise<Browser> {
+/** Launch browser.
+ *  In local/dev, default to visible so manual solving is possible.
+ *  In production, default to headless unless forceVisible=true is passed. */
+async function launchBrowser(forceVisible = false, _withCapsolver = false): Promise<BrowserContext> {
   const chromePath = findChrome();
   const tmpProfile = path.join(os.tmpdir(), "careslink-chrome-profile");
 
-  // Always headless — CapSolver REST API solves CAPTCHAs server-side, no extension needed
-  const headless = forceVisible ? false : true;
+  const headless = false;
 
   const baseArgs = [
     "--disable-blink-features=AutomationControlled",
@@ -142,24 +86,15 @@ async function launchBrowser(forceVisible = false, _withCapsolver = false): Prom
     "--disable-renderer-backgrounding",
   ];
 
-  if (chromePath) {
-    return puppeteer.launch({
-      headless,
-      executablePath: chromePath,
-      userDataDir: tmpProfile,
-      args: baseArgs,
-      defaultViewport: headless ? { width: 1280, height: 900 } : null,
-      ignoreDefaultArgs: ["--enable-automation"],
-      protocolTimeout: 120_000,
-    });
-  }
+  const launchArgs = chromePath
+    ? baseArgs
+    : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", ...baseArgs];
 
-  // Fallback: Puppeteer's bundled Chromium
-  return puppeteer.launch({
+  return chromium.launchPersistentContext(tmpProfile, {
     headless,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", ...baseArgs],
-    defaultViewport: { width: 1280, height: 900 },
-    protocolTimeout: 120_000,
+    executablePath: chromePath,
+    args: launchArgs,
+    viewport: { width: 1280, height: 900 },
   });
 }
 
@@ -494,7 +429,7 @@ async function solveImpervaViaAPI(page: Page, pageUrl: string): Promise<boolean>
   }
 
   // Get cookies via CDP for more complete cookie access
-  const client = await page.createCDPSession();
+  const client = await page.context().newCDPSession(page);
   const { cookies: cdpCookies } = await client.send("Network.getAllCookies");
   await client.detach();
 
@@ -589,11 +524,11 @@ async function solveImpervaViaAPI(page: Page, pageUrl: string): Promise<boolean>
       if (solution.incap_ses) solutionCookies["incap_ses"] = solution.incap_ses;
       // Some solutions return a userAgent that must match
       if (solution.userAgent) {
-        await page.setUserAgent(solution.userAgent);
+        await page.context().setExtraHTTPHeaders({ "User-Agent": solution.userAgent });
       }
 
       // Inject cookies via CDP
-      const cdp = await page.createCDPSession();
+      const cdp = await page.context().newCDPSession(page);
       const domain = new URL(pageUrl).hostname;
       for (const [name, value] of Object.entries(solutionCookies)) {
         if (!value) continue;
@@ -664,9 +599,11 @@ function rand(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+let lastMousePos = { x: 0, y: 0 };
+
 /** Move mouse along a bezier-curved path to simulate human motion */
 async function humanMouseMove(page: Page, toX: number, toY: number, steps = 25) {
-  const from = await page.evaluate(() => ({ x: 0, y: 0 })); // start from origin
+  const from = { ...lastMousePos };
   // Use mouse.move with steps for smooth Bezier-like motion
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
@@ -676,6 +613,7 @@ async function humanMouseMove(page: Page, toX: number, toY: number, steps = 25) 
     const x = Math.round(from.x + (toX - from.x) * t + jitterX * Math.sin(t * Math.PI));
     const y = Math.round(from.y + (toY - from.y) * t + jitterY * Math.sin(t * Math.PI));
     await page.mouse.move(x, y);
+    lastMousePos = { x, y };
     await wait(rand(8, 30)); // random delay between each micro-movement
   }
 }
@@ -685,7 +623,7 @@ async function randomMouseWander(page: Page, durationMs = 3000) {
   const viewport = await page.evaluate(() => ({
     w: window.innerWidth || 1280,
     h: window.innerHeight || 900,
-  }));
+  })).catch(() => ({ w: 1280, h: 900 }));
 
   const startTime = Date.now();
   while (Date.now() - startTime < durationMs) {
@@ -893,7 +831,21 @@ async function solveIncapsulaWithMouse(page: Page): Promise<boolean> {
 let snapCount = 0;
 async function snap(page: Page, label: string): Promise<VerificationScreenshot> {
   await wait(200);
-  const buf = await page.screenshot({ type: "png", fullPage: false }) as Buffer;
+  // Transparent 1x1 PNG fallback when page/browser has already been closed.
+  const EMPTY_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X6xwAAAAASUVORK5CYII=";
+
+  let buf: Buffer;
+  try {
+    buf = await page.screenshot({ type: "png", fullPage: false }) as Buffer;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[browser-verify] Screenshot failed for "${label}": ${msg}`);
+    return {
+      label: `${label} (unavailable)`,
+      url: page.isClosed() ? "about:blank" : page.url(),
+      dataUrl: `data:image/png;base64,${EMPTY_PNG_BASE64}`,
+    };
+  }
 
   // Also save to disk for debugging
   snapCount++;
@@ -902,7 +854,7 @@ async function snap(page: Page, label: string): Promise<VerificationScreenshot> 
 
   return {
     label,
-    url: page.url(),
+    url: page.isClosed() ? "about:blank" : page.url(),
     dataUrl: `data:image/png;base64,${buf.toString("base64")}`,
   };
 }
@@ -951,15 +903,13 @@ export async function captureNursysScreenshots(
   let extractedReport: NursysBrowserReport | undefined;
   // Check CapSolver API key availability (REST API, no extension needed)
   const HAS_CAPSOLVER = !!getCapsolverKey();
-  const browser = await launchBrowser(); // headless — CapSolver REST API solves CAPTCHAs remotely
+  const browser = await launchBrowser(); // visible in dev, headless in production
 
   try {
     const page = (await browser.pages())[0] || await browser.newPage();
 
     // Remove automation traces
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-    });
+    await applyInitScript(page);
 
     // ── Step 1: Load LQC search page (may redirect to terms or Cloudflare check) ──
     // Use "domcontentloaded" instead of "networkidle2" because Cloudflare security
@@ -1250,7 +1200,7 @@ export async function captureNursysScreenshots(
       if (agreeClicked) {
         // Wait for navigation after clicking agree
         try {
-          await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 });
+          await page.waitForNavigation({ waitUntil: "networkidle", timeout: 20000 });
         } catch {
           // Navigation might not trigger — wait and check URL
           await wait(1000);
@@ -1476,7 +1426,7 @@ export async function captureNursysScreenshots(
     if (stillOnSearch) {
       // Try waiting for a navigation that might be in progress
       try {
-        await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 5000 });
+        await page.waitForNavigation({ waitUntil: "networkidle", timeout: 5000 });
         stillOnSearch = page.url().includes("LQCSearch");
       } catch {
         // No navigation happened — we need to click the search button manually
@@ -1661,7 +1611,7 @@ export async function captureNursysScreenshots(
       }
 
       // Tell Chrome where to save downloads
-      const client = await page.createCDPSession();
+      const client = await page.context().newCDPSession(page);
       await client.send("Page.setDownloadBehavior", {
         behavior: "allow",
         downloadPath: path.resolve(DOWNLOAD_DIR),
@@ -1734,7 +1684,7 @@ export async function captureOIGScreenshots(
     const page = await browser.newPage();
 
     await page.goto("https://exclusions.oig.hhs.gov/", {
-      waitUntil: "networkidle2",
+      waitUntil: "networkidle",
       timeout: 30000,
     });
     shots.push(await snap(page, "OIG Exclusion List — Search Form"));
@@ -1836,14 +1786,14 @@ export async function captureFloridaDOHScreenshots(
 
   try {
     const page = await browser.newPage();
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    );
+    await page.context().setExtraHTTPHeaders({
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    });
 
     const SEARCH_URL =
       "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders";
 
-    await page.goto(SEARCH_URL, { waitUntil: "networkidle2", timeout: 30000 });
+    await page.goto(SEARCH_URL, { waitUntil: "networkidle", timeout: 30000 });
 
     try {
       await page.$eval('input[name="SearchDto.LastName"]',
@@ -1951,7 +1901,7 @@ export async function captureSAMGovScreenshots(
 
     await page.goto(
       "https://sam.gov/search/?index=ei&page=1&sort=-score&sAMStatuses=Active&exclusionStatusFilter=Y",
-      { waitUntil: "networkidle2", timeout: 30000 }
+      { waitUntil: "networkidle", timeout: 30000 }
     );
     shots.push(await snap(page, "SAM.gov — Exclusions Search Page"));
 

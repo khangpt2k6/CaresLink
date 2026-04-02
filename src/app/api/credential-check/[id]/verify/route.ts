@@ -5,11 +5,10 @@ import { prisma } from "@/lib/db";
 import { checkOIGExclusion } from "@/lib/oig-exclusion";
 import { checkSAMGov } from "@/lib/sam-gov";
 import { captureFloridaDOHScreenshots, captureNursysScreenshots } from "@/lib/browser-verify";
-import { textCompletion } from "@/lib/ai-provider";
 
 export const maxDuration = 120; // Puppeteer for CNA needs extra time
 
-// POST /api/credential-check/[id]/verify — run all verifications + AI analysis
+// POST /api/credential-check/[id]/verify — run all verifications
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,8 +39,10 @@ export async function POST(
     let floridaDohData = null;
     let oigResult = null;
     let samGovResult = null;
+    let aiRecommendation: string | null = null;
+    let aiSummary: string | null = null;
 
-    // ── Cache: reuse a COMPLETED check for the same person from the last 24h ──
+    // ── Cache: reuse a COMPLETED + recruiter APPROVED check for the same person from the last 24h ──
     const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
     const cached = await prisma.credentialCheck.findFirst({
       where: {
@@ -50,6 +51,7 @@ export async function POST(
         lastName: { equals: lastName, mode: "insensitive" },
         roleType,
         status: "COMPLETED",
+        recruiterDecision: "APPROVED",
         updatedAt: { gte: new Date(Date.now() - CACHE_TTL_MS) },
       },
       orderBy: { updatedAt: "desc" },
@@ -61,6 +63,8 @@ export async function POST(
       floridaDohData = cached.floridaDohData;
       oigResult = cached.oigData;
       samGovResult = cached.samGovData;
+      aiRecommendation = cached.aiRecommendation ?? "EMPLOYABLE";
+      aiSummary = cached.aiSummary ?? "Reused from previously approved credential verification.";
     } else {
       // ── No cache — run live verification ──
       if (roleType === "NURSE") {
@@ -112,18 +116,11 @@ export async function POST(
           screenshots: dohResult.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
         };
       }
-    }
 
-    // AI analysis
-    const { aiRecommendation, aiSummary } = await analyzeWithAI({
-      firstName,
-      lastName,
-      roleType,
-      nursysData,
-      floridaDohData,
-      oigResult,
-      samGovResult,
-    });
+      // Manual review is now the source of truth (no AI analysis in verify flow).
+      aiRecommendation = "REVIEW_REQUIRED";
+      aiSummary = "Verification completed. Please review and mark success to enable cache reuse.";
+    }
 
     const updated = await prisma.credentialCheck.update({
       where: { id },
@@ -148,70 +145,4 @@ export async function POST(
     });
     return NextResponse.json({ error: "Verification failed", details: msg }, { status: 500 });
   }
-}
-
-async function analyzeWithAI({
-  firstName,
-  lastName,
-  roleType,
-  nursysData,
-  floridaDohData,
-  oigResult,
-  samGovResult,
-}: {
-  firstName: string;
-  lastName: string;
-  roleType: string;
-  nursysData: unknown;
-  floridaDohData: unknown;
-  oigResult: unknown;
-  samGovResult: unknown;
-}): Promise<{ aiRecommendation: string; aiSummary: string }> {
-  try {
-    const isCNA = roleType === "CNA";
-    // Strip screenshots from data before sending to AI (base64 images are huge and waste tokens)
-    const cleanDohData = floridaDohData && typeof floridaDohData === "object"
-      ? (() => { const { screenshots, ...rest } = floridaDohData as Record<string, unknown>; return rest; })()
-      : floridaDohData;
-    const prompt = `You are a healthcare compliance analyst. Analyze the following credential verification results for ${firstName} ${lastName} (Role: ${roleType}) and provide:
-1. An employability recommendation: "EMPLOYABLE", "REVIEW_REQUIRED", or "NOT_EMPLOYABLE"
-2. A concise 2-3 sentence summary explaining the recommendation
-
-Verification Results:
-${!isCNA && nursysData ? `Nursys License Verification: ${JSON.stringify(nursysData, null, 2)}` : ""}
-${isCNA && cleanDohData ? `Florida DOH CNA License Verification: ${JSON.stringify(cleanDohData, null, 2)}` : ""}
-${!isCNA && oigResult ? `OIG Exclusion List: ${JSON.stringify(oigResult, null, 2)}` : ""}
-${!isCNA && samGovResult ? `SAM.gov: ${JSON.stringify(samGovResult, null, 2)}` : ""}
-
-Rules for CNA:
-- EMPLOYABLE if: Florida DOH license status is "Clear/Active" or "Active" (not expired)
-- REVIEW_REQUIRED if: license not found, expired, has restrictions, probation, or is unclear
-- NOT_EMPLOYABLE if: license is revoked, suspended, or surrendered
-- Do NOT mention OIG or SAM.gov — they are not checked for CNAs
-
-Rules for NURSE:
-- NOT_EMPLOYABLE if: OIG status is "excluded", or license is revoked/suspended/surrendered
-- REVIEW_REQUIRED if: license is expired, probation, restriction, or manual verification needed
-- EMPLOYABLE if: license is active/unencumbered AND OIG clear AND SAM clear
-
-Respond in JSON format: {"recommendation": "EMPLOYABLE|REVIEW_REQUIRED|NOT_EMPLOYABLE", "summary": "..."}`;
-
-    const text = await textCompletion({
-      model: "claude-sonnet-4-6",
-      maxTokens: 400,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        aiRecommendation: parsed.recommendation || "REVIEW_REQUIRED",
-        aiSummary: parsed.summary || "",
-      };
-    }
-  } catch (err) {
-    console.error("AI analysis error:", err);
-  }
-
-  return { aiRecommendation: "REVIEW_REQUIRED", aiSummary: "Automated AI analysis unavailable. Please review verification results manually." };
 }

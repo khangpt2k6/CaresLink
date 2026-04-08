@@ -1,0 +1,198 @@
+%-------------------------
+% Resume in Latex
+% Author : Jake Gutierrez
+% Based off of: https://github.com/sb2nov/resume
+% License : MIT
+%--------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\input{glyphtounicode}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Sections formatting
+\titleformat{\section}{
+  \vspace{-6pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule \vspace{-3pt}]
+
+\pdfgentounicode=1
+
+% Underlined hyperlink command
+\newcommand{\ulhref}[2]{\href{#1}{\underline{#2}}}
+
+%-------------------------
+% Custom commands
+
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-3pt}}
+  }
+}
+
+% Company | Role ..... Date (single line, no location)
+\newcommand{\resumeSubheading}[3]{
+  \vspace{-3pt}\item
+    \begin{tabular*}{\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} $|$ \small \textit{#2} & \small #3 \\
+    \end{tabular*}\vspace{-8pt}
+}
+
+\newcommand{\resumeEducationHeading}[4]{
+  \vspace{-3pt}\item
+    \begin{tabular*}{\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & \small #2 \\
+      \small #3 & \small #4 \\
+    \end{tabular*}\vspace{-8pt}
+}
+
+\newcommand{\resumeSubSubheading}[2]{
+    \item
+    \begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & \small #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & #2 \\
+    \end{tabular*}\vspace{-8pt}
+}
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-6pt}}
+
+%-------------------------------------------
+%%%%%%  RESUME STARTS HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+    \textbf{\Huge \scshape Khang Phan} \\ \vspace{1pt}
+\small 813-570-4370 $|$
+\ulhref{mailto:2006tuankhang@gmail.com}{2006tuankhang@gmail.com} $|$
+\ulhref{https://linkedin.com/in/kvphan27}{linkedin.com/in/kvphan27} $|$
+\ulhref{https://github.com/khangpt2k6}{github.com/khangpt2k6} $|$
+\ulhref{https://tuka21.vercel.app}{tuka21.vercel.app}
+\end{center}
+
+
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeEducationHeading
+      {University of South Florida $|$ {\normalfont\small\textit{Judy Genshaft Honors College}}}{\textbf{May 2027}}
+      {B.S. Computer Science, GPA: 3.93}{Tampa, FL}
+  \resumeSubHeadingListEnd
+
+
+%-----------EXPERIENCE-----------
+\section{Experience}
+\resumeSubHeadingListStart
+
+\resumeSubheading
+{Moffitt Cancer Center}{Student Software Engineer}{\textbf{Nov 2025 -- Present}}
+\resumeItemListStart
+\resumeItem{Delivered a \textbf{clinical decision-support dashboard} in R Shiny and Python, visualizing Bayesian radiation-response outputs and 3K+ molecular interactions for 37 active trial analyses.}
+\resumeItem{Designed an end-to-end medical imaging experimentation pipeline in PyTorch, scikit-learn, and NumPy for preprocessing, augmentation, and held-out evaluation across \textbf{120K+ clinical images}.}
+\resumeItem{Finetuned the \textbf{MedGemma-1.5 4B model} using PyTorch, Transformers, and PEFT/LoRA on GPU clusters, building reproducible training pipelines that \textbf{reduced experiment turnaround time by 60\%}.}
+\resumeItemListEnd
+
+\resumeSubheading
+{Prox Shopping}{Software Engineer Intern}{\textbf{Nov 2025 -- Feb 2026}}
+\resumeItemListStart
+\resumeItem{Engineered a \textbf{distributed scraping system} with Playwright for headless browser automation, parsing \textbf{536K+ daily product records} with BeautifulSoup and indexing into Elasticsearch for real-time price search.}
+\resumeItem{Rearchitected the geospatial pipeline from sequential to concurrent Celery workers with Haversine computations cached in Redis, \textbf{cutting data refresh latency 90\% and saving \$12K+/year} in infrastructure costs.}
+\resumeItem{Orchestrated a data ingestion platform on AWS EC2 with automated validation via GitLab CI/CD, running 46 scheduled cron jobs/day with CloudWatch monitoring and sustaining \textbf{99\% system reliability}.}
+\resumeItemListEnd
+
+\resumeSubheading
+{VNPT IT}{Software Engineer Intern}{\textbf{May 2025 -- Aug 2025}}
+\resumeItemListStart
+\resumeItem{Architected an \textbf{AI recruitment agent} with a custom multi-turn agentic reasoning loop and 20 tool schemas powered by the Anthropic SDK, \textbf{reducing manual recruiter workflows by 80\%}.}
+\resumeItem{\textbf{Reduced LLM matching costs by 75\%} across 10K+ candidate profiles by replacing full-pool scoring with embedding-based retrieval and batch scoring pipelines backed by Redis and BullMQ.}
+\resumeItem{Developed a recruiting system in Next.js and Django, integrating Deepgram, Google Calendar, and Microsoft Graph to \textbf{streamline reminders, follow-ups, and interviewer-candidate coordination}.}
+\resumeItemListEnd
+
+\resumeSubheading
+{USF Reality, Autonomy, and Robot Experience Lab}{Research Assistant}{\textbf{Feb 2025 -- May 2025}}
+\resumeItemListStart
+\resumeItem{Implemented a \textbf{C++ localization module} in a ROS2 node graph on Linux for real-time robot pose estimation.}
+\resumeItem{Profiled pipeline latency and \textbf{visualized sensor datasets} with Matplotlib and RViz to diagnose timing bottlenecks.}
+\resumeItem{Containerized ROS2 workloads with Docker and orchestrated deployments across a \textbf{4-node Kubernetes cluster}.}
+\resumeItemListEnd
+
+\resumeSubHeadingListEnd
+
+
+%-----------PROJECTS-----------
+\section{Projects}
+\resumeSubHeadingListStart
+
+\resumeProjectHeading
+{\textbf{GoQueue} $|$ \emph{Go, Cobra, gRPC, Prometheus, OpenTelemetry, Docker, GitHub Actions}}{}
+\resumeItemListStart
+\resumeItem{Built a \textbf{scalable message broker in Go} from scratch, implementing a custom TCP protocol and gRPC/Protobuf APIs to support producer-consumer messaging workflows with a Cobra CLI for operational management.}
+\resumeItem{Designed each topic as multiple partitions backed by a ring buffer, routing messages by key for ordering guarantees and sustaining \textbf{1M+ messages per second} in-process throughput.}
+\resumeItem{Instrumented the broker with a write-ahead log, Prometheus metrics, and OpenTelemetry tracing, improving crash recovery and \textbf{reducing debugging time by 70\%}.}
+\resumeItemListEnd
+
+\resumeProjectHeading
+{\textbf{Sentinel} $|$ \emph{React, Tailwind CSS, FastAPI, Pandas, WebSockets, Google Gemini, Google ADK}}{}
+\resumeItemListStart
+\resumeItem{Collaborated in a 4-person team to deliver a real-time 3D orbital dashboard in Three.js tracking \textbf{29K+ space objects} with live collision-avoidance recommendations over WebSockets.}
+\resumeItem{Integrated the Space-Track catalog via Pandas ETL pipelines into a multi-agent AI system that evaluates orbital collision risk and recommends avoidance maneuvers by balancing probability against maneuver cost.}
+\resumeItemListEnd
+
+\resumeSubHeadingListEnd
+
+
+%-----------PROGRAMMING SKILLS-----------
+\section{Technical Skills}
+\begin{itemize}[leftmargin=0.15in, label={}]
+\small{\item{
+\textbf{Languages}: Python, Go, Java, R, C++, JavaScript, TypeScript, SQL \\
+\textbf{Frameworks}: FastAPI, Django, Spring Boot, React, Next.js, Remix, Node.js, R Shiny \\ 
+\textbf{Infrastructure}: Kafka, Terraform, Redis, RabbitMQ, Docker, Kubernetes, GraphQL, gRPC, AWS, GCP \\
+\textbf{Tools}: MongoDB, Supabase, Git, Prometheus, OpenTelemetry, Pinecone, LangGraph, LangChain, Linux, CUDA}}
+\end{itemize}
+
+
+%-------------------------------------------
+\end{document}

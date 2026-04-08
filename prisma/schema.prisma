@@ -29,9 +29,24 @@ model User {
   sessions              Session[]
   candidateAvailability CandidateAvailability[]
   profile               CandidateProfile?
+  subscription          UserSubscription?
   agentMemories         AgentMemory[]
   credentialChecks      CredentialCheck[]
   semanticFacts         SemanticFact[]
+}
+
+model UserSubscription {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  stripePriceId        String?
+  status               String   @default("inactive") // active | trialing | past_due | canceled | unpaid | incomplete
+  currentPeriodEnd     DateTime?
+  premiumUntil         DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 // Candidate profile (LinkedIn-style)

@@ -124,12 +124,12 @@ export async function GET(
     const name = `${lastName}_${firstName}`;
     const date = new Date().toISOString().slice(0, 10);
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="CredentialReport_${name}_${date}.pdf"`,
-        "Content-Length": pdfBuffer.length.toString(),
+        "Content-Length": pdfBuffer.byteLength.toString(),
       },
     });
   } finally {

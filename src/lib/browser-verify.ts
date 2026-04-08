@@ -73,7 +73,8 @@ async function launchBrowser(forceVisible = false, _withCapsolver = false): Prom
   const chromePath = findChrome();
   const tmpProfile = path.join(os.tmpdir(), "careslink-chrome-profile");
 
-  const headless = false;
+  // Vercel/serverless must run headless; local dev stays visible by default.
+  const headless = forceVisible ? false : IS_PROD;
 
   const baseArgs = [
     "--disable-blink-features=AutomationControlled",
@@ -553,11 +554,11 @@ async function solveImpervaViaAPI(page: Page, pageUrl: string): Promise<boolean>
       await cdp.detach();
 
       // Also inject via document.cookie as fallback
-      await page.evaluate((cookies: Record<string, string>, dom: string) => {
+      await page.evaluate(({ cookies, dom }: { cookies: Record<string, string>; dom: string }) => {
         for (const [name, value] of Object.entries(cookies)) {
           document.cookie = `${name}=${value}; domain=.${dom}; path=/; secure`;
         }
-      }, solutionCookies, domain).catch(() => {});
+      }, { cookies: solutionCookies, dom: domain }).catch(() => {});
 
       // Step 5: Reload the page — the new cookies should bypass Incapsula
       console.log("[browser-verify] Reloading page with Imperva solution cookies...");
@@ -1691,7 +1692,7 @@ export async function captureOIGScreenshots(
 
     // Fill the form — try multiple selector strategies since it's a React SPA
     await page.evaluate(
-      (first, last) => {
+      ({ first, last }: { first: string; last: string }) => {
         const inputs = Array.from(
           document.querySelectorAll<HTMLInputElement>('input[type="text"], input:not([type])')
         );
@@ -1709,8 +1710,7 @@ export async function captureOIGScreenshots(
           }
         }
       },
-      firstName.toUpperCase(),
-      lastName.toUpperCase()
+      { first: firstName.toUpperCase(), last: lastName.toUpperCase() }
     );
 
     // Fallback: try known field IDs

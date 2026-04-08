@@ -297,7 +297,14 @@ export function AiChatBubble() {
         body: JSON.stringify({ message: msg.trim(), sessionId: sid }),
       });
       const data = await res.json();
-      const withReply = [...newMessages, { role: "ai" as const, text: data.response || data.error || "No response" }];
+      const premiumMessage =
+        data?.code === "PREMIUM_REQUIRED"
+          ? "Premium is required to use the AI agent. Go to Settings > Account > Billing and click Upgrade."
+          : null;
+      const withReply = [
+        ...newMessages,
+        { role: "ai" as const, text: premiumMessage || data.response || data.error || "No response" },
+      ];
       updateSession(sid, withReply);
     } catch {
       const withError = [...newMessages, { role: "ai" as const, text: "Failed to reach AI agent." }];

@@ -21,6 +21,8 @@ import {
   CircleDot,
   Plug,
   ExternalLink,
+  Crown,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -423,6 +425,51 @@ function GeneralTab() {
 
 function AccountTab() {
   const { user } = useUser();
+  const [premium, setPremium] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string>("inactive");
+  const [premiumUntil, setPremiumUntil] = useState<string | null>(null);
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [billingActionLoading, setBillingActionLoading] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/billing/subscription")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!mounted) return;
+        setPremium(Boolean(d.premium));
+        setSubscriptionStatus(d.subscription?.status || "inactive");
+        setPremiumUntil(d.subscription?.premiumUntil || d.subscription?.currentPeriodEnd || null);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setBillingError("Failed to load billing status.");
+      })
+      .finally(() => {
+        if (mounted) setBillingLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const startCheckout = useCallback(async () => {
+    setBillingActionLoading(true);
+    setBillingError(null);
+    try {
+      const res = await fetch("/api/billing/checkout", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Failed to start checkout.");
+      }
+      window.location.href = data.url;
+    } catch (e) {
+      setBillingError((e as Error).message);
+      setBillingActionLoading(false);
+    }
+  }, []);
 
   if (!user) {
     return (
@@ -513,6 +560,61 @@ function AccountTab() {
             <p className="text-sm text-[#5a6b7c]">No external accounts connected</p>
           )}
         </div>
+      </div>
+
+      {/* Billing */}
+      <div className="card p-5">
+        <h2 className="text-sm font-semibold text-[#1a2b3c] mb-4">Billing</h2>
+        {billingLoading ? (
+          <div className="flex items-center gap-2 text-sm text-[#5a6b7c]">
+            <Loader2 className="h-4 w-4 animate-spin text-[#0090d9]" />
+            Checking subscription...
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className={cn(
+              "flex items-center justify-between rounded-lg border px-3 py-2.5",
+              premium ? "border-emerald-200 bg-emerald-50/50" : "border-gray-200 bg-white"
+            )}>
+              <div className="flex items-center gap-2">
+                {premium ? (
+                  <Crown className="h-4 w-4 text-amber-500" />
+                ) : (
+                  <CreditCard className="h-4 w-4 text-[#5a6b7c]" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-[#1a2b3c]">
+                    {premium ? "Premium Active" : "Free Plan"}
+                  </p>
+                  <p className="text-xs text-[#5a6b7c]">
+                    Status: {subscriptionStatus.replace("_", " ")}
+                    {premiumUntil ? ` · Access until ${new Date(premiumUntil).toLocaleDateString()}` : ""}
+                  </p>
+                </div>
+              </div>
+              {!premium && (
+                <button
+                  onClick={startCheckout}
+                  disabled={billingActionLoading}
+                  className="rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bbd] disabled:opacity-60"
+                >
+                  {billingActionLoading ? "Redirecting..." : "Upgrade"}
+                </button>
+              )}
+            </div>
+            {!premium && (
+              <p className="text-xs text-[#5a6b7c]">
+                Premium unlocks the AI agent and paid LLM features.
+              </p>
+            )}
+            {billingError && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                <AlertCircle className="h-3.5 w-3.5" />
+                {billingError}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

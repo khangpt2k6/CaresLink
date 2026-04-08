@@ -149,6 +149,9 @@ Open [http://localhost:3000](http://localhost:3000) to access the platform.
 | `DEEPGRAM_API_KEY` | [Deepgram](https://console.deepgram.com/) | Interview transcription |
 | `CLERK_SECRET_KEY` | [Clerk](https://dashboard.clerk.com/) | Authentication |
 | `RESEND_API_KEY` | [Resend](https://resend.com/) | Email delivery |
+| `STRIPE_SECRET_KEY` | [Stripe](https://dashboard.stripe.com/) | Server-side billing operations |
+| `STRIPE_PREMIUM_PRICE_ID` | Stripe | Premium subscription checkout price |
+| `STRIPE_WEBHOOK_SECRET` | Stripe | Webhook signature verification |
 | `DATABASE_URL` | PostgreSQL | Database connection |
 | `GOOGLE_CLIENT_ID` | [Google Cloud](https://console.cloud.google.com/) | Calendar integration |
 | `AZURE_CLIENT_ID` | [Azure Portal](https://portal.azure.com/) | Outlook integration |

@@ -47,7 +47,11 @@ async function upsertFromSubscription(subscription: Stripe.Subscription) {
   if (!userId) return;
 
   const item = subscription.items.data[0];
-  const currentPeriodEnd = asDate(subscription.current_period_end);
+  const itemPeriodEnds = subscription.items.data
+    .map((entry) => entry.current_period_end)
+    .filter((v): v is number => typeof v === "number");
+  const maxItemPeriodEnd = itemPeriodEnds.length > 0 ? Math.max(...itemPeriodEnds) : null;
+  const currentPeriodEnd = asDate(maxItemPeriodEnd);
 
   const isPremiumStatus = subscription.status === "active" || subscription.status === "trialing";
   const premiumUntil = isPremiumStatus ? currentPeriodEnd : null;

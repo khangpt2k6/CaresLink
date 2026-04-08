@@ -150,8 +150,14 @@ Open [http://localhost:3000](http://localhost:3000) to access the platform.
 | `CLERK_SECRET_KEY` | [Clerk](https://dashboard.clerk.com/) | Authentication |
 | `RESEND_API_KEY` | [Resend](https://resend.com/) | Email delivery |
 | `STRIPE_SECRET_KEY` | [Stripe](https://dashboard.stripe.com/) | Server-side billing operations |
-| `STRIPE_PREMIUM_PRICE_ID` | Stripe | Premium subscription checkout price |
+| `STRIPE_PREMIUM_PRICE_ID` | Stripe | Backward-compatible default paid price |
+| `STRIPE_STARTER_PRICE_ID` | Stripe | Starter subscription checkout price (recommended: $9/mo test) |
+| `STRIPE_PRO_PRICE_ID` | Stripe | Pro subscription checkout price (recommended: $29/mo test) |
 | `STRIPE_WEBHOOK_SECRET` | Stripe | Webhook signature verification |
+| `AI_FREE_REQUESTS_PER_DAY` | App config | Server-side free-tier AI daily cap |
+| `AI_STARTER_REQUESTS_PER_DAY` | App config | Server-side starter-tier AI daily cap |
+| `AI_PRO_REQUESTS_PER_DAY` | App config | Server-side pro-tier AI daily cap |
+| `NEXT_PUBLIC_APP_URL` | App config | Return/success URL for checkout + billing portal |
 | `DATABASE_URL` | PostgreSQL | Database connection |
 | `GOOGLE_CLIENT_ID` | [Google Cloud](https://console.cloud.google.com/) | Calendar integration |
 | `AZURE_CLIENT_ID` | [Azure Portal](https://portal.azure.com/) | Outlook integration |

@@ -980,6 +980,8 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
         system: systemPrompt,
         tools: TOOLS as AITool[],
         messages,
+        endpoint: "agent",
+        userId,
       });
 
       const textBlocks = response.content.filter((b) => b.type === "text");

@@ -297,13 +297,13 @@ export function AiChatBubble() {
         body: JSON.stringify({ message: msg.trim(), sessionId: sid }),
       });
       const data = await res.json();
-      const premiumMessage =
-        data?.code === "PREMIUM_REQUIRED"
-          ? "Premium is required to use the AI agent. Go to Settings > Account > Billing and click Upgrade."
+      const limitMessage =
+        data?.code === "PLAN_RATE_LIMIT_MINUTE" || data?.code === "PLAN_RATE_LIMIT_DAY" || data?.code === "PLAN_BUDGET_LIMIT_MONTH"
+          ? `AI limit reached for your ${data?.plan || "current"} plan. Go to Settings > Account > Billing to upgrade or wait for reset.`
           : null;
       const withReply = [
         ...newMessages,
-        { role: "ai" as const, text: premiumMessage || data.response || data.error || "No response" },
+        { role: "ai" as const, text: limitMessage || data.response || data.error || "No response" },
       ];
       updateSession(sid, withReply);
     } catch {

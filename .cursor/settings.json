@@ -8,6 +8,9 @@
     },
     "vercel": {
       "enabled": true
+    },
+    "stripe": {
+      "enabled": true
     }
   }
 }

@@ -1,20 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
 import { requireUser } from "@/lib/clerk-auth";
-import { hasPremiumAccess } from "@/lib/subscription";
+import { getAiAccessSnapshot } from "@/lib/subscription";
 
 export async function POST(request: NextRequest) {
   const auth = await requireUser(request);
   if (auth.error) return auth.error;
 
-  const premium = await hasPremiumAccess(auth.user.id);
-  if (!premium) {
+  const access = await getAiAccessSnapshot(auth.user.id);
+  if (access.usage.minuteRequests >= access.limits.requestsPerMinute) {
     return NextResponse.json(
       {
-        error: "Premium subscription required to use the AI agent.",
-        code: "PREMIUM_REQUIRED",
+        error: `Rate limit reached (${access.limits.requestsPerMinute}/min for ${access.plan} plan).`,
+        code: "PLAN_RATE_LIMIT_MINUTE",
+        plan: access.plan,
+        aiAccess: access,
       },
-      { status: 402 }
+      { status: 429 }
+    );
+  }
+
+  if (access.usage.dayRequests >= access.limits.requestsPerDay) {
+    return NextResponse.json(
+      {
+        error: `Daily limit reached (${access.limits.requestsPerDay}/day for ${access.plan} plan).`,
+        code: "PLAN_RATE_LIMIT_DAY",
+        plan: access.plan,
+        aiAccess: access,
+      },
+      { status: 429 }
+    );
+  }
+
+  if (access.usage.monthCostCents >= access.limits.monthlyBudgetCents) {
+    return NextResponse.json(
+      {
+        error: `Monthly AI budget reached for ${access.plan} plan.`,
+        code: "PLAN_BUDGET_LIMIT_MONTH",
+        plan: access.plan,
+        aiAccess: access,
+      },
+      { status: 429 }
     );
   }
 
@@ -30,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     const response = await runAgent(message, sessionId, auth.user.id);
-    return NextResponse.json({ response });
+    return NextResponse.json({ response, plan: access.plan });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

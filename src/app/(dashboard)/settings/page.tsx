@@ -75,6 +75,32 @@ interface UsageData {
   }[];
 }
 
+type BillingPlan = "free" | "starter" | "pro";
+
+interface BillingStatusResponse {
+  premium: boolean;
+  plan: BillingPlan;
+  aiAccess?: {
+    plan: BillingPlan;
+    limits: {
+      requestsPerMinute: number;
+      requestsPerDay: number;
+      monthlyBudgetCents: number;
+    };
+    usage: {
+      minuteRequests: number;
+      dayRequests: number;
+      monthCostCents: number;
+    };
+  };
+  subscription: {
+    status: string;
+    premiumUntil: string | null;
+    currentPeriodEnd: string | null;
+    canManage: boolean;
+  } | null;
+}
+
 type Tab = "general" | "account" | "connectors" | "usage";
 
 const tabs: { id: Tab; label: string; icon: typeof Settings2 }[] = [
@@ -426,8 +452,11 @@ function GeneralTab() {
 function AccountTab() {
   const { user } = useUser();
   const [premium, setPremium] = useState(false);
+  const [plan, setPlan] = useState<BillingPlan>("free");
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>("inactive");
   const [premiumUntil, setPremiumUntil] = useState<string | null>(null);
+  const [aiLimits, setAiLimits] = useState<{ perMinute: number; perDay: number; monthlyBudgetCents: number } | null>(null);
+  const [canManageBilling, setCanManageBilling] = useState(false);
   const [billingLoading, setBillingLoading] = useState(true);
   const [billingActionLoading, setBillingActionLoading] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
@@ -436,11 +465,20 @@ function AccountTab() {
     let mounted = true;
     fetch("/api/billing/subscription")
       .then((r) => r.json())
-      .then((d) => {
+      .then((d: BillingStatusResponse) => {
         if (!mounted) return;
         setPremium(Boolean(d.premium));
+        setPlan(d.plan || "free");
         setSubscriptionStatus(d.subscription?.status || "inactive");
         setPremiumUntil(d.subscription?.premiumUntil || d.subscription?.currentPeriodEnd || null);
+        setCanManageBilling(Boolean(d.subscription?.canManage));
+        if (d.aiAccess?.limits) {
+          setAiLimits({
+            perMinute: d.aiAccess.limits.requestsPerMinute,
+            perDay: d.aiAccess.limits.requestsPerDay,
+            monthlyBudgetCents: d.aiAccess.limits.monthlyBudgetCents,
+          });
+        }
       })
       .catch(() => {
         if (!mounted) return;
@@ -455,14 +493,34 @@ function AccountTab() {
     };
   }, []);
 
-  const startCheckout = useCallback(async () => {
+  const startCheckout = useCallback(async (checkoutPlan: Exclude<BillingPlan, "free">) => {
     setBillingActionLoading(true);
     setBillingError(null);
     try {
-      const res = await fetch("/api/billing/checkout", { method: "POST" });
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: checkoutPlan }),
+      });
       const data = await res.json();
       if (!res.ok || !data.url) {
         throw new Error(data.error || "Failed to start checkout.");
+      }
+      window.location.href = data.url;
+    } catch (e) {
+      setBillingError((e as Error).message);
+      setBillingActionLoading(false);
+    }
+  }, []);
+
+  const openBillingPortal = useCallback(async () => {
+    setBillingActionLoading(true);
+    setBillingError(null);
+    try {
+      const res = await fetch("/api/billing/portal", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Failed to open billing portal.");
       }
       window.location.href = data.url;
     } catch (e) {
@@ -584,7 +642,7 @@ function AccountTab() {
                 )}
                 <div>
                   <p className="text-sm font-medium text-[#1a2b3c]">
-                    {premium ? "Premium Active" : "Free Plan"}
+                    {premium ? `${plan === "pro" ? "Pro" : "Starter"} Active` : "Free Plan"}
                   </p>
                   <p className="text-xs text-[#5a6b7c]">
                     Status: {subscriptionStatus.replace("_", " ")}
@@ -592,19 +650,44 @@ function AccountTab() {
                   </p>
                 </div>
               </div>
-              {!premium && (
-                <button
-                  onClick={startCheckout}
-                  disabled={billingActionLoading}
-                  className="rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bbd] disabled:opacity-60"
-                >
-                  {billingActionLoading ? "Redirecting..." : "Upgrade"}
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {canManageBilling && (
+                  <button
+                    onClick={openBillingPortal}
+                    disabled={billingActionLoading}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-[#1a2b3c] hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {billingActionLoading ? "Redirecting..." : "Manage"}
+                  </button>
+                )}
+                {!premium && (
+                  <>
+                    <button
+                      onClick={() => startCheckout("starter")}
+                      disabled={billingActionLoading}
+                      className="rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bbd] disabled:opacity-60"
+                    >
+                      {billingActionLoading ? "Redirecting..." : "Starter"}
+                    </button>
+                    <button
+                      onClick={() => startCheckout("pro")}
+                      disabled={billingActionLoading}
+                      className="rounded-lg border border-[#0090d9] bg-white px-3 py-1.5 text-xs font-medium text-[#0090d9] hover:bg-[#f3f9ff] disabled:opacity-60"
+                    >
+                      {billingActionLoading ? "Redirecting..." : "Pro"}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
             {!premium && (
               <p className="text-xs text-[#5a6b7c]">
-                Premium unlocks the AI agent and paid LLM features.
+                Suggested test pricing: Starter $9/mo, Pro $29/mo. Starter is good for pilot testing; Pro is better for daily recruiter workflows.
+              </p>
+            )}
+            {aiLimits && (
+              <p className="text-xs text-[#5a6b7c]">
+                AI limits for this plan: {aiLimits.perMinute}/min, {aiLimits.perDay}/day, {formatCents(aiLimits.monthlyBudgetCents)}/month budget cap.
               </p>
             )}
             {billingError && (

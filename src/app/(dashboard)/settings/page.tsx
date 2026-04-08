@@ -460,6 +460,7 @@ function AccountTab() {
   const [billingLoading, setBillingLoading] = useState(true);
   const [billingActionLoading, setBillingActionLoading] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
+  const starterFreeMode = true; // Temporary test mode: only Pro uses Stripe checkout.
 
   useEffect(() => {
     let mounted = true;
@@ -503,6 +504,11 @@ function AccountTab() {
         body: JSON.stringify({ plan: checkoutPlan }),
       });
       const data = await res.json();
+      if (data?.starterFree) {
+        setBillingError("Starter is free in test mode. Use Pro to test Stripe checkout.");
+        setBillingActionLoading(false);
+        return;
+      }
       if (!res.ok || !data.url) {
         throw new Error(data.error || "Failed to start checkout.");
       }
@@ -662,19 +668,17 @@ function AccountTab() {
                 )}
                 {!premium && (
                   <>
-                    <button
-                      onClick={() => startCheckout("starter")}
-                      disabled={billingActionLoading}
-                      className="rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bbd] disabled:opacity-60"
-                    >
-                      {billingActionLoading ? "Redirecting..." : "Starter"}
-                    </button>
+                    {starterFreeMode && (
+                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+                        Starter (Free)
+                      </span>
+                    )}
                     <button
                       onClick={() => startCheckout("pro")}
                       disabled={billingActionLoading}
-                      className="rounded-lg border border-[#0090d9] bg-white px-3 py-1.5 text-xs font-medium text-[#0090d9] hover:bg-[#f3f9ff] disabled:opacity-60"
+                      className="rounded-lg bg-[#0090d9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#007bbd] disabled:opacity-60"
                     >
-                      {billingActionLoading ? "Redirecting..." : "Pro"}
+                      {billingActionLoading ? "Redirecting..." : "Upgrade to Pro"}
                     </button>
                   </>
                 )}
@@ -682,7 +686,7 @@ function AccountTab() {
             </div>
             {!premium && (
               <p className="text-xs text-[#5a6b7c]">
-                Suggested test pricing: Starter $9/mo, Pro $29/mo. Starter is good for pilot testing; Pro is better for daily recruiter workflows.
+                Temporary test mode: Starter is free, and only Pro uses Stripe checkout.
               </p>
             )}
             {aiLimits && (

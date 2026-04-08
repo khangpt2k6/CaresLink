@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
   if (auth.error) return auth.error;
 
   try {
+    const starterFreeMode = process.env.BILLING_STARTER_FREE_MODE === "1";
     let plan: BillingPlan = "starter";
     try {
       const body = await request.json();
@@ -24,6 +25,14 @@ export async function POST(request: NextRequest) {
       }
     } catch {
       // Body is optional for backward-compatible clients.
+    }
+
+    if (plan === "starter" && starterFreeMode) {
+      return NextResponse.json({
+        starterFree: true,
+        selectedPlan: "starter",
+        message: "Starter plan is free in test mode. No Stripe checkout required.",
+      });
     }
 
     const user = auth.user;
@@ -85,6 +94,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ url: session.url, selectedPlan: plan });
   } catch (error) {
     console.error("Failed to create Stripe checkout session:", error);
+    if (error instanceof Error && error.message.includes("STRIPE_")) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: "BILLING_CONFIG_MISSING",
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json({ error: "Failed to create checkout session." }, { status: 500 });
   }
 }

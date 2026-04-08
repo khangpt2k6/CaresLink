@@ -162,6 +162,27 @@ Open [http://localhost:3000](http://localhost:3000) to access the platform.
 | `GOOGLE_CLIENT_ID` | [Google Cloud](https://console.cloud.google.com/) | Calendar integration |
 | `AZURE_CLIENT_ID` | [Azure Portal](https://portal.azure.com/) | Outlook integration |
 
+### Stripe Webhook Setup (Windows PowerShell)
+
+If `stripe` is not recognized in PowerShell, call the CLI using its full path:
+
+```powershell
+& "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\Stripe.StripeCli_Microsoft.Winget.Source_8wekyb3d8bbwe\stripe.exe" login
+& "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\Stripe.StripeCli_Microsoft.Winget.Source_8wekyb3d8bbwe\stripe.exe" listen --forward-to localhost:3000/api/stripe/webhook
+```
+
+Important notes:
+- Use `api/stripe/webhook` (not `api/webhook`).
+- Keep `stripe listen` running while testing checkout.
+- Copy the printed `whsec_...` value into `STRIPE_WEBHOOK_SECRET` in `.env`.
+
+Optional alias for the current terminal session:
+
+```powershell
+Set-Alias stripe "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\Stripe.StripeCli_Microsoft.Winget.Source_8wekyb3d8bbwe\stripe.exe"
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
+
 ### Scripts
 
 ```bash

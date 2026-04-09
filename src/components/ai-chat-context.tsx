@@ -18,6 +18,14 @@ export interface ChatSession {
   updatedAt: number;
 }
 
+export interface ChatAttachmentPayload {
+  name: string;
+  mediaType: string;
+  kind: "image" | "text" | "file";
+  base64Data?: string;
+  textContent?: string;
+}
+
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
 function storageKey(userId: string) {
@@ -67,7 +75,12 @@ interface AiChatState {
   loading: boolean;
 
   // Actions
-  sendMessage: (text: string, model?: string, thinkingBudget?: number) => Promise<void>;
+  sendMessage: (
+    text: string,
+    model?: string,
+    thinkingBudget?: number,
+    attachments?: ChatAttachmentPayload[]
+  ) => Promise<void>;
   createNewChat: () => void;
   switchToSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -152,8 +165,13 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const sendMessage = useCallback(async (text: string, model = "claude-sonnet-4-6", thinkingBudget = 0) => {
-    if (!text.trim() || loading) return;
+  const sendMessage = useCallback(async (
+    text: string,
+    model = "claude-sonnet-4-6",
+    thinkingBudget = 0,
+    attachments: ChatAttachmentPayload[] = []
+  ) => {
+    if ((!text.trim() && attachments.length === 0) || loading) return;
 
     let sid = activeSessionId;
     if (!sid) {
@@ -162,7 +180,11 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
     }
 
     const currentMessages = sessionsRef.current.find((s) => s.id === sid)?.messages || [];
-    const newMessages = [...currentMessages, { role: "user" as const, text: text.trim() }];
+    const attachmentLabels = attachments.length
+      ? `\n${attachments.map((a) => `[Attachment] ${a.name}`).join("\n")}`
+      : "";
+    const userMessageText = `${text.trim()}${attachmentLabels}`.trim();
+    const newMessages = [...currentMessages, { role: "user" as const, text: userMessageText }];
     updateSession(sid, newMessages);
     setLoading(true);
 
@@ -170,7 +192,13 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text.trim(), sessionId: sid, model, thinkingBudget }),
+        body: JSON.stringify({
+          message: text.trim(),
+          sessionId: sid,
+          model,
+          thinkingBudget,
+          attachments,
+        }),
       });
       const data = await res.json();
       const limitMessage =

@@ -7,6 +7,14 @@ import { generateEmbedding, buildCandidateText, buildJobText } from "./embedding
 import { searchSimilarCandidates, searchSimilarJobs, getJobEmbeddingVector } from "./vector-store";
 import { rememberFact, recallFacts } from "./agent-memory";
 
+export interface AgentAttachment {
+  name: string;
+  mediaType: string;
+  kind: "image" | "text" | "file";
+  base64Data?: string;
+  textContent?: string;
+}
+
 const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant for healthcare. You help employers manage candidates, schedule interviews, verify nursing licenses, run credential checks, and match candidates to jobs.
 
 You specialize in auto-booking: finding a mutual time for recruiter and candidate, then scheduling the interview automatically. Use auto_book_interview when asked to schedule/contact a candidate — do NOT use send_email for booking links. Booking links are sent via the app UI (no AI).
@@ -913,7 +921,61 @@ async function executeFunction(name: string, args: Record<string, unknown>, user
   }
 }
 
-export async function runAgent(userMessage: string, sessionId?: string, userId?: string, thinkingBudget?: number): Promise<string> {
+function buildUserContent(
+  userMessage: string,
+  attachments: AgentAttachment[]
+): MessageParam["content"] {
+  const textBlocks: { type: "text"; text: string }[] = [];
+  if (userMessage.trim()) {
+    textBlocks.push({ type: "text", text: userMessage.trim() });
+  }
+
+  const content: MessageParam["content"] = [...textBlocks];
+  for (const attachment of attachments.slice(0, 4)) {
+    if (
+      attachment.kind === "image" &&
+      attachment.base64Data &&
+      attachment.mediaType.startsWith("image/")
+    ) {
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: attachment.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: attachment.base64Data,
+        },
+      });
+      content.push({
+        type: "text",
+        text: `Image attached: ${attachment.name}`,
+      });
+      continue;
+    }
+
+    if (attachment.kind === "text" && attachment.textContent) {
+      content.push({
+        type: "text",
+        text: `Attached file (${attachment.name}):\n${attachment.textContent.slice(0, 12000)}`,
+      });
+      continue;
+    }
+
+    content.push({
+      type: "text",
+      text: `Attached file: ${attachment.name} (${attachment.mediaType})`,
+    });
+  }
+
+  return content;
+}
+
+export async function runAgent(
+  userMessage: string,
+  sessionId?: string,
+  userId?: string,
+  thinkingBudget?: number,
+  attachments: AgentAttachment[] = []
+): Promise<string> {
   const provider = await getProvider();
   const providerName = await getProviderName();
   const apiKeyVar = provider === "groq" ? "GROQ_API_KEY" : "ANTHROPIC_API_KEY";
@@ -924,7 +986,8 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
     return "AI agent is not configured. Set GROQ_API_KEY in .env.local (free at https://console.groq.com)";
   }
 
-  let messages: MessageParam[] = [{ role: "user", content: userMessage }];
+  const currentUserContent = buildUserContent(userMessage, attachments);
+  let messages: MessageParam[] = [{ role: "user", content: currentUserContent }];
 
   if (sessionId && userId) {
     // Only load memory that belongs to this user — prevents cross-user session access
@@ -934,7 +997,7 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
     if (memory?.history && Array.isArray(memory.history)) {
       const stored = memory.history as unknown as MessageParam[];
       if (stored.length > 0) {
-        messages = [...stored, { role: "user", content: userMessage }];
+        messages = [...stored, { role: "user", content: currentUserContent }];
       }
     }
   }

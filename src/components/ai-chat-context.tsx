@@ -67,7 +67,7 @@ interface AiChatState {
   loading: boolean;
 
   // Actions
-  sendMessage: (text: string, model?: string) => Promise<void>;
+  sendMessage: (text: string, model?: string, thinkingBudget?: number) => Promise<void>;
   createNewChat: () => void;
   switchToSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -152,7 +152,7 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const sendMessage = useCallback(async (text: string, model = "claude-sonnet-4-6") => {
+  const sendMessage = useCallback(async (text: string, model = "claude-sonnet-4-6", thinkingBudget = 0) => {
     if (!text.trim() || loading) return;
 
     let sid = activeSessionId;
@@ -170,7 +170,7 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text.trim(), sessionId: sid, model }),
+        body: JSON.stringify({ message: text.trim(), sessionId: sid, model, thinkingBudget }),
       });
       const data = await res.json();
       const limitMessage =

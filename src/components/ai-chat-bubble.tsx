@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   Sparkles,
   Maximize2,
+  Brain,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAiChat } from "./ai-chat-context";
@@ -61,6 +62,14 @@ const integrations = [
   { id: "gmail",           name: "Gmail",           description: "Send emails to candidates",      logo: "/gmail_logo.jpg",       connected: true },
   { id: "outlook",         name: "Outlook",         description: "Microsoft 365 calendar & email", logo: "/outlook-icon.png",     connected: false },
   { id: "slack",           name: "Slack",           description: "Get notified on new applicants", logo: "/slack.png",            connected: false },
+];
+
+// ── Model + Thinking constants ────────────────────────────────────────────────
+
+const MODELS = [
+  { id: "claude-opus-4-6",           name: "Opus 4.6",   subtitle: "Most capable",       requiresPro: true },
+  { id: "claude-sonnet-4-6",         name: "Sonnet 4.6", subtitle: "Best for most tasks" },
+  { id: "claude-haiku-4-5-20251001", name: "Haiku 4.5",  subtitle: "Fastest replies" },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -119,14 +128,16 @@ export function AiChatBubble() {
   const [input, setInput] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [showIntegrations, setShowIntegrations] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(MODELS[1]);
+  const [extendedThinking, setExtendedThinking] = useState(false);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
 
-  // Hide the bubble entirely on the Claude AI full-page
-  if (pathname === "/claude") return null;
-
+  // All hooks must be called before any conditional returns
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, loading]);
@@ -144,7 +155,23 @@ export function AiChatBubble() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showHistory]);
 
-  const handleSend = () => { sendMessage(input); setInput(""); };
+  useEffect(() => {
+    if (!showModelPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) setShowModelPicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showModelPicker]);
+
+  // Hide the bubble entirely on the Claude AI full-page (after all hooks)
+  if (pathname === "/claude") return null;
+
+  const handleSend = () => {
+    const budget = extendedThinking && selectedModel.id !== "claude-haiku-4-5-20251001" ? 8000 : 0;
+    sendMessage(input, selectedModel.id, budget);
+    setInput("");
+  };
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); handleSend(); };
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -376,25 +403,15 @@ export function AiChatBubble() {
 
               {loading && (
                 <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                  className="flex justify-start">
-                  <div className="mr-1.5 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#e8f4fd] overflow-hidden">
-                    <Image src="/Claude_AI_symbol.svg" alt="Claude" width={14} height={14} />
-                  </div>
-                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[#e8ecf2] bg-[#f5f7fa] px-3 py-2">
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map((i) => (
-                        <motion.span key={i} className="h-1.5 w-1.5 rounded-full bg-[#8a95a3]"
-                          animate={loadingDotAnimate} transition={loadingDotTransition(i)} />
-                      ))}
-                    </div>
-                    <span className="text-[12px] text-[#8a95a3]">Thinking...</span>
-                  </div>
+                  className="flex justify-center py-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/claude_thinking.gif" alt="Claude thinking" width={44} height={44} />
                 </motion.div>
               )}
             </div>
 
             {/* Input Area */}
-            <div className="border-t border-[#e2e8f0] bg-[#fafbfc] px-3 py-2.5">
+            <div className="border-t border-[#e2e8f0] bg-[#fafbfc] px-3 pt-2 pb-2">
               <form onSubmit={handleSubmit} className="relative">
                 <textarea
                   ref={textareaRef} value={input}
@@ -408,9 +425,80 @@ export function AiChatBubble() {
                   <Send className="h-3.5 w-3.5" />
                 </motion.button>
               </form>
-              <p className="mt-1.5 text-center text-[9px] text-[#b0bec8]">
-                Powered by Claude · CaresLink Agent v1
-              </p>
+
+              {/* Model picker + Extended thinking row */}
+              <div className="flex items-center justify-between mt-1.5">
+                {/* Model selector */}
+                <div className="relative" ref={modelPickerRef}>
+                  <button
+                    onClick={() => setShowModelPicker((v) => !v)}
+                    className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-[#5a6b7c] hover:bg-[#e8ecf2] hover:text-[#1a2b3c] transition-colors"
+                  >
+                    <Image src="/Claude_AI_symbol.svg" alt="Claude" width={11} height={11} />
+                    <span>{selectedModel.name}</span>
+                    <ChevronDown className={`h-2.5 w-2.5 transition-transform ${showModelPicker ? "rotate-180" : ""}`} />
+                  </button>
+
+                  <AnimatePresence>
+                    {showModelPicker && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                        transition={{ duration: 0.12 }}
+                        className="absolute bottom-full mb-1 left-0 w-56 rounded-xl border border-[#d1d9e0] bg-white shadow-xl overflow-hidden z-50"
+                      >
+                        {MODELS.map((m) => (
+                          <button key={m.id}
+                            onClick={() => { setSelectedModel(m); setShowModelPicker(false); if (m.id === "claude-haiku-4-5-20251001") setExtendedThinking(false); }}
+                            className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-[#f0f4f8] transition-colors"
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#1a2b3c]">
+                                {m.name}
+                                {m.requiresPro && (
+                                  <span className="rounded bg-[#0090d9]/10 px-1 py-0.5 text-[9px] font-bold text-[#0090d9] uppercase">Pro</span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-[#5a6b7c] mt-0.5">{m.subtitle}</div>
+                            </div>
+                            {selectedModel.id === m.id && <Check className="h-3 w-3 text-[#0090d9]" />}
+                          </button>
+                        ))}
+
+                        {/* Extended thinking row inside dropdown */}
+                        <div className="border-t border-[#e8ecf2] px-3 py-2.5 flex items-center justify-between">
+                          <div>
+                            <div className="text-[12px] font-semibold text-[#1a2b3c]">Extended thinking</div>
+                            <div className="text-[10px] text-[#5a6b7c]">Think longer for complex tasks</div>
+                          </div>
+                          <button
+                            onClick={() => { if (selectedModel.id !== "claude-haiku-4-5-20251001") setExtendedThinking((v) => !v); }}
+                            disabled={selectedModel.id === "claude-haiku-4-5-20251001"}
+                            className={`relative h-5 w-9 rounded-full transition-colors flex items-center ${
+                              extendedThinking ? "bg-[#0090d9]" : "bg-[#d1d9e0]"
+                            } disabled:opacity-40`}
+                          >
+                            <span className={`absolute h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                              extendedThinking ? "translate-x-[18px]" : "translate-x-[3px]"
+                            }`} />
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Thinking badge when active */}
+                {extendedThinking && (
+                  <div className="flex items-center gap-1 rounded-md bg-[#1a2b3c]/8 px-1.5 py-0.5">
+                    <Brain className="h-2.5 w-2.5 text-[#1a2b3c]" />
+                    <span className="text-[9px] font-semibold text-[#1a2b3c]">Deep</span>
+                  </div>
+                )}
+
+                <p className="text-[9px] text-[#b0bec8]">Powered by Claude</p>
+              </div>
             </div>
           </motion.div>
         )}

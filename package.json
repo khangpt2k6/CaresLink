@@ -22,6 +22,7 @@
     "resend:status": "tsx scripts/manage-resend.ts status",
     "resend:domains": "tsx scripts/manage-resend.ts domains",
     "resend:emails": "tsx scripts/manage-resend.ts emails",
+    "worker:credential-verify": "tsx scripts/credential-verify-worker.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "embed:all": "tsx scripts/embed-all.ts"

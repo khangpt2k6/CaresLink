@@ -35,6 +35,7 @@ export const QUEUE_NAMES = {
   REMINDERS: "interview-reminders",
   FOLLOW_UPS: "follow-up-sequence",
   AGENT_CRON: "agent-cron",
+  CREDENTIAL_VERIFY: "credential-verify",
 } as const;
 
 // ── Queues ───────────────────────────────────────────────────
@@ -70,6 +71,18 @@ export function getAgentCronQueue() {
       backoff: { type: "fixed", delay: 120_000 }, // Retry after 2 min
       removeOnComplete: { count: 50 },
       removeOnFail: { count: 100 },
+    },
+  });
+}
+
+export function getCredentialVerifyQueue() {
+  return new Queue(QUEUE_NAMES.CREDENTIAL_VERIFY, {
+    connection: getConnection(),
+    defaultJobOptions: {
+      attempts: 2,
+      backoff: { type: "exponential", delay: 60_000 },
+      removeOnComplete: { count: 200 },
+      removeOnFail: { count: 300 },
     },
   });
 }
@@ -197,4 +210,43 @@ export async function closeQueues() {
     await connection.quit();
     connection = null;
   }
+}
+
+export function startCredentialVerifyWorker() {
+  const worker = new Worker(
+    QUEUE_NAMES.CREDENTIAL_VERIFY,
+    async (job) => {
+      const { checkId, employerId } = job.data as { checkId: string; employerId: string };
+      if (!checkId || !employerId) {
+        throw new Error("Missing checkId/employerId in credential verify job");
+      }
+      const { runCredentialVerification } = await import("./credential-verify");
+      await runCredentialVerification(checkId, employerId);
+    },
+    {
+      connection: getConnection(),
+      concurrency: 2,
+    }
+  );
+
+  worker.on("completed", (job) => {
+    console.log(`[BullMQ] credential-verify job ${job.id} completed`);
+  });
+
+  worker.on("failed", async (job, err) => {
+    console.error(`[BullMQ] credential-verify job ${job?.id} failed: ${err.message}`);
+    const checkId = (job?.data as { checkId?: string } | undefined)?.checkId;
+    if (!checkId) return;
+    try {
+      const { prisma } = await import("./db");
+      await prisma.credentialCheck.update({
+        where: { id: checkId },
+        data: { status: "FAILED", errorMessage: err.message },
+      });
+    } catch (updateErr) {
+      console.error("[BullMQ] failed to mark credential check as FAILED:", updateErr);
+    }
+  });
+
+  console.log("[BullMQ] Credential verify worker started");
 }

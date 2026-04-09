@@ -62,6 +62,8 @@ interface InlineResult {
   reportUrl: string | null;
 }
 
+const TERMINAL_STATUSES: CheckStatus[] = ["COMPLETED", "FAILED"];
+
 const STATUS_CONFIG: Record<CheckStatus, { label: string; icon: React.ReactNode; color: string }> = {
   PENDING:     { label: "Pending",    icon: <Clock className="h-3.5 w-3.5" />,             color: "text-amber-600 bg-amber-50 border-amber-200" },
   IN_PROGRESS: { label: "Running...", icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, color: "text-blue-600 bg-blue-50 border-blue-200" },
@@ -226,6 +228,9 @@ export default function CredentialCheckPage() {
                 : r
             )
           );
+          if (!TERMINAL_STATUSES.includes(updated.status)) {
+            await pollCredentialCheckUntilDone(check.id);
+          }
         } catch {
           setInlineResults((prev) =>
             prev.map((r) =>
@@ -240,6 +245,28 @@ export default function CredentialCheckPage() {
 
     setRunningAll(false);
     loadChecks(); // refresh history tab in background
+  }
+
+  async function pollCredentialCheckUntilDone(checkId: string) {
+    const deadline = Date.now() + 5 * 60_000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      try {
+        const res = await fetch(`/api/credential-check/${checkId}`);
+        if (!res.ok) continue;
+        const latest: CredentialCheck = await res.json();
+        setInlineResults((prev) =>
+          prev.map((r) =>
+            r.check.id === checkId
+              ? { ...r, check: latest, verifying: !TERMINAL_STATUSES.includes(latest.status) }
+              : r
+          )
+        );
+        if (TERMINAL_STATUSES.includes(latest.status)) return;
+      } catch {
+        // Keep polling until timeout.
+      }
+    }
   }
 
   async function generateReport(checkId: string) {

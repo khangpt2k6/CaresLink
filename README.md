@@ -157,8 +157,10 @@ Open [http://localhost:3000](http://localhost:3000) to access the platform.
 | `AI_FREE_REQUESTS_PER_DAY` | App config | Server-side free-tier AI daily cap |
 | `AI_STARTER_REQUESTS_PER_DAY` | App config | Server-side starter-tier AI daily cap |
 | `AI_PRO_REQUESTS_PER_DAY` | App config | Server-side pro-tier AI daily cap |
+| `CREDENTIAL_VERIFY_ASYNC` | App config | `1` to queue verification jobs for desktop worker execution |
 | `NEXT_PUBLIC_APP_URL` | App config | Return/success URL for checkout + billing portal |
 | `DATABASE_URL` | PostgreSQL | Database connection |
+| `REDIS_URL` | Upstash Redis | Job queue backend for async credential verification |
 | `GOOGLE_CLIENT_ID` | [Google Cloud](https://console.cloud.google.com/) | Calendar integration |
 | `AZURE_CLIENT_ID` | [Azure Portal](https://portal.azure.com/) | Outlook integration |
 
@@ -188,12 +190,28 @@ stripe listen --forward-to localhost:3000/api/stripe/webhook
 ```bash
 npm run dev          # Start development server
 npm run build        # Production build
+npm run worker:credential-verify  # Start desktop/VM verification worker
 npm run db:push      # Sync Prisma schema to database
 npm run db:seed      # Seed initial data
 npm run db:studio    # Open Prisma Studio
 npm run test         # Run test suite
 npm run test:watch   # Run tests in watch mode
 ```
+
+### Desktop Worker for Credential Verification
+
+To avoid serverless/headless reliability issues in production:
+
+1. Set `CREDENTIAL_VERIFY_ASYNC=1` in your app environment (local + Vercel).
+2. Ensure both app and worker share the same `DATABASE_URL` and `REDIS_URL`.
+3. Run worker on a desktop/VM host:
+
+```bash
+npm run worker:credential-verify
+```
+
+When async mode is enabled, `POST /api/credential-check/:id/verify` queues a job and returns immediately.  
+The worker processes browser automation and updates the credential check status to `COMPLETED` or `FAILED`.
 
 ## License
 

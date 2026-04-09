@@ -187,6 +187,9 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
     const newMessages = [...currentMessages, { role: "user" as const, text: userMessageText }];
     updateSession(sid, newMessages);
     setLoading(true);
+    const setAssistantText = (assistantText: string) => {
+      updateSession(sid, [...newMessages, { role: "ai" as const, text: assistantText }]);
+    };
 
     try {
       const res = await fetch("/api/agent", {
@@ -198,19 +201,80 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
           model,
           thinkingBudget,
           attachments,
+          stream: true,
         }),
       });
-      const data = await res.json();
-      const limitMessage =
-        data?.code === "PLAN_RATE_LIMIT_MINUTE" ||
-        data?.code === "PLAN_RATE_LIMIT_DAY" ||
-        data?.code === "PLAN_BUDGET_LIMIT_MONTH"
-          ? `AI limit reached for your ${data?.plan || "current"} plan. Go to Settings > Account > Billing to upgrade or wait for reset.`
-          : null;
-      updateSession(sid, [
-        ...newMessages,
-        { role: "ai" as const, text: limitMessage || data.response || data.error || "No response" },
-      ]);
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const limitMessage =
+          data?.code === "PLAN_RATE_LIMIT_MINUTE" ||
+          data?.code === "PLAN_RATE_LIMIT_DAY" ||
+          data?.code === "PLAN_BUDGET_LIMIT_MONTH"
+            ? `AI limit reached for your ${data?.plan || "current"} plan. Go to Settings > Account > Billing to upgrade or wait for reset.`
+            : null;
+        setAssistantText(limitMessage || data?.error || "No response");
+        return;
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("text/event-stream") || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setAssistantText(data?.response || data?.error || "No response");
+        return;
+      }
+
+      setAssistantText("Thinking...");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamedText = "";
+      let statusText = "Thinking...";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const evt of events) {
+          const line = evt
+            .split("\n")
+            .map((s) => s.trim())
+            .find((s) => s.startsWith("data: "));
+          if (!line) continue;
+          const payload = line.slice(6);
+
+          let parsed: { type?: string; text?: string; error?: string };
+          try {
+            parsed = JSON.parse(payload) as { type?: string; text?: string; error?: string };
+          } catch {
+            continue;
+          }
+
+          if (parsed.type === "status" && parsed.text) {
+            statusText = parsed.text;
+            if (!streamedText) setAssistantText(statusText);
+            continue;
+          }
+
+          if (parsed.type === "delta" && parsed.text) {
+            streamedText += parsed.text;
+            setAssistantText(streamedText);
+            continue;
+          }
+
+          if (parsed.type === "error") {
+            setAssistantText(parsed.error || "Agent failed");
+            return;
+          }
+        }
+      }
+
+      if (!streamedText) {
+        setAssistantText(statusText || "No response");
+      }
     } catch {
       updateSession(sid, [...newMessages, { role: "ai" as const, text: "Failed to reach AI agent." }]);
     } finally {

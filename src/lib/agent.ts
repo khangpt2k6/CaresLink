@@ -15,6 +15,11 @@ export interface AgentAttachment {
   textContent?: string;
 }
 
+export interface AgentStreamCallbacks {
+  onText?: (text: string) => void;
+  onToolStart?: (toolName: string) => void;
+}
+
 const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant for healthcare. You help employers manage candidates, schedule interviews, verify nursing licenses, run credential checks, and match candidates to jobs.
 
 You specialize in auto-booking: finding a mutual time for recruiter and candidate, then scheduling the interview automatically. Use auto_book_interview when asked to schedule/contact a candidate — do NOT use send_email for booking links. Booking links are sent via the app UI (no AI).
@@ -974,7 +979,9 @@ export async function runAgent(
   sessionId?: string,
   userId?: string,
   thinkingBudget?: number,
-  attachments: AgentAttachment[] = []
+  attachments: AgentAttachment[] = [],
+  model?: string,
+  callbacks?: AgentStreamCallbacks
 ): Promise<string> {
   const provider = await getProvider();
   const providerName = await getProviderName();
@@ -1038,7 +1045,7 @@ export async function runAgent(
   try {
     while (turns < maxTurns) {
       const response = await createMessage({
-        model: "claude-sonnet-4-20250514",
+        model: model || "claude-sonnet-4-6",
         maxTokens: 4096,
         system: systemPrompt,
         tools: TOOLS as AITool[],
@@ -1053,6 +1060,7 @@ export async function runAgent(
 
       if (textBlocks.length > 0) {
         lastText = textBlocks[0].text || "";
+        callbacks?.onText?.(lastText);
       }
 
       if (toolUseBlocks.length === 0) {
@@ -1079,6 +1087,7 @@ export async function runAgent(
       const toolResults: { type: "tool_result"; tool_use_id: string; content: string }[] = [];
 
       for (const block of toolUseBlocks) {
+        callbacks?.onToolStart?.(block.name || "tool");
         const result = await executeFunction(block.name!, (block.input ?? {}) as Record<string, unknown>, userId);
         toolResults.push({
           type: "tool_result",

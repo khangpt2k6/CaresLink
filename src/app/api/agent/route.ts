@@ -4,6 +4,10 @@ import { requireUser } from "@/lib/clerk-auth";
 import { getAiAccessSnapshot } from "@/lib/subscription";
 import type { AgentAttachment } from "@/lib/agent";
 
+function sseData(payload: Record<string, unknown>) {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
 export async function POST(request: NextRequest) {
   const auth = await requireUser(request);
   if (auth.error) return auth.error;
@@ -49,7 +53,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const message = body.message ?? body.prompt ?? "";
     const sessionId: string | undefined = typeof body.sessionId === "string" ? body.sessionId : undefined;
+    const model: string | undefined = typeof body.model === "string" ? body.model : undefined;
     const thinkingBudget: number | undefined = typeof body.thinkingBudget === "number" ? body.thinkingBudget : undefined;
+    const stream = body.stream === true;
     const attachments: AgentAttachment[] = Array.isArray(body.attachments)
       ? body.attachments
           .filter((a: unknown): a is AgentAttachment => {
@@ -71,8 +77,61 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await runAgent(message, sessionId, auth.user.id, thinkingBudget, attachments);
-    return NextResponse.json({ response, plan: access.plan });
+    if (!stream) {
+      const response = await runAgent(message, sessionId, auth.user.id, thinkingBudget, attachments, model);
+      return NextResponse.json({ response, plan: access.plan });
+    }
+
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream<Uint8Array>({
+      start(controller) {
+        void (async () => {
+          try {
+            controller.enqueue(encoder.encode(sseData({ type: "status", text: "Thinking..." })));
+
+            let emittedText = "";
+            const finalText = await runAgent(
+              message,
+              sessionId,
+              auth.user.id,
+              thinkingBudget,
+              attachments,
+              model,
+              {
+                onText(text) {
+                  if (!text) return;
+                  const delta = text.startsWith(emittedText) ? text.slice(emittedText.length) : text;
+                  emittedText = text;
+                  if (!delta) return;
+                  controller.enqueue(encoder.encode(sseData({ type: "delta", text: delta })));
+                },
+                onToolStart(toolName) {
+                  controller.enqueue(encoder.encode(sseData({ type: "status", text: `Running ${toolName}...` })));
+                },
+              }
+            );
+
+            if (!emittedText && finalText) {
+              controller.enqueue(encoder.encode(sseData({ type: "delta", text: finalText })));
+            }
+            controller.enqueue(encoder.encode(sseData({ type: "done" })));
+            controller.close();
+          } catch (err) {
+            const error = err instanceof Error ? err.message : "Agent failed";
+            controller.enqueue(encoder.encode(sseData({ type: "error", error })));
+            controller.close();
+          }
+        })();
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

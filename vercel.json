@@ -1,4 +1,8 @@
 {
+  "buildCommand": "npx playwright install chromium && npm run build",
+  "env": {
+    "PLAYWRIGHT_BROWSERS_PATH": "0"
+  },
   "crons": [
     {
       "path": "/api/agent/cron",

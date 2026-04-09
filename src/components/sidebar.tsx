@@ -24,8 +24,28 @@ import {
   Settings,
 } from "lucide-react";
 import { useUser, useClerk } from "@clerk/nextjs";
+import type { LucideProps } from "lucide-react";
 
-const employerNav = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<LucideProps> | "claude";
+};
+
+// Claude icon component using the real SVG from public/
+function ClaudeIcon({ className }: { className?: string }) {
+  return (
+    <Image
+      src="/Claude_AI_symbol.svg"
+      alt="Claude"
+      width={16}
+      height={16}
+      className={className}
+    />
+  );
+}
+
+const employerNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/candidates", label: "Candidates", icon: Users },
@@ -34,10 +54,11 @@ const employerNav = [
   { href: "/calendar", label: "Calendar", icon: CalendarClock },
   { href: "/credential-check", label: "Credential Check", icon: ClipboardCheck },
   { href: "/insights", label: "Insights", icon: Lightbulb },
+  { href: "/claude", label: "Claude AI", icon: "claude" },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-const candidateNav = [
+const candidateNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/job-board", label: "Job Board", icon: LayoutList },
   { href: "/profile", label: "My Profile", icon: UserCircle },
@@ -45,6 +66,7 @@ const candidateNav = [
   { href: "/preferences", label: "Job Preferences", icon: SlidersHorizontal },
   { href: "/interviews", label: "My Interviews", icon: Calendar },
   { href: "/availability", label: "My Availability", icon: Clock },
+  { href: "/claude", label: "Claude AI", icon: "claude" },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -126,12 +148,19 @@ export function Sidebar() {
                       transition={{ type: "spring", bounce: 0.12, duration: 0.4 }}
                     />
                   )}
-                  <item.icon
-                    className={cn(
-                      "relative h-[16px] w-[16px] flex-shrink-0 transition-colors duration-150",
-                      isActive ? "text-[#0090d9]" : "text-current"
-                    )}
-                  />
+                  {item.icon === "claude" ? (
+                    <ClaudeIcon className="relative h-[16px] w-[16px] flex-shrink-0" />
+                  ) : (() => {
+                    const Icon = item.icon as React.ComponentType<LucideProps>;
+                    return (
+                      <Icon
+                        className={cn(
+                          "relative h-[16px] w-[16px] flex-shrink-0 transition-colors duration-150",
+                          isActive ? "text-[#0090d9]" : "text-current"
+                        )}
+                      />
+                    );
+                  })()}
                   <span className="relative">{item.label}</span>
                 </Link>
               </motion.div>

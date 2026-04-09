@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const message = body.message ?? body.prompt ?? "";
     const sessionId: string | undefined = typeof body.sessionId === "string" ? body.sessionId : undefined;
+    const thinkingBudget: number | undefined = typeof body.thinkingBudget === "number" ? body.thinkingBudget : undefined;
     if (!message || typeof message !== "string") {
       return NextResponse.json(
         { error: "message or prompt is required" },
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await runAgent(message, sessionId, auth.user.id);
+    const response = await runAgent(message, sessionId, auth.user.id, thinkingBudget);
     return NextResponse.json({ response, plan: access.plan });
   } catch (e) {
     console.error(e);

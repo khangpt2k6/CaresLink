@@ -913,7 +913,7 @@ async function executeFunction(name: string, args: Record<string, unknown>, user
   }
 }
 
-export async function runAgent(userMessage: string, sessionId?: string, userId?: string): Promise<string> {
+export async function runAgent(userMessage: string, sessionId?: string, userId?: string, thinkingBudget?: number): Promise<string> {
   const provider = await getProvider();
   const providerName = await getProviderName();
   const apiKeyVar = provider === "groq" ? "GROQ_API_KEY" : "ANTHROPIC_API_KEY";
@@ -982,6 +982,7 @@ export async function runAgent(userMessage: string, sessionId?: string, userId?:
         messages,
         endpoint: "agent",
         userId,
+        thinkingBudget,
       });
 
       const textBlocks = response.content.filter((b) => b.type === "text");

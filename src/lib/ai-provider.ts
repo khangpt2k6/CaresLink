@@ -338,6 +338,13 @@ export interface CreateMessageOptions {
   messages: MessageParam[];
   tools?: AITool[];
   maxTokens?: number;
+  /**
+   * Enable extended thinking (Anthropic only, claude-sonnet-4-6+ / claude-opus-4-6+).
+   * budget_tokens controls how much the model "thinks" before responding.
+   * Min: 1024. max_tokens must be > budget_tokens.
+   * Set to 0 or omit to disable thinking (fast mode).
+   */
+  thinkingBudget?: number;
   /** Which feature triggered this call (e.g. "agent", "screening", "matching") */
   endpoint?: string;
   /** User who triggered the call */
@@ -400,9 +407,14 @@ export async function createMessage(opts: CreateMessageOptions): Promise<AIRespo
 
   // Default: Anthropic
   const anthropic = getAnthropicClient();
+
+  // Extended thinking: requires budget >= 1024, max_tokens > budget
+  const thinkingBudget = opts.thinkingBudget && opts.thinkingBudget >= 1024 ? opts.thinkingBudget : 0;
+  const effectiveMaxTokens = thinkingBudget > 0 ? Math.max(maxTokens, thinkingBudget + 1024) : maxTokens;
+
   const anthropicOpts: Anthropic.MessageCreateParams = {
     model,
-    max_tokens: maxTokens,
+    max_tokens: effectiveMaxTokens,
     messages: opts.messages,
   };
 
@@ -412,6 +424,15 @@ export async function createMessage(opts: CreateMessageOptions): Promise<AIRespo
 
   if (opts.tools && opts.tools.length > 0) {
     anthropicOpts.tools = opts.tools;
+  }
+
+  if (thinkingBudget > 0) {
+    // Thinking is incompatible with tool_choice and temperature — strip them
+    anthropicOpts.thinking = { type: "enabled", budget_tokens: thinkingBudget };
+    delete anthropicOpts.tool_choice;
+    delete anthropicOpts.temperature;
+    // Tools also not compatible with extended thinking — clear them
+    delete anthropicOpts.tools;
   }
 
   try {
@@ -430,20 +451,22 @@ export async function createMessage(opts: CreateMessageOptions): Promise<AIRespo
     });
 
     // Convert Anthropic response to unified format
-    const content: ContentBlock[] = response.content.map((block) => {
-      if (block.type === "text") {
-        return { type: "text" as const, text: block.text };
-      }
-      if (block.type === "tool_use") {
-        return {
-          type: "tool_use" as const,
-          id: block.id,
-          name: block.name,
-          input: block.input as Record<string, unknown>,
-        };
-      }
-      return { type: "text" as const, text: "" };
-    });
+    const content: ContentBlock[] = response.content
+      .filter((block) => block.type !== "thinking") // skip thinking blocks in unified output
+      .map((block) => {
+        if (block.type === "text") {
+          return { type: "text" as const, text: block.text };
+        }
+        if (block.type === "tool_use") {
+          return {
+            type: "tool_use" as const,
+            id: block.id,
+            name: block.name,
+            input: block.input as Record<string, unknown>,
+          };
+        }
+        return { type: "text" as const, text: "" };
+      });
 
     const stopReason: AIResponse["stopReason"] =
       response.stop_reason === "tool_use" ? "tool_use" :

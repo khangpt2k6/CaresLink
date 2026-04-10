@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runAgent } from "@/lib/agent";
+import { isSimpleChatPrompt, runAgent, runQuickAgentReply } from "@/lib/agent";
 import { requireUser } from "@/lib/clerk-auth";
 import { getAiAccessSnapshot } from "@/lib/subscription";
 import type { AgentAttachment } from "@/lib/agent";
@@ -11,43 +11,6 @@ function sseData(payload: Record<string, unknown>) {
 export async function POST(request: NextRequest) {
   const auth = await requireUser(request);
   if (auth.error) return auth.error;
-
-  const access = await getAiAccessSnapshot(auth.user.id);
-  if (access.usage.minuteRequests >= access.limits.requestsPerMinute) {
-    return NextResponse.json(
-      {
-        error: `Rate limit reached (${access.limits.requestsPerMinute}/min for ${access.plan} plan).`,
-        code: "PLAN_RATE_LIMIT_MINUTE",
-        plan: access.plan,
-        aiAccess: access,
-      },
-      { status: 429 }
-    );
-  }
-
-  if (access.usage.dayRequests >= access.limits.requestsPerDay) {
-    return NextResponse.json(
-      {
-        error: `Daily limit reached (${access.limits.requestsPerDay}/day for ${access.plan} plan).`,
-        code: "PLAN_RATE_LIMIT_DAY",
-        plan: access.plan,
-        aiAccess: access,
-      },
-      { status: 429 }
-    );
-  }
-
-  if (access.usage.monthCostCents >= access.limits.monthlyBudgetCents) {
-    return NextResponse.json(
-      {
-        error: `Monthly AI budget reached for ${access.plan} plan.`,
-        code: "PLAN_BUDGET_LIMIT_MONTH",
-        plan: access.plan,
-        aiAccess: access,
-      },
-      { status: 429 }
-    );
-  }
 
   try {
     const body = await request.json();
@@ -77,9 +40,81 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let access;
+    try {
+      access = await Promise.race([
+        getAiAccessSnapshot(auth.user.id),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+      ]);
+    } catch {
+      access = null;
+    }
+
+    if (access) {
+      if (access.usage.minuteRequests >= access.limits.requestsPerMinute) {
+        return NextResponse.json(
+          {
+            error: `Rate limit reached (${access.limits.requestsPerMinute}/min for ${access.plan} plan).`,
+            code: "PLAN_RATE_LIMIT_MINUTE",
+            plan: access.plan,
+            aiAccess: access,
+          },
+          { status: 429 }
+        );
+      }
+
+      if (access.usage.dayRequests >= access.limits.requestsPerDay) {
+        return NextResponse.json(
+          {
+            error: `Daily limit reached (${access.limits.requestsPerDay}/day for ${access.plan} plan).`,
+            code: "PLAN_RATE_LIMIT_DAY",
+            plan: access.plan,
+            aiAccess: access,
+          },
+          { status: 429 }
+        );
+      }
+
+      if (access.usage.monthCostCents >= access.limits.monthlyBudgetCents) {
+        return NextResponse.json(
+          {
+            error: `Monthly AI budget reached for ${access.plan} plan.`,
+            code: "PLAN_BUDGET_LIMIT_MONTH",
+            plan: access.plan,
+            aiAccess: access,
+          },
+          { status: 429 }
+        );
+      }
+    }
+
+    const isQuickPath = isSimpleChatPrompt(message, attachments);
+    if (isQuickPath) {
+      const quickModel = model === "claude-opus-4-6" ? "claude-sonnet-4-6" : (model || "claude-haiku-4-5-20251001");
+      const quickReply = await runQuickAgentReply(message, quickModel, auth.user.id);
+      if (stream) {
+        const encoder = new TextEncoder();
+        const readable = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(sseData({ type: "delta", text: quickReply })));
+            controller.enqueue(encoder.encode(sseData({ type: "done" })));
+            controller.close();
+          },
+        });
+        return new Response(readable, {
+          headers: {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+          },
+        });
+      }
+      return NextResponse.json({ response: quickReply, plan: access?.plan || "free" });
+    }
+
     if (!stream) {
       const response = await runAgent(message, sessionId, auth.user.id, thinkingBudget, attachments, model);
-      return NextResponse.json({ response, plan: access.plan });
+      return NextResponse.json({ response, plan: access?.plan || "free" });
     }
 
     const encoder = new TextEncoder();

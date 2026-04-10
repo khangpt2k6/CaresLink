@@ -20,6 +20,9 @@ export interface AgentStreamCallbacks {
   onToolStart?: (toolName: string) => void;
 }
 
+const SIMPLE_CHAT_RE = /^(hi|hello|hey|yo|sup|how are you|how's it going|whats up|what's up|good morning|good afternoon|good evening)[\s!.?]*$/i;
+const TOOL_INTENT_RE = /(schedule|book|interview|candidate|credential|license|email|reminder|availability|match|job|run check|verify|follow up|list)/i;
+
 const SYSTEM_PROMPT = `You are CaresLink, an AI recruitment assistant for healthcare. You help employers manage candidates, schedule interviews, verify nursing licenses, run credential checks, and match candidates to jobs.
 
 You specialize in auto-booking: finding a mutual time for recruiter and candidate, then scheduling the interview automatically. Use auto_book_interview when asked to schedule/contact a candidate — do NOT use send_email for booking links. Booking links are sent via the app UI (no AI).
@@ -972,6 +975,28 @@ function buildUserContent(
   }
 
   return content;
+}
+
+export function isSimpleChatPrompt(message: string, attachments: AgentAttachment[]): boolean {
+  if (attachments.length > 0) return false;
+  const text = message.trim();
+  if (!text) return false;
+  if (text.length > 80) return false;
+  if (TOOL_INTENT_RE.test(text)) return false;
+  return SIMPLE_CHAT_RE.test(text) || text.split(/\s+/).length <= 8;
+}
+
+export async function runQuickAgentReply(message: string, model?: string, userId?: string): Promise<string> {
+  const response = await createMessage({
+    model: model || "claude-haiku-4-5-20251001",
+    maxTokens: 180,
+    system: "You are CaresLink AI. Reply naturally in 1-2 short sentences. No tools.",
+    messages: [{ role: "user", content: message }],
+    endpoint: "agent",
+    userId,
+  });
+  const text = response.content.find((b) => b.type === "text")?.text || "";
+  return text || "Hi! I'm doing great - how can I help with recruiting today?";
 }
 
 export async function runAgent(

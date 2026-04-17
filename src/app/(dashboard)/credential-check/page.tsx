@@ -9,10 +9,18 @@ import {
   UserCheck,
 } from "lucide-react";
 import Link from "next/link";
+import { resolveCnaRegistryState } from "@/lib/cna-registry-state";
 
 type RoleType = "NURSE" | "CNA";
 type CheckStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
 type Recommendation = "EMPLOYABLE" | "REVIEW_REQUIRED" | "NOT_EMPLOYABLE";
+
+function cnaRegistryShortLabel(licenseState: string | null | undefined, targetState: string) {
+  const code = resolveCnaRegistryState(licenseState, targetState);
+  if (code === "TX") return "Texas TULIP";
+  if (code === "GA") return "Georgia MMIS";
+  return "Florida DOH";
+}
 
 interface CredentialCheck {
   id: string;
@@ -20,6 +28,7 @@ interface CredentialCheck {
   middleName?: string;
   lastName: string;
   email?: string;
+  licenseState?: string | null;
   roleType: RoleType;
   targetState: string;
   status: CheckStatus;
@@ -60,6 +69,8 @@ interface InlineResult {
   verifying: boolean;
   generatingReport: boolean;
   reportUrl: string | null;
+  /** Set when we stop polling but the server check may still be IN_PROGRESS (e.g. queued worker). */
+  verifyStallNote?: string | null;
 }
 
 const TERMINAL_STATUSES: CheckStatus[] = ["COMPLETED", "FAILED"];
@@ -211,6 +222,7 @@ export default function CredentialCheckPage() {
       verifying: true,
       generatingReport: false,
       reportUrl: null,
+      verifyStallNote: null,
     })));
     setPendingCandidates([]);
     setManualForm({ firstName: "", lastName: "", roleType: "CNA" });
@@ -224,7 +236,7 @@ export default function CredentialCheckPage() {
           setInlineResults((prev) =>
             prev.map((r) =>
               r.check.id === check.id
-                ? { ...r, check: updated, verifying: false }
+                ? { ...r, check: updated, verifying: false, verifyStallNote: null }
                 : r
             )
           );
@@ -235,7 +247,7 @@ export default function CredentialCheckPage() {
           setInlineResults((prev) =>
             prev.map((r) =>
               r.check.id === check.id
-                ? { ...r, check: { ...check, status: "FAILED" }, verifying: false }
+                ? { ...r, check: { ...check, status: "FAILED" }, verifying: false, verifyStallNote: null }
                 : r
             )
           );
@@ -248,9 +260,14 @@ export default function CredentialCheckPage() {
   }
 
   async function pollCredentialCheckUntilDone(checkId: string) {
-    const deadline = Date.now() + 5 * 60_000;
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+    const VERIFY_POLL_INTERVAL_MS = 4000;
+    const VERIFY_POLL_MAX_MS = 90_000;
+    const stallMessage =
+      "Stopped auto-refresh after 90s. Verification may still be running in the background — open this check for the latest status.";
+    const started = Date.now();
+
+    while (Date.now() - started < VERIFY_POLL_MAX_MS) {
+      await new Promise((resolve) => setTimeout(resolve, VERIFY_POLL_INTERVAL_MS));
       try {
         const res = await fetch(`/api/credential-check/${checkId}`);
         if (!res.ok) continue;
@@ -258,7 +275,12 @@ export default function CredentialCheckPage() {
         setInlineResults((prev) =>
           prev.map((r) =>
             r.check.id === checkId
-              ? { ...r, check: latest, verifying: !TERMINAL_STATUSES.includes(latest.status) }
+              ? {
+                  ...r,
+                  check: latest,
+                  verifying: !TERMINAL_STATUSES.includes(latest.status),
+                  verifyStallNote: null,
+                }
               : r
           )
         );
@@ -267,6 +289,34 @@ export default function CredentialCheckPage() {
         // Keep polling until timeout.
       }
     }
+
+    try {
+      const res = await fetch(`/api/credential-check/${checkId}`);
+      if (res.ok) {
+        const latest: CredentialCheck = await res.json();
+        setInlineResults((prev) =>
+          prev.map((r) =>
+            r.check.id === checkId
+              ? {
+                  ...r,
+                  check: latest,
+                  verifying: false,
+                  verifyStallNote: TERMINAL_STATUSES.includes(latest.status) ? null : stallMessage,
+                }
+              : r
+          )
+        );
+        return;
+      }
+    } catch {
+      // fall through
+    }
+
+    setInlineResults((prev) =>
+      prev.map((r) =>
+        r.check.id === checkId ? { ...r, verifying: false, verifyStallNote: stallMessage } : r
+      )
+    );
   }
 
   async function generateReport(checkId: string) {
@@ -311,7 +361,7 @@ export default function CredentialCheckPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-[#1a2b3c]">Credential Verification</h1>
-              <p className="text-xs text-[#5a6b7c]">Florida · CNA (Florida DOH) · Nurses (Nursys®)</p>
+              <p className="text-xs text-[#5a6b7c]">Florida, Texas & Georgia · CNA (state registry) · Nurses (Nursys®)</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -345,7 +395,10 @@ export default function CredentialCheckPage() {
                           <div>
                             <p className="font-semibold text-[#1a2b3c]">{fullName(r.check)}</p>
                             <p className="text-xs text-[#8a95a3]">
-                              {r.check.roleType === "CNA" ? "CNA · Florida DOH" : "Nurse (RN) · Nursys®"} · {r.check.targetState}
+                              {r.check.roleType === "CNA"
+                                ? `CNA · ${cnaRegistryShortLabel(r.check.licenseState, r.check.targetState)}`
+                                : "Nurse (RN) · Nursys®"}{" "}
+                              · {r.check.targetState}
                               {r.check.email && ` · ${r.check.email}`}
                             </p>
                           </div>
@@ -354,6 +407,10 @@ export default function CredentialCheckPage() {
                               <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 border-blue-200">
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />Verifying...
                               </span>
+                            ) : r.verifyStallNote ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-amber-800 bg-amber-50 border-amber-200">
+                                <Clock className="h-3.5 w-3.5" />In progress
+                              </span>
                             ) : (
                               <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${STATUS_CONFIG[r.check.status].color}`}>
                                 {STATUS_CONFIG[r.check.status].icon}{STATUS_CONFIG[r.check.status].label}
@@ -361,6 +418,18 @@ export default function CredentialCheckPage() {
                             )}
                           </div>
                         </div>
+
+                        {r.verifyStallNote && (
+                          <div className="border-b border-amber-100 bg-amber-50/90 px-5 py-3 text-xs text-amber-950">
+                            <p className="mb-2 leading-relaxed">{r.verifyStallNote}</p>
+                            <Link
+                              href={`/credential-check/${r.check.id}`}
+                              className="inline-flex items-center gap-1 font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950"
+                            >
+                              Open check <ChevronRight className="h-3 w-3" />
+                            </Link>
+                          </div>
+                        )}
 
                         {/* Result body */}
                         {!r.verifying && r.check.status === "COMPLETED" && (
@@ -432,8 +501,17 @@ export default function CredentialCheckPage() {
                       ))}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase tracking-wider text-[#94a3b8]">State:</span>
-                      <span className="rounded-full border border-[#0090d9]/30 bg-[#e8f4fd] px-2.5 py-0.5 text-[11px] font-semibold text-[#0090d9]">Florida</span>
+                      <span className="text-[10px] uppercase tracking-wider text-[#94a3b8]">Target:</span>
+                      <select
+                        value={targetState}
+                        onChange={(e) => setTargetState(e.target.value)}
+                        className="rounded-full border border-[#0090d9]/30 bg-[#e8f4fd] px-2.5 py-0.5 text-[11px] font-semibold text-[#0090d9] outline-none cursor-pointer max-w-[140px]"
+                        aria-label="Credential check target state"
+                      >
+                        <option value="FLORIDA">Florida</option>
+                        <option value="TEXAS">Texas</option>
+                        <option value="GEORGIA">Georgia</option>
+                      </select>
                     </div>
                   </div>
 
@@ -531,9 +609,9 @@ export default function CredentialCheckPage() {
                               className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9]" />
                           </div>
                           <div className="col-span-1">
-                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">State</label>
+                            <label className="mb-1 block text-xs font-medium text-[#5a6b7c]">Lic. state</label>
                             <input value={manualForm.licenseState ?? ""} onChange={(e) => setManualForm((p) => ({ ...p, licenseState: e.target.value }))}
-                              placeholder="FL" maxLength={2}
+                              placeholder="FL, TX, GA…" maxLength={2}
                               className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm outline-none focus:border-[#0090d9] uppercase" />
                           </div>
                         </div>
@@ -541,7 +619,9 @@ export default function CredentialCheckPage() {
                         {/* Run button */}
                         <div className="mt-4 flex items-center justify-between border-t border-[#f1f5f9] pt-4">
                           <p className="text-xs text-[#94a3b8]">
-                            {manualForm.roleType === "CNA" ? "Will verify via Florida DOH" : "Will verify via Nursys® + OIG + SAM.gov"}
+                            {manualForm.roleType === "CNA"
+                              ? `Will verify via ${cnaRegistryShortLabel(manualForm.licenseState, targetState)}`
+                              : "Will verify via Nursys® + OIG + SAM.gov"}
                           </p>
                           <button
                             disabled={!manualForm.firstName || !manualForm.lastName || runningAll}

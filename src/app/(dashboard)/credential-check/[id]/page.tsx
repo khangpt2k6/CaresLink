@@ -10,6 +10,7 @@ import {
   ChevronDown, Sparkles,
 } from "lucide-react";
 import Link from "next/link";
+import { resolveCnaRegistryState } from "@/lib/cna-registry-state";
 
 // ─── Lightbox Component ──────────────────────────────────────
 function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
@@ -80,11 +81,58 @@ function TypewriterText({ text, speed = 10, className }: { text: string; speed?:
 }
 
 // ─── AI Thinking Animation ───────────────────────────────────
-function AIThinkingAnimation({ message, isCNA }: { message: string; isCNA: boolean }) {
+function cnaVerificationThinkingSteps(licenseState?: string | null, targetState?: string) {
+  const code = resolveCnaRegistryState(licenseState, targetState);
+  if (code === "TX") {
+    return [
+      "Connecting to Texas TULIP...",
+      "Searching Texas Nurse Aide Registry...",
+      "Cross-referencing license records...",
+      "Analyzing results...",
+    ];
+  }
+  if (code === "GA") {
+    return [
+      "Connecting to Georgia MMIS...",
+      "Searching Georgia Nurse Aide Registry...",
+      "Cross-referencing license records...",
+      "Analyzing results...",
+    ];
+  }
+  return [
+    "Connecting to Florida DOH...",
+    "Searching MQA database...",
+    "Cross-referencing license records...",
+    "Analyzing results...",
+  ];
+}
+
+function AIThinkingAnimation({
+  message,
+  isCNA,
+  cnaSteps,
+}: {
+  message: string;
+  isCNA: boolean;
+  cnaSteps?: string[];
+}) {
   const [step, setStep] = useState(0);
   const steps = isCNA
-    ? ["Connecting to Florida DOH...", "Searching MQA database...", "Cross-referencing license records...", "Analyzing results..."]
-    : ["Connecting to Nursys® QuickConfirm...", "Querying OIG Exclusion List...", "Checking SAM.gov records...", "Cross-referencing databases...", "AI analyzing all findings..."];
+    ? cnaSteps && cnaSteps.length > 0
+      ? cnaSteps
+      : [
+          "Connecting to state nurse aide registry...",
+          "Searching licensing database...",
+          "Cross-referencing license records...",
+          "Analyzing results...",
+        ]
+    : [
+        "Connecting to Nursys® QuickConfirm...",
+        "Querying OIG Exclusion List...",
+        "Checking SAM.gov records...",
+        "Cross-referencing databases...",
+        "AI analyzing all findings...",
+      ];
 
   useEffect(() => {
     const interval = setInterval(() => setStep(s => (s + 1) % steps.length), 2800);
@@ -253,6 +301,8 @@ interface FloridaDOHResult {
   status: string; searchedName: string; licenseType: string;
   matches: FloridaLicense[]; error?: string; manualUrl: string; checkedAt: string;
   screenshots?: { label: string; dataUrl: string }[];
+  registryCode?: string;
+  registryTitle?: string;
 }
 interface FloridaLicense { name: string; licenseNumber: string; licenseType: string; status: string; expirationDate: string; county?: string; }
 
@@ -501,7 +551,13 @@ export default function CredentialCheckDetailPage() {
       : check.floridaDohData.status === "not_found"
       ? { label: "Not Found", color: "text-red-700 bg-red-50 border-red-200", icon: <XCircle className="h-3 w-3" /> }
       : { label: "Manual", color: "text-amber-700 bg-amber-50 border-amber-200", icon: <AlertCircle className="h-3 w-3" /> };
-    statusItems.push({ key: "florida", label: "FL DOH", status: check.floridaDohData.status, statusLabels: { [check.floridaDohData.status]: flStatus } });
+    const regLabel =
+      check.floridaDohData.registryCode === "TX"
+        ? "TX NAR"
+        : check.floridaDohData.registryCode === "GA"
+          ? "GA NAR"
+          : "FL DOH";
+    statusItems.push({ key: "cna-registry", label: regLabel, status: check.floridaDohData.status, statusLabels: { [check.floridaDohData.status]: flStatus } });
   }
   if (!isCNA) {
     if (check.nursysData) statusItems.push({ key: "nursys", label: "Nursys®", status: check.nursysData.status, statusLabels: NURSYS_STATUS });
@@ -552,6 +608,11 @@ export default function CredentialCheckDetailPage() {
             <AIThinkingAnimation
               message={isCNA ? "Verifying CNA credentials..." : "Running multi-source credential verification..."}
               isCNA={isCNA}
+              cnaSteps={
+                isCNA && check
+                  ? cnaVerificationThinkingSteps(check.licenseState, check.targetState)
+                  : undefined
+              }
             />
           )}
         </AnimatePresence>
@@ -784,8 +845,8 @@ export default function CredentialCheckDetailPage() {
                 {isCNA && check.floridaDohData && (
                   <CollapsibleSection
                     number={1}
-                    title="Florida DOH — CNA License"
-                    subtitle={`MQA Health Care Provider Search · ${check.floridaDohData.licenseType}`}
+                    title={check.floridaDohData.registryTitle || "Florida DOH — CNA License"}
+                    subtitle={`${check.floridaDohData.registryCode === "TX" ? "Texas TULIP" : check.floridaDohData.registryCode === "GA" ? "Georgia MMIS" : "MQA Health Care Provider Search"} · ${check.floridaDohData.licenseType}`}
                     badge={
                       <StatusBadge
                         status={check.floridaDohData.status}
@@ -798,7 +859,10 @@ export default function CredentialCheckDetailPage() {
                     }
                     forceExpanded={pdfMode}
                   >
-                    <FloridaDOHContent data={check.floridaDohData} onImageClick={(src, alt) => setLightbox({ src, alt })} />
+                    <FloridaDOHContent
+                      data={check.floridaDohData}
+                      onImageClick={(src, alt) => setLightbox({ src, alt })}
+                    />
                   </CollapsibleSection>
                 )}
 
@@ -987,13 +1051,15 @@ function NursysSectionContent({ data, checkId }: { data: NursysResult; checkId: 
 
 // ─── Florida DOH Content ─────────────────────────────────────
 function FloridaDOHContent({ data, onImageClick }: { data: FloridaDOHResult; onImageClick?: (src: string, alt: string) => void }) {
+  const stateLabel =
+    data.registryCode === "TX" ? "Texas Nurse Aide Registry" : data.registryCode === "GA" ? "Georgia Nurse Aide Registry" : "Florida DOH database";
   return (
     <div>
       {data.matches.length > 0 ? (
         <>
           <div className="mb-3 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-            <p className="text-xs font-semibold text-emerald-800">CNA license found and active in Florida DOH database.</p>
+            <p className="text-xs font-semibold text-emerald-800">CNA license found in {stateLabel}.</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse mb-3">
@@ -1046,7 +1112,13 @@ function FloridaDOHContent({ data, onImageClick }: { data: FloridaDOHResult; onI
           )}
         </>
       ) : (
-        <ManualRequiredBanner url={data.manualUrl} text={data.error || "Could not retrieve license data automatically. Please verify manually on the Florida DOH portal."} />
+        <ManualRequiredBanner
+          url={data.manualUrl}
+          text={
+            data.error ||
+            `Could not retrieve license data automatically. Please verify manually on the ${stateLabel.replace(" database", "")} portal.`
+          }
+        />
       )}
     </div>
   );

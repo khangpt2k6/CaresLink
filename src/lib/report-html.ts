@@ -10,7 +10,17 @@ interface OIGExclusion { lastName: string; firstName: string; middleName: string
 interface OIGResult { status: string; searchedName: string; matches: OIGExclusion[]; exactMatches?: OIGExclusion[]; partialMatches?: OIGExclusion[]; checkedAt: string; manualUrl: string; }
 interface SAMGovResult { status: string; searchedName: string; message: string; details?: string; manualUrl: string; checkedAt: string; }
 interface FloridaLicense { name: string; licenseNumber: string; licenseType: string; status: string; expirationDate: string; county?: string; }
-interface FloridaDOHResult { status: string; searchedName: string; licenseType: string; matches: FloridaLicense[]; error?: string; manualUrl: string; checkedAt: string; }
+interface FloridaDOHResult {
+  status: string;
+  searchedName: string;
+  licenseType: string;
+  matches: FloridaLicense[];
+  error?: string;
+  manualUrl: string;
+  checkedAt: string;
+  registryCode?: string;
+  registryTitle?: string;
+}
 
 export interface ReportCheckData {
   firstName: string; middleName?: string | null; lastName: string;
@@ -226,6 +236,11 @@ function oigSection(data: OIGResult, shots: VerificationScreenshot[]) {
 }
 
 function floridaDohSection(data: FloridaDOHResult, shots: VerificationScreenshot[]) {
+  const sectionTitle =
+    data.registryTitle ||
+    "Florida DOH — CNA License Verification · MQA Health Care Provider Search";
+  const shotLabel = data.registryCode === "TX" ? "Texas TULIP" : data.registryCode === "GA" ? "Georgia MMIS" : "Florida DOH";
+  const stateName = data.registryCode === "TX" ? "Texas" : data.registryCode === "GA" ? "Georgia" : "Florida DOH";
   const isFound = data.status === "found";
   const licTable = isFound && data.matches.length > 0 ? `
     <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:10px;">
@@ -253,19 +268,19 @@ function floridaDohSection(data: FloridaDOHResult, shots: VerificationScreenshot
     </table>
   ` : isFound ? "" : `
     <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;">
-      <p style="margin:0;color:#92400e;">${data.error || "No CNA license found in Florida DOH database."} Manual verification: <a href="${data.manualUrl}">${data.manualUrl}</a></p>
+      <p style="margin:0;color:#92400e;">${data.error || `No CNA license found in ${stateName} registry search.`} Manual verification: <a href="${data.manualUrl}">${data.manualUrl}</a></p>
     </div>
   `;
 
   const statusAlert = !isFound && data.status !== "manual_required" ? `
     <div style="background:#fee2e2;border:2px solid #dc2626;border-radius:6px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:flex-start;gap:10px;">
       <span style="font-size:18px;">⚠️</span>
-      <p style="margin:0;font-weight:700;color:#991b1b;">CNA license NOT FOUND in Florida DOH database. Verify manually.</p>
+      <p style="margin:0;font-weight:700;color:#991b1b;">CNA license NOT FOUND in ${stateName} registry. Verify manually.</p>
     </div>
   ` : isFound ? `
     <div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:8px;margin-bottom:10px;">
       <span style="font-size:16px;">✅</span>
-      <p style="margin:0;font-weight:600;color:#065f46;">CNA license found and active in Florida DOH database.</p>
+      <p style="margin:0;font-weight:600;color:#065f46;">CNA license found in ${stateName} registry search.</p>
     </div>
   ` : "";
 
@@ -273,7 +288,7 @@ function floridaDohSection(data: FloridaDOHResult, shots: VerificationScreenshot
     <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:20px;page-break-inside:avoid;">
       <div style="background:#f9fafb;border-bottom:1px solid #e5e7eb;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <p style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;margin:0;">1. Florida DOH — CNA License Verification · MQA Health Care Provider Search</p>
+          <p style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;margin:0;">1. ${sectionTitle}</p>
           <p style="font-size:11px;color:#374151;margin:2px 0 0;">Searched: ${data.searchedName} · License Type: ${data.licenseType} · ${data.checkedAt ? new Date(data.checkedAt).toLocaleString() : ""}</p>
         </div>
         ${badge(data.status)}
@@ -281,7 +296,7 @@ function floridaDohSection(data: FloridaDOHResult, shots: VerificationScreenshot
       <div style="padding:14px 16px;">
         ${statusAlert}
         ${licTable}
-        ${screenshotGrid(shots, "Florida DOH")}
+        ${screenshotGrid(shots, shotLabel)}
       </div>
     </div>
   `;

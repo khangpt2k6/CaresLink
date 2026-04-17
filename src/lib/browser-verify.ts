@@ -1,8 +1,7 @@
 /**
  * Browser-based verification with live screenshots.
- * Uses real Chrome with anti-detection flags to bypass bot detection on Nursys.
- * Opens a visible browser window in dev mode so you can watch/solve captchas.
- * Captures screenshots at key steps and embeds them into the PDF report.
+ * Uses a real headed browser (installed Chrome when found, else Playwright’s Chromium) — not headless by default.
+ * Set CREDENTIAL_VERIFY_HEADLESS=1 or deploy on Vercel (VERCEL=1) when no display is available.
  */
 
 import { chromium, BrowserContext, Page } from "playwright";
@@ -14,6 +13,7 @@ function getCapsolverKey(): string | undefined {
   return process.env.CAPSOLVER_API_KEY || undefined;
 }
 import { notifyCaptchaRequired, notifyVerificationProgress } from "./os-notify";
+import { resolveCnaRegistryState } from "./cna-registry-state";
 
 export interface VerificationScreenshot {
   label: string;
@@ -21,7 +21,6 @@ export interface VerificationScreenshot {
   dataUrl: string; // base64 PNG data URL
 }
 
-const IS_PROD = process.env.NODE_ENV === "production";
 const DELAY = 500;
 const SCREENSHOT_DIR = path.join(process.cwd(), "scripts", "screenshots");
 
@@ -66,15 +65,31 @@ function findChrome(): string | undefined {
   return undefined;
 }
 
-/** Launch browser.
- *  In local/dev, default to visible so manual solving is possible.
- *  In production, default to headless unless forceVisible=true is passed. */
+/** Use headless only when there is no display or you explicitly opt in (CI, Vercel). */
+function credentialVerifyUseHeadless(): boolean {
+  if (process.env.CREDENTIAL_VERIFY_HEADLESS === "1") return true;
+  if (process.env.VERCEL === "1") return true;
+  return false;
+}
+
+/** Launch a headed browser by default (real on-screen window). See file header for headless opt-in. */
 async function launchBrowser(forceVisible = false, _withCapsolver = false): Promise<BrowserContext> {
   const chromePath = findChrome();
   const tmpProfile = path.join(os.tmpdir(), "careslink-chrome-profile");
 
-  // Vercel/serverless must run headless; local dev stays visible by default.
-  const headless = forceVisible ? false : IS_PROD;
+  const headless = forceVisible ? false : credentialVerifyUseHeadless();
+  const slowMoRaw = Number.parseInt(process.env.CREDENTIAL_VERIFY_SLOW_MO_MS || "0", 10);
+  const slowMo = Number.isFinite(slowMoRaw) && slowMoRaw > 0 ? slowMoRaw : undefined;
+
+  if (!headless) {
+    console.log(
+      "[browser-verify] Headed browser (real window) — " +
+        (chromePath ? `using Chrome at ${chromePath}` : "using Playwright Chromium (install Google Chrome to use your Chrome binary).") +
+        (slowMo ? ` slowMo=${slowMo}ms` : "")
+    );
+  } else {
+    console.log("[browser-verify] Headless browser (CREDENTIAL_VERIFY_HEADLESS=1 or VERCEL=1).");
+  }
 
   const baseArgs = [
     "--disable-blink-features=AutomationControlled",
@@ -96,6 +111,7 @@ async function launchBrowser(forceVisible = false, _withCapsolver = false): Prom
     executablePath: chromePath,
     args: launchArgs,
     viewport: { width: 1280, height: 900 },
+    ...(slowMo !== undefined ? { slowMo } : {}),
   });
 }
 
@@ -904,7 +920,7 @@ export async function captureNursysScreenshots(
   let extractedReport: NursysBrowserReport | undefined;
   // Check CapSolver API key availability (REST API, no extension needed)
   const HAS_CAPSOLVER = !!getCapsolverKey();
-  const browser = await launchBrowser(); // visible in dev, headless in production
+  const browser = await launchBrowser(); // headed by default (real window); see credentialVerifyUseHeadless()
 
   try {
     const page = (await browser.pages())[0] || await browser.newPage();
@@ -1407,8 +1423,9 @@ export async function captureNursysScreenshots(
           notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
         }
       } else {
-        // No CapSolver API key — cannot solve reCAPTCHA in headless mode
-        console.log("[browser-verify] reCAPTCHA detected but no CAPSOLVER_API_KEY set — cannot solve in headless mode");
+        console.log(
+          "[browser-verify] reCAPTCHA detected but no CAPSOLVER_API_KEY — solve manually in the open browser window if needed"
+        );
         notifyVerificationProgress("Nursys® reCAPTCHA", "timeout");
       }
 
@@ -1776,6 +1793,99 @@ export interface FloridaDOHBrowserResult {
   found: boolean;
 }
 
+const TX_NAR_SEARCH_URL = "https://tulip.hhs.texas.gov/TULIP/s/public-search";
+const GA_NAR_SEARCH_URL = "https://www.mmis.georgia.gov/portal/Default.aspx?tabid=44";
+
+async function tryFillCnaSearchFields(
+  page: Page,
+  firstName: string,
+  lastName: string,
+  licenseNumber?: string | null
+): Promise<void> {
+  const fn = firstName.trim();
+  const ln = lastName.trim();
+  const lic = (licenseNumber || "").trim();
+  await page.evaluate(
+    ({ fn, ln, lic }) => {
+      function wake(el: HTMLInputElement, v: string) {
+        el.focus();
+        el.value = v;
+        el.dispatchEvent(new InputEvent("input", { bubbles: true, data: v }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      const inputs = [...document.querySelectorAll("input")] as HTMLInputElement[];
+      for (const el of inputs) {
+        const t = (el.type || "text").toLowerCase();
+        if (!["text", "search", "tel", ""].includes(t)) continue;
+        if (el.disabled || el.readOnly) continue;
+        const visible = el.offsetParent !== null || el.getClientRects().length > 0;
+        if (!visible) continue;
+        const hay = `${el.name} ${el.id} ${el.className} ${el.getAttribute("aria-label") || ""} ${el.placeholder || ""} ${el.getAttribute("title") || ""}`.toLowerCase();
+        if ((hay.includes("first") || hay.includes("fname") || hay.includes("given")) && !hay.includes("last")) wake(el, fn);
+        else if (hay.includes("last") || hay.includes("lname") || hay.includes("surname") || hay.includes("family")) wake(el, ln);
+        else if (
+          lic &&
+          (hay.includes("registry") ||
+            hay.includes("certification") ||
+            hay.includes("certificate") ||
+            hay.includes("license") ||
+            hay.includes("nurse aide") ||
+            hay.includes("cna") ||
+            hay.includes("identification") ||
+            /\bnumber\b/.test(hay))
+        ) {
+          if (!hay.includes("first") && !hay.includes("last")) wake(el, lic);
+        }
+      }
+    },
+    { fn, ln, lic }
+  );
+}
+
+async function tryClickRegistrySearch(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const els = [
+      ...document.querySelectorAll('button, input[type="submit"], input[type="button"], a.button, [role="button"]'),
+    ] as HTMLElement[];
+    for (const el of els) {
+      const text = (el.textContent || (el as HTMLInputElement).value || "").trim().toLowerCase();
+      if (/\b(search|submit|go|find|verify|lookup)\b/.test(text)) {
+        el.click();
+        return true;
+      }
+    }
+    const submit = document.querySelector('input[type="submit"], button[type="submit"]') as HTMLElement | null;
+    if (submit) {
+      submit.click();
+      return true;
+    }
+    return false;
+  });
+}
+
+async function extractCnaTableMatches(page: Page): Promise<FloridaDOHRow[]> {
+  return page.evaluate((): FloridaDOHRow[] => {
+    const rows: FloridaDOHRow[] = [];
+    document.querySelectorAll("table tr").forEach((tr, idx) => {
+      if (idx === 0) return;
+      const cells = Array.from(tr.querySelectorAll("th, td")).map((td) =>
+        (td as HTMLElement).innerText.replace(/\s+/g, " ").trim()
+      );
+      if (cells.length >= 3 && cells.some((c) => c.length > 0)) {
+        rows.push({
+          licenseNumber: cells[0] || "",
+          name: cells[1] || cells[0] || "",
+          licenseType: cells[2] || "Certified Nursing Assistant",
+          status: cells[4] || cells[3] || "",
+          expirationDate: cells[5] || cells[4] || "",
+          county: cells[6] || cells[5] || "",
+        });
+      }
+    });
+    return rows.filter((r) => r.name.length > 2 || r.licenseNumber.length > 2);
+  });
+}
+
 export async function captureFloridaDOHScreenshots(
   firstName: string,
   lastName: string,
@@ -1884,6 +1994,92 @@ export async function captureFloridaDOHScreenshots(
     await browser.close();
     return { screenshots: shots, matches: [], found: false };
   }
+}
+
+export async function captureTexasNurseAideScreenshots(
+  firstName: string,
+  lastName: string,
+  licenseNumber?: string | null
+): Promise<FloridaDOHBrowserResult> {
+  const shots: VerificationScreenshot[] = [];
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    await page.context().setExtraHTTPHeaders({
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    });
+    await page.goto(TX_NAR_SEARCH_URL, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await wait(4000);
+    shots.push(await snap(page, "Texas TULIP — Registry search"));
+
+    await tryFillCnaSearchFields(page, firstName, lastName, licenseNumber);
+    await wait(400);
+    const clicked = await tryClickRegistrySearch(page);
+    let matches: FloridaDOHRow[] = [];
+    if (clicked) {
+      await wait(2500);
+      shots.push(await snap(page, "Texas TULIP — Results"));
+      matches = await extractCnaTableMatches(page);
+    }
+
+    await browser.close();
+    return { screenshots: shots, matches, found: matches.length > 0 };
+  } catch (err) {
+    console.error("[browser-verify] Texas NAR error:", err);
+    await browser.close();
+    return { screenshots: shots, matches: [], found: false };
+  }
+}
+
+export async function captureGeorgiaNurseAideScreenshots(
+  firstName: string,
+  lastName: string,
+  licenseNumber?: string | null
+): Promise<FloridaDOHBrowserResult> {
+  const shots: VerificationScreenshot[] = [];
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    await page.context().setExtraHTTPHeaders({
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    });
+    await page.goto(GA_NAR_SEARCH_URL, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await wait(4000);
+    shots.push(await snap(page, "Georgia MMIS — Nurse aide search"));
+
+    await tryFillCnaSearchFields(page, firstName, lastName, licenseNumber);
+    await wait(400);
+    const clicked = await tryClickRegistrySearch(page);
+    let matches: FloridaDOHRow[] = [];
+    if (clicked) {
+      await wait(2500);
+      shots.push(await snap(page, "Georgia MMIS — Results"));
+      matches = await extractCnaTableMatches(page);
+    }
+
+    await browser.close();
+    return { screenshots: shots, matches, found: matches.length > 0 };
+  } catch (err) {
+    console.error("[browser-verify] Georgia NAR error:", err);
+    await browser.close();
+    return { screenshots: shots, matches: [], found: false };
+  }
+}
+
+/** CNA / nurse aide registry capture for FL, TX, or GA based on license or target state. */
+export async function captureCnaStateRegistryScreenshots(
+  firstName: string,
+  lastName: string,
+  licenseNumber: string | null | undefined,
+  licenseState: string | null | undefined,
+  targetState: string | null | undefined
+): Promise<FloridaDOHBrowserResult> {
+  const code = resolveCnaRegistryState(licenseState, targetState);
+  if (code === "TX") return captureTexasNurseAideScreenshots(firstName, lastName, licenseNumber);
+  if (code === "GA") return captureGeorgiaNurseAideScreenshots(firstName, lastName, licenseNumber);
+  return captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -2,7 +2,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { checkOIGExclusion } from "@/lib/oig-exclusion";
 import { checkSAMGov } from "@/lib/sam-gov";
-import { captureFloridaDOHScreenshots, captureNursysScreenshots } from "@/lib/browser-verify";
+import { captureCnaStateRegistryScreenshots, captureNursysScreenshots } from "@/lib/browser-verify";
+import { CNA_REGISTRY, resolveCnaRegistryState } from "@/lib/cna-registry-state";
 
 export async function runCredentialVerification(checkId: string, employerId: string) {
   const check = await prisma.credentialCheck.findFirst({
@@ -18,7 +19,7 @@ export async function runCredentialVerification(checkId: string, employerId: str
     data: { status: "IN_PROGRESS", errorMessage: null },
   });
 
-  const { firstName, middleName, lastName, licenseNumber, licenseState, roleType } = check;
+  const { firstName, middleName, lastName, licenseNumber, licenseState, roleType, targetState } = check;
 
   let nursysData = null;
   let floridaDohData = null;
@@ -96,9 +97,19 @@ export async function runCredentialVerification(checkId: string, employerId: str
     aiRecommendation = "REVIEW_REQUIRED";
     aiSummary = "Verification completed. Please review and mark success to enable cache reuse.";
   } else {
+    const cnaRegistry = resolveCnaRegistryState(licenseState, targetState);
+    const registryMeta = CNA_REGISTRY[cnaRegistry];
     try {
-      const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber ?? undefined);
+      const dohResult = await captureCnaStateRegistryScreenshots(
+        firstName,
+        lastName,
+        licenseNumber ?? undefined,
+        licenseState,
+        targetState
+      );
       floridaDohData = {
+        registryCode: cnaRegistry,
+        registryTitle: registryMeta.title,
         status: dohResult.found ? "found" : "not_found",
         searchedName: `${firstName} ${lastName}`.toUpperCase(),
         licenseType: "Certified Nursing Assistant",
@@ -110,18 +121,20 @@ export async function runCredentialVerification(checkId: string, employerId: str
           expirationDate: m.expirationDate,
           county: m.county || undefined,
         })),
-        manualUrl: "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders",
+        manualUrl: registryMeta.manualUrl,
         checkedAt: new Date().toISOString(),
         screenshots: dohResult.screenshots.map((s) => ({ label: s.label, dataUrl: s.dataUrl })),
       };
     } catch (dohErr) {
-      console.error("[verify] Florida DOH browser capture failed:", dohErr);
+      console.error("[verify] State CNA registry browser capture failed:", dohErr);
       floridaDohData = {
+        registryCode: cnaRegistry,
+        registryTitle: registryMeta.title,
         status: "manual_required",
         searchedName: `${firstName} ${lastName}`.toUpperCase(),
         licenseType: "Certified Nursing Assistant",
         matches: [],
-        manualUrl: "https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders",
+        manualUrl: registryMeta.manualUrl,
         checkedAt: new Date().toISOString(),
         screenshots: [],
         error: dohErr instanceof Error ? dohErr.message : String(dohErr),

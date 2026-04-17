@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
       middleName: true,
       lastName: true,
       email: true,
+      licenseState: true,
       roleType: true,
       targetState: true,
       status: true,

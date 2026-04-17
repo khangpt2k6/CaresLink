@@ -6,6 +6,19 @@ import { getCredentialVerifyQueue } from "@/lib/queue";
 
 export const maxDuration = 120; // Puppeteer for CNA needs extra time
 
+/**
+ * Queue to Redis only when async is wanted AND we are not in local `next dev`.
+ * Otherwise verify runs inside this process so Playwright can open a browser on your machine.
+ * Set CREDENTIAL_VERIFY_ASYNC_IN_DEV=1 to queue during development (requires worker).
+ */
+function useAsyncCredentialVerify(): boolean {
+  if (process.env.CREDENTIAL_VERIFY_ASYNC !== "1") return false;
+  if (process.env.CREDENTIAL_VERIFY_ASYNC_IN_DEV === "1") return true;
+  if (process.env.VERCEL === "1") return true;
+  if (process.env.NODE_ENV === "production") return true;
+  return false;
+}
+
 // POST /api/credential-check/[id]/verify — run all verifications
 export async function POST(
   req: NextRequest,
@@ -30,7 +43,13 @@ export async function POST(
     data: { status: "IN_PROGRESS", errorMessage: null },
   });
 
-  const asyncMode = process.env.CREDENTIAL_VERIFY_ASYNC === "1";
+  const asyncMode = useAsyncCredentialVerify();
+  if (process.env.CREDENTIAL_VERIFY_ASYNC === "1" && !asyncMode) {
+    console.log(
+      "[verify] CREDENTIAL_VERIFY_ASYNC=1 ignored in development — running inline so Playwright can open a browser. " +
+        "Set CREDENTIAL_VERIFY_ASYNC_IN_DEV=1 to queue to the worker instead."
+    );
+  }
   if (asyncMode) {
     try {
       const queue = getCredentialVerifyQueue();

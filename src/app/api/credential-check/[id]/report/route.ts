@@ -3,7 +3,7 @@ import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 import {
   captureNursysScreenshots,
-  captureFloridaDOHScreenshots,
+  captureCnaStateRegistryScreenshots,
   type VerificationScreenshot,
 } from "@/lib/browser-verify";
 import { buildReportHTML, type AllScreenshots, type ReportCheckData } from "@/lib/report-html";
@@ -37,7 +37,7 @@ export async function GET(
     );
   }
 
-  const { firstName, middleName, lastName, licenseNumber, licenseState, roleType } = check;
+  const { firstName, middleName, lastName, licenseNumber, licenseState, roleType, targetState } = check;
 
   // ── 1. Take live browser screenshots ─────────────────────────────────
   console.log(`[report] Starting browser verification for ${firstName} ${lastName} (${roleType})`);
@@ -64,13 +64,18 @@ export async function GET(
     // CNA: check if verify step already stored screenshots — if so, reuse them (no extra browser)
     const storedShots = floridaDohData?.screenshots;
     if (storedShots && storedShots.length > 0) {
-      console.log(`[report] Using ${storedShots.length} stored FL DOH screenshots from verify step`);
+      console.log(`[report] Using ${storedShots.length} stored CNA registry screenshots from verify step`);
       floridaDohScreenshots = storedShots.map((s) => ({ label: s.label, url: "", dataUrl: s.dataUrl }));
     } else {
-      // Fallback: run browser verification again if no screenshots stored
-      const dohResult = await captureFloridaDOHScreenshots(firstName, lastName, licenseNumber);
+      const dohResult = await captureCnaStateRegistryScreenshots(
+        firstName,
+        lastName,
+        licenseNumber,
+        licenseState,
+        targetState
+      );
       floridaDohScreenshots = dohResult.screenshots;
-      console.log(`[report] Florida DOH screenshots: ${floridaDohScreenshots.length}`);
+      console.log(`[report] CNA registry screenshots: ${floridaDohScreenshots.length}`);
     }
   }
 

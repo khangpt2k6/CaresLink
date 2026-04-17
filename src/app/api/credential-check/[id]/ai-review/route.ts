@@ -88,7 +88,7 @@ async function analyzeWithAI({
 
   const sections: string[] = [];
   if (!isCNA && cleanNursysData) sections.push(`Nursys License Verification: ${JSON.stringify(cleanNursysData)}`);
-  if (isCNA && cleanDohData) sections.push(`Florida DOH CNA License Verification: ${JSON.stringify(cleanDohData)}`);
+  if (isCNA && cleanDohData) sections.push(`State CNA / Nurse Aide Registry Verification: ${JSON.stringify(cleanDohData)}`);
   if (!isCNA && oigResult) sections.push(`OIG Exclusion List: ${JSON.stringify(oigResult)}`);
   if (!isCNA && samGovResult) sections.push(`SAM.gov: ${JSON.stringify(samGovResult)}`);
 
@@ -100,7 +100,7 @@ Verification Results:
 ${sections.join("\n")}
 
 Rules for CNA:
-- EMPLOYABLE if: Florida DOH license status is "Clear/Active" or "Active" (not expired)
+- EMPLOYABLE if: state registry license status is "Clear/Active" or "Active" (or equivalent), not expired
 - REVIEW_REQUIRED if: license not found, expired, has restrictions, probation, or is unclear
 - NOT_EMPLOYABLE if: license is revoked, suspended, or surrendered
 - Do NOT mention OIG or SAM.gov — they are not checked for CNAs

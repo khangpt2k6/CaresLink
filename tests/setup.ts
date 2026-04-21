@@ -17,32 +17,13 @@ const mockPrismaClient = {
 
 vi.mock("@/lib/db", () => ({ prisma: mockPrismaClient }));
 
-// ── Mock Clerk auth ──────────────────────────────────────────────────
+// ── Mock Supabase auth ───────────────────────────────────────────────
 // Default: authenticated employer. Tests can override via mockAuthAs().
 let mockRole = "EMPLOYER";
 let mockUserId: string | null = "user_test123";
 let mockEmail = "recruiter@careslink.com";
 
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(() => Promise.resolve({ userId: mockUserId })),
-  clerkClient: vi.fn(() =>
-    Promise.resolve({
-      users: {
-        getUser: vi.fn(() =>
-          Promise.resolve({
-            emailAddresses: [{ emailAddress: mockEmail }],
-            firstName: "Test",
-            lastName: "User",
-            imageUrl: "https://example.com/avatar.png",
-            username: "testuser",
-          })
-        ),
-      },
-    })
-  ),
-}));
-
-// Mock getOrCreateUser to return a user with the current role
+// Mock getOrCreateUser / requireUser to return a user with the current role
 vi.mock("@/lib/clerk-auth", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {

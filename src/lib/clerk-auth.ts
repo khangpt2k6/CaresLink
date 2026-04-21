@@ -1,58 +1,65 @@
-import { auth } from "@clerk/nextjs/server";
-import { clerkClient } from "@clerk/nextjs/server";
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-/** Get or create our User from Clerk. Returns null if Clerk user not found. */
-export async function getOrCreateUser(clerkUserId: string) {
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
+);
+
+/**
+ * Get or create our Prisma User from a Supabase auth user.
+ * We overload the legacy `clerkId` column to store the Supabase auth user id
+ * (a UUID) so the rest of the schema does not need to change yet.
+ */
+export async function getOrCreateUser(supabaseUserId: string, email: string) {
   const existing = await prisma.user.findUnique({
-    where: { clerkId: clerkUserId },
+    where: { clerkId: supabaseUserId },
   });
   if (existing) return existing;
 
-  const client = await clerkClient();
-  const clerkUser = await client.users.getUser(clerkUserId);
-  const email = clerkUser.emailAddresses[0]?.emailAddress;
-  if (!email) return null;
-
-  // Check by email in case of migration from NextAuth
-  const byEmail = await prisma.user.findUnique({
-    where: { email },
-  });
+  const byEmail = await prisma.user.findUnique({ where: { email } });
   if (byEmail) {
     await prisma.user.update({
       where: { id: byEmail.id },
-      data: { clerkId: clerkUserId, image: clerkUser.imageUrl },
+      data: { clerkId: supabaseUserId },
     });
     return prisma.user.findUniqueOrThrow({ where: { id: byEmail.id } });
   }
 
   return prisma.user.create({
-    data: {
-      clerkId: clerkUserId,
-      email,
-      name: clerkUser.firstName && clerkUser.lastName
-        ? `${clerkUser.firstName} ${clerkUser.lastName}`
-        : clerkUser.firstName ?? clerkUser.username ?? null,
-      image: clerkUser.imageUrl,
-    },
+    data: { clerkId: supabaseUserId, email },
   });
 }
 
-/** Require auth and return our User. Returns 401 if not signed in. */
+/** Require auth via Supabase JWT (Authorization: Bearer <access_token>). */
 export async function requireUser(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return {
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
-  const user = await getOrCreateUser(userId);
+  const token = authHeader.slice("Bearer ".length).trim();
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data.user || !data.user.email) {
+    return {
+      error: NextResponse.json({ error: "Invalid token" }, { status: 401 }),
+    };
+  }
+
+  const user = await getOrCreateUser(data.user.id, data.user.email);
   if (!user) {
-    return { error: NextResponse.json({ error: "User sync failed" }, { status: 500 }) };
+    return {
+      error: NextResponse.json({ error: "User sync failed" }, { status: 500 }),
+    };
   }
   return { user };
 }
 
-/** Require employer role. Returns 401 if not signed in, 403 if not employer. */
+/** Require employer role. */
 export async function requireEmployer(req: NextRequest) {
   const result = await requireUser(req);
   if (result.error) return result;
@@ -68,7 +75,7 @@ export async function requireEmployer(req: NextRequest) {
   return { user };
 }
 
-/** Require candidate role. Returns 401 if not signed in, 403 if not candidate. */
+/** Require candidate role. */
 export async function requireCandidate(req: NextRequest) {
   const result = await requireUser(req);
   if (result.error) return result;

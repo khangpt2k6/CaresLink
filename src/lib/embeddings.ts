@@ -1,8 +1,9 @@
 import { prisma } from "./db";
-import { upsertCandidateEmbedding, upsertJobEmbedding, searchSimilarCandidates } from "./vector-store";
+import { upsertProfileEmbedding, upsertJobEmbedding } from "./vector-store";
+import { textCompletion } from "./ai-provider";
 
 // ─── Singleton Embedding Pipeline ────────────────────────────
-// Uses the same globalThis pattern as db.ts to persist across hot reloads
+// Uses the same globalThis pattern as db.ts to persist across hot reloads.
 
 type EmbeddingPipeline = {
   (text: string, options: { pooling: string; normalize: boolean }): Promise<{ data: Float32Array }>;
@@ -17,22 +18,17 @@ async function getEmbeddingPipeline(): Promise<EmbeddingPipeline> {
   if (globalForEmbeddings.embeddingPipeline) {
     return globalForEmbeddings.embeddingPipeline;
   }
-
-  // Prevent multiple concurrent initializations
   if (globalForEmbeddings.embeddingPipelinePromise) {
     return globalForEmbeddings.embeddingPipelinePromise;
   }
-
   globalForEmbeddings.embeddingPipelinePromise = (async () => {
     const { pipeline } = await import("@huggingface/transformers");
-    // bge-small-en-v1.5: MTEB ~62 (vs all-MiniLM-L6-v2 ~56), same 384 dims, much better quality
     const pipe = await pipeline("feature-extraction", "Xenova/bge-small-en-v1.5", {
       dtype: "fp32",
     });
     globalForEmbeddings.embeddingPipeline = pipe as unknown as EmbeddingPipeline;
     return globalForEmbeddings.embeddingPipeline;
   })();
-
   return globalForEmbeddings.embeddingPipelinePromise;
 }
 
@@ -45,171 +41,122 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   return Array.from(output.data);
 }
 
-// ─── Text Builders ───────────────────────────────────────────
+// ─── Text Builders (Flutter profile / jobs schema) ───────────
 
-interface CandidateData {
-  position: string;
-  name: string;
+type FlutterProfile = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  about: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  role: string | null;
+  preferred_roles: string[];
+  preferred_job_type: string[];
+  preferred_shift_type: string[];
+  preferred_business_units: string[];
+  care_specialty: string[];
+  languages_known: string[];
+  user_type: string | null;
+};
+
+type FlutterJob = {
+  job_id: string;
+  job_title: string;
+  job_description: string;
+  role: string | null;
+  job_type: string | null;
+  workplace_type: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  experience_required: string | null;
+  benefits_offered: string | null;
+  certifications_required: string | null;
+  nursing_skills_required: string[];
+  care_specialty: string[];
+  shift_type: string[];
+  business_unit: string[];
+};
+
+function fullName(p: { first_name: string | null; last_name: string | null }): string {
+  return [p.first_name, p.last_name].filter(Boolean).join(" ").trim() || "Candidate";
 }
 
-interface ProfileData {
-  headline?: string | null;
-  summary?: string | null;
-  city?: string | null;
-  state?: string | null;
-  experiences?: { title: string; company: string; description?: string | null }[];
-  educations?: { school: string; degree?: string | null; field?: string | null }[];
-  skills?: { name: string }[];
-  certifications?: { name: string; issuer?: string | null }[];
-  licenses?: { type: string; licenseNumber: string; licenseState: string; status?: string | null }[];
-  preferences?: {
-    roles?: string[];
-    businessUnits?: string[];
-    jobTypes?: string[];
-    shifts?: string[];
-  } | null;
-}
-
-/**
- * Build a rich text representation of a candidate for embedding.
- */
-export function buildCandidateText(candidate: CandidateData, profile?: ProfileData | null): string {
+export function buildCandidateText(profile: FlutterProfile): string {
   const parts: string[] = [];
+  parts.push(`Name: ${fullName(profile)}`);
+  if (profile.role) parts.push(`Role: ${profile.role}`);
+  if (profile.about) parts.push(`About: ${profile.about}`);
 
-  parts.push(`Position: ${candidate.position}`);
+  const location = [profile.city, profile.state, profile.country].filter(Boolean).join(", ");
+  if (location) parts.push(`Location: ${location}`);
 
-  if (profile) {
-    if (profile.headline) parts.push(`Headline: ${profile.headline}`);
-    if (profile.summary) parts.push(`Summary: ${profile.summary}`);
-
-    const location = [profile.city, profile.state].filter(Boolean).join(", ");
-    if (location) parts.push(`Location: ${location}`);
-
-    if (profile.skills && profile.skills.length > 0) {
-      parts.push(`Skills: ${profile.skills.map((s) => s.name).join(", ")}`);
-    }
-
-    if (profile.certifications && profile.certifications.length > 0) {
-      parts.push(`Certifications: ${profile.certifications.map((c) => c.name).join(", ")}`);
-    }
-
-    if (profile.licenses && profile.licenses.length > 0) {
-      parts.push(
-        `Licenses: ${profile.licenses.map((l) => `${l.type} (${l.licenseState}, ${l.status || "unknown"})`).join(", ")}`
-      );
-    }
-
-    if (profile.experiences && profile.experiences.length > 0) {
-      parts.push(
-        `Experience: ${profile.experiences
-          .map((e) => `${e.title} at ${e.company}${e.description ? ` - ${e.description}` : ""}`)
-          .join("; ")}`
-      );
-    }
-
-    if (profile.educations && profile.educations.length > 0) {
-      parts.push(
-        `Education: ${profile.educations
-          .map((e) => [e.degree, e.field, `at ${e.school}`].filter(Boolean).join(" "))
-          .join("; ")}`
-      );
-    }
-
-    if (profile.preferences) {
-      const prefs: string[] = [];
-      if (profile.preferences.roles?.length) prefs.push(`Roles: ${profile.preferences.roles.join(", ")}`);
-      if (profile.preferences.jobTypes?.length) prefs.push(`Types: ${profile.preferences.jobTypes.join(", ")}`);
-      if (profile.preferences.shifts?.length) prefs.push(`Shifts: ${profile.preferences.shifts.join(", ")}`);
-      if (profile.preferences.businessUnits?.length)
-        prefs.push(`Units: ${profile.preferences.businessUnits.join(", ")}`);
-      if (prefs.length > 0) parts.push(`Preferences: ${prefs.join("; ")}`);
-    }
-  }
+  if (profile.preferred_roles.length) parts.push(`Preferred roles: ${profile.preferred_roles.join(", ")}`);
+  if (profile.care_specialty.length) parts.push(`Care specialty: ${profile.care_specialty.join(", ")}`);
+  if (profile.preferred_job_type.length) parts.push(`Job types: ${profile.preferred_job_type.join(", ")}`);
+  if (profile.preferred_shift_type.length) parts.push(`Shifts: ${profile.preferred_shift_type.join(", ")}`);
+  if (profile.preferred_business_units.length)
+    parts.push(`Business units: ${profile.preferred_business_units.join(", ")}`);
+  if (profile.languages_known.length) parts.push(`Languages: ${profile.languages_known.join(", ")}`);
 
   return parts.join("\n");
 }
 
-interface JobData {
-  title: string;
-  department?: string | null;
-  location: string;
-  type: string;
-  description?: string | null;
-}
-
-/**
- * Build a text representation of a job for embedding.
- */
-export function buildJobText(job: JobData): string {
+export function buildJobText(job: FlutterJob): string {
   const parts: string[] = [];
-  parts.push(`Title: ${job.title}`);
-  if (job.department) parts.push(`Department: ${job.department}`);
-  parts.push(`Location: ${job.location}`);
-  parts.push(`Type: ${job.type}`);
-  if (job.description) parts.push(`Description: ${job.description}`);
+  parts.push(`Title: ${job.job_title}`);
+  if (job.role) parts.push(`Role: ${job.role}`);
+  const location = [job.city, job.state, job.country].filter(Boolean).join(", ");
+  if (location) parts.push(`Location: ${location}`);
+  if (job.job_type) parts.push(`Type: ${job.job_type}`);
+  if (job.workplace_type) parts.push(`Workplace: ${job.workplace_type}`);
+  if (job.experience_required) parts.push(`Experience: ${job.experience_required}`);
+  if (job.nursing_skills_required.length)
+    parts.push(`Skills required: ${job.nursing_skills_required.join(", ")}`);
+  if (job.care_specialty.length) parts.push(`Care specialty: ${job.care_specialty.join(", ")}`);
+  if (job.shift_type.length) parts.push(`Shifts: ${job.shift_type.join(", ")}`);
+  if (job.business_unit.length) parts.push(`Business units: ${job.business_unit.join(", ")}`);
+  if (job.certifications_required) parts.push(`Certifications: ${job.certifications_required}`);
+  if (job.benefits_offered) parts.push(`Benefits: ${job.benefits_offered}`);
+  if (job.job_description) parts.push(`Description: ${job.job_description}`);
   return parts.join("\n");
 }
 
 // ─── Embedding Helpers (fire-and-forget from API routes) ─────
 
 /**
- * Fetch a candidate + profile, generate/store its embedding,
- * then auto-recompute match scores against all open jobs.
+ * Embed a candidate profile and recompute match scores against all open jobs.
  */
-export async function embedCandidate(candidateId: string): Promise<void> {
+export async function embedCandidate(profileId: string): Promise<void> {
   try {
-    const candidate = await prisma.candidate.findUnique({
-      where: { id: candidateId },
-    });
-    if (!candidate) return;
+    const profile = await prisma.profile.findUnique({ where: { id: profileId } });
+    if (!profile) return;
 
-    // Try to find a linked user profile via email
-    const user = await prisma.user.findFirst({
-      where: { email: { equals: candidate.email, mode: "insensitive" } },
-      include: {
-        profile: {
-          include: {
-            experiences: true,
-            educations: true,
-            skills: true,
-            certifications: true,
-            licenses: true,
-            preferences: true,
-          },
-        },
-      },
-    });
-
-    const profile = user?.profile;
-    const text = buildCandidateText(candidate, profile ? {
-      ...profile,
-      preferences: profile.preferences ?? null,
-    } : null);
-
+    const text = buildCandidateText(profile as FlutterProfile);
     const embedding = await generateEmbedding(text);
-    await upsertCandidateEmbedding(candidateId, text, embedding);
+    await upsertProfileEmbedding(profileId, text, embedding);
 
-    // Auto-recompute matches for all open jobs
-    await autoMatchCandidateToJobs(candidateId, embedding);
+    await autoMatchCandidateToJobs(profileId);
   } catch (e) {
-    console.error(`[embeddings] Failed to embed candidate ${candidateId}:`, e);
+    console.error(`[embeddings] Failed to embed candidate ${profileId}:`, e);
   }
 }
 
 /**
- * Fetch a job, generate/store its embedding,
- * then auto-recompute match scores against all candidates.
+ * Embed a job and recompute match scores against all professional profiles.
  */
 export async function embedJob(jobId: string): Promise<void> {
   try {
-    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    const job = await prisma.jobs.findUnique({ where: { job_id: jobId } });
     if (!job) return;
 
-    const text = buildJobText(job);
+    const text = buildJobText(job as FlutterJob);
     const embedding = await generateEmbedding(text);
     await upsertJobEmbedding(jobId, text, embedding);
 
-    // Auto-recompute matches for this job
     await autoMatchJobToCandidates(jobId);
   } catch (e) {
     console.error(`[embeddings] Failed to embed job ${jobId}:`, e);
@@ -217,164 +164,159 @@ export async function embedJob(jobId: string): Promise<void> {
 }
 
 /**
- * Re-embed a candidate when their profile changes.
- * Finds the Candidate record by matching the User's email.
+ * Re-embed a candidate when their profile changes. On the Flutter schema,
+ * the profile row IS the candidate (its id = auth.users.id).
  */
 export async function reembedCandidateByUserId(userId: string): Promise<void> {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true },
-    });
-    if (!user) return;
-
-    const candidate = await prisma.candidate.findFirst({
-      where: { email: { equals: user.email, mode: "insensitive" } },
-    });
-    if (!candidate) return;
-
-    await embedCandidate(candidate.id);
-  } catch (e) {
-    console.error(`[embeddings] Failed to re-embed candidate for user ${userId}:`, e);
-  }
+  return embedCandidate(userId);
 }
 
 // ─── Auto-Matching with Claude (accurate, cost-optimized) ────
-// Uses Claude to score candidates, but batches them in ONE API call per job.
-// Cost: ~$0.01-0.03 per job (scores ALL candidates in a single prompt).
+// One Claude call per job/candidate change — batches all scorings together.
 
-import { textCompletion } from "./ai-provider";
-
-/**
- * When a candidate changes, re-score them against all open jobs using Claude.
- * Batches into one Claude call per job for cost efficiency.
- */
-async function autoMatchCandidateToJobs(candidateId: string, _embedding: number[]): Promise<void> {
+async function autoMatchCandidateToJobs(profileId: string): Promise<void> {
   try {
+    const profile = await prisma.profile.findUnique({ where: { id: profileId } });
+    if (!profile) return;
 
-    const candidate = await prisma.candidate.findUnique({ where: { id: candidateId } });
-    if (!candidate) return;
+    const candidateSummary = buildCandidateSummary(profile as FlutterProfile);
 
-    const user = await prisma.user.findFirst({
-      where: { email: { equals: candidate.email, mode: "insensitive" } },
-      include: {
-        profile: { include: { experiences: true, skills: true, certifications: true, educations: true } },
+    const jobs = await prisma.jobs.findMany({
+      select: {
+        job_id: true,
+        job_title: true,
+        role: true,
+        city: true,
+        state: true,
+        country: true,
+        job_type: true,
+        job_description: true,
       },
+      take: 200,
     });
+    if (jobs.length === 0) return;
 
-    const candidateSummary = buildCandidateSummary(candidate, user?.profile);
-
-    const openJobs = await prisma.job.findMany({
-      where: { status: "open" },
-      select: { id: true, title: true, department: true, location: true, type: true, description: true },
-    });
-
-    if (openJobs.length === 0) return;
-
-    // ONE AI call to score this candidate against ALL jobs
     const text = await textCompletion({
       model: "claude-sonnet-4-20250514",
       maxTokens: 2048,
-      messages: [{
-        role: "user",
-        content: `Score this healthcare candidate against each job. Be accurate and realistic.
+      messages: [
+        {
+          role: "user",
+          content: `Score this healthcare candidate against each job. Be accurate and realistic.
 
 ## Candidate
 ${candidateSummary}
 
 ## Jobs
-${openJobs.map((j, i) => `${i + 1}. [${j.id}] ${j.title} — ${j.department || "N/A"}, ${j.location}, ${j.type}${j.description ? `\n   ${j.description.slice(0, 200)}` : ""}`).join("\n")}
+${jobs
+  .map((j, i) => {
+    const loc = [j.city, j.state, j.country].filter(Boolean).join(", ") || "N/A";
+    return `${i + 1}. [${j.job_id}] ${j.job_title} — ${j.role || "N/A"}, ${loc}, ${j.job_type || "N/A"}${
+      j.job_description ? `\n   ${j.job_description.slice(0, 200)}` : ""
+    }`;
+  })
+  .join("\n")}
 
 Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 50-74=Partial fit, 25-49=Weak fit, 0-24=Not a fit.
 [{"jobId":"id","score":85,"label":"Good fit","reason":"1 sentence"}]`,
-      }],
+        },
+      ],
     });
+
     const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
     const scores: { jobId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
 
-    // Validate job IDs exist
-    const validJobIds = new Set(openJobs.map((j) => j.id));
+    const validJobIds = new Set(jobs.map((j) => j.job_id));
     const validScores = scores.filter((s) => validJobIds.has(s.jobId));
 
     const now = new Date();
     for (const s of validScores) {
       try {
-        await prisma.jobMatch.upsert({
-          where: { jobId_candidateId: { jobId: s.jobId, candidateId } },
-          create: { jobId: s.jobId, candidateId, score: s.score, label: s.label, reason: s.reason, computedAt: now },
-          update: { score: s.score, label: s.label, reason: s.reason, computedAt: now },
+        await prisma.job_match_scores.upsert({
+          where: { job_id_profile_id: { job_id: s.jobId, profile_id: profileId } },
+          create: {
+            job_id: s.jobId,
+            profile_id: profileId,
+            score: s.score,
+            label: s.label,
+            reason: s.reason,
+            computed_at: now,
+          },
+          update: { score: s.score, label: s.label, reason: s.reason, computed_at: now },
         });
-      } catch { /* skip invalid */ }
+      } catch {
+        /* skip invalid */
+      }
     }
   } catch (e) {
-    console.error(`[auto-match] Failed to match candidate ${candidateId}:`, e);
+    console.error(`[auto-match] Failed to match candidate ${profileId}:`, e);
   }
 }
 
-/**
- * When a job changes, score ALL candidates against it using Claude.
- * ONE Claude call with all candidates batched together.
- */
 async function autoMatchJobToCandidates(jobId: string): Promise<void> {
   try {
-
-    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    const job = await prisma.jobs.findUnique({ where: { job_id: jobId } });
     if (!job) return;
 
-    const candidates = await prisma.candidate.findMany({
-      orderBy: { appliedAt: "desc" },
+    const candidates = await prisma.profile.findMany({
+      where: { user_type: "professional" },
+      orderBy: { created_at: "desc" },
+      take: 100,
     });
-
     if (candidates.length === 0) return;
 
-    // Build candidate summaries
-    const candidateSummaries = await Promise.all(
-      candidates.map(async (c) => {
-        const user = await prisma.user.findFirst({
-          where: { email: { equals: c.email, mode: "insensitive" } },
-          include: {
-            profile: { include: { experiences: true, skills: true, certifications: true, educations: true } },
-          },
-        });
-        return { id: c.id, summary: buildCandidateSummary(c, user?.profile) };
-      })
-    );
+    const candidateSummaries = candidates.map((c) => ({
+      id: c.id,
+      summary: buildCandidateSummary(c as FlutterProfile),
+    }));
 
-    // ONE AI call to score all candidates
+    const jobLoc = [job.city, job.state, job.country].filter(Boolean).join(", ") || "N/A";
+
     const text = await textCompletion({
       model: "claude-sonnet-4-20250514",
       maxTokens: 4096,
-      messages: [{
-        role: "user",
-        content: `Score each candidate against this job. Be accurate and realistic.
+      messages: [
+        {
+          role: "user",
+          content: `Score each candidate against this job. Be accurate and realistic.
 
 ## Job
-**${job.title}** — ${job.department || "N/A"}, ${job.location}, ${job.type}
-${job.description || "No description"}
+**${job.job_title}** — ${job.role || "N/A"}, ${jobLoc}, ${job.job_type || "N/A"}
+${job.job_description || "No description"}
 
 ## Candidates
 ${candidateSummaries.map((c, i) => `### ${i + 1}. [${c.id}]\n${c.summary}`).join("\n\n")}
 
-Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 50-74=Partial fit, 25-49=Weak fit, 0-24=Not a fit. Deduplicate candidates with the same name — keep the highest-scoring entry.
+Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 50-74=Partial fit, 25-49=Weak fit, 0-24=Not a fit.
 [{"candidateId":"id","score":85,"label":"Good fit","reason":"1 sentence"}]`,
-      }],
+        },
+      ],
     });
+
     const cleaned = text.replace(/```json?\s*/g, "").replace(/```\s*/g, "").trim();
     const scores: { candidateId: string; score: number; label: string; reason: string }[] = JSON.parse(cleaned);
 
-    // Validate candidate IDs exist (Claude sometimes hallucinates IDs)
     const validIds = new Set(candidates.map((c) => c.id));
     const validScores = scores.filter((s) => validIds.has(s.candidateId));
 
     const now = new Date();
     for (const s of validScores) {
       try {
-        await prisma.jobMatch.upsert({
-          where: { jobId_candidateId: { jobId, candidateId: s.candidateId } },
-          create: { jobId, candidateId: s.candidateId, score: s.score, label: s.label, reason: s.reason, computedAt: now },
-          update: { score: s.score, label: s.label, reason: s.reason, computedAt: now },
+        await prisma.job_match_scores.upsert({
+          where: { job_id_profile_id: { job_id: jobId, profile_id: s.candidateId } },
+          create: {
+            job_id: jobId,
+            profile_id: s.candidateId,
+            score: s.score,
+            label: s.label,
+            reason: s.reason,
+            computed_at: now,
+          },
+          update: { score: s.score, label: s.label, reason: s.reason, computed_at: now },
         });
-      } catch { /* skip invalid */ }
+      } catch {
+        /* skip invalid */
+      }
     }
   } catch (e) {
     console.error(`[auto-match] Failed to match job ${jobId}:`, e);
@@ -384,30 +326,15 @@ Return ONLY a JSON array. Score 0-100 where 90+=Excellent fit, 75-89=Good fit, 5
 /**
  * Build a concise candidate summary for Claude scoring (keeps token count low).
  */
-function buildCandidateSummary(
-  candidate: { name: string; position: string; status: string },
-  profile?: {
-    headline?: string | null;
-    summary?: string | null;
-    experiences?: { title: string; company: string }[];
-    skills?: { name: string }[];
-    certifications?: { name: string }[];
-    educations?: { school: string; degree?: string | null; field?: string | null }[];
-  } | null
-): string {
-  const parts = [`**${candidate.name}** — Applied: ${candidate.position}`];
-
-  if (profile) {
-    if (profile.headline) parts.push(`Headline: ${profile.headline}`);
-    if (profile.skills?.length) parts.push(`Skills: ${profile.skills.map(s => s.name).join(", ")}`);
-    if (profile.certifications?.length) parts.push(`Certs: ${profile.certifications.map(c => c.name).join(", ")}`);
-    if (profile.experiences?.length) {
-      parts.push(`Experience: ${profile.experiences.slice(0, 3).map(e => `${e.title} at ${e.company}`).join("; ")}`);
-    }
-    if (profile.educations?.length) {
-      parts.push(`Education: ${profile.educations.slice(0, 2).map(e => `${e.degree || ""} ${e.field || ""} at ${e.school}`.trim()).join("; ")}`);
-    }
-  }
-
+function buildCandidateSummary(profile: FlutterProfile): string {
+  const parts: string[] = [`**${fullName(profile)}**`];
+  if (profile.role) parts.push(`Role: ${profile.role}`);
+  if (profile.about) parts.push(`About: ${profile.about.slice(0, 300)}`);
+  const loc = [profile.city, profile.state, profile.country].filter(Boolean).join(", ");
+  if (loc) parts.push(`Location: ${loc}`);
+  if (profile.preferred_roles.length) parts.push(`Preferred roles: ${profile.preferred_roles.join(", ")}`);
+  if (profile.care_specialty.length) parts.push(`Specialties: ${profile.care_specialty.join(", ")}`);
+  if (profile.preferred_job_type.length) parts.push(`Types: ${profile.preferred_job_type.join(", ")}`);
+  if (profile.preferred_shift_type.length) parts.push(`Shifts: ${profile.preferred_shift_type.join(", ")}`);
   return parts.join("\n");
 }

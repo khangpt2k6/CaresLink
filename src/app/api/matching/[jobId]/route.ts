@@ -3,6 +3,10 @@ import { requireEmployer } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 import { computeAndStoreMatches } from "@/lib/matching-service";
 
+function profileName(p: { first_name: string | null; last_name: string | null }) {
+  return [p.first_name, p.last_name].filter(Boolean).join(" ").trim() || null;
+}
+
 // GET /api/matching/[jobId] — read pre-computed matches (instant)
 export async function GET(
   request: NextRequest,
@@ -13,40 +17,37 @@ export async function GET(
 
   const { jobId } = await params;
 
-  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  const job = await prisma.jobs.findUnique({ where: { job_id: jobId } });
   if (!job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
 
-  const matches = await prisma.jobMatch.findMany({
-    where: { jobId },
-    include: {
-      candidate: true,
-    },
+  const matches = await prisma.job_match_scores.findMany({
+    where: { job_id: jobId },
+    include: { profile: true },
     orderBy: { score: "desc" },
   });
 
-  // Find when this job's matches were last computed
-  const lastComputed = matches.length > 0 ? matches[0].computedAt : null;
+  const lastComputed = matches.length > 0 ? matches[0].computed_at : null;
 
   return NextResponse.json({
-    jobId: job.id,
-    jobTitle: job.title,
-    jobDepartment: job.department,
+    jobId: job.job_id,
+    jobTitle: job.job_title,
+    jobRole: job.role,
     lastComputed,
     total: matches.length,
     matches: matches.map((m) => ({
       id: m.id,
-      candidateId: m.candidateId,
-      candidateName: m.candidate.name,
-      candidateEmail: m.candidate.email,
-      candidatePhone: m.candidate.phone,
-      candidatePosition: m.candidate.position,
-      candidateStatus: m.candidate.status,
+      candidateId: m.profile_id,
+      candidateName: profileName(m.profile),
+      candidateEmail: m.profile.email,
+      candidatePhone: m.profile.phone_number,
+      candidateRole: m.profile.role,
+      candidateUserType: m.profile.user_type,
       score: m.score,
       label: m.label,
       reason: m.reason,
-      computedAt: m.computedAt,
+      computedAt: m.computed_at,
     })),
   });
 }
@@ -63,24 +64,7 @@ export async function POST(
 
   try {
     const stored = await computeAndStoreMatches(jobId);
-
-    return NextResponse.json({
-      jobId,
-      total: stored.length,
-      matches: stored.map((m) => ({
-        id: m.id,
-        candidateId: m.candidateId,
-        candidateName: m.candidate.name,
-        candidateEmail: m.candidate.email,
-        candidatePhone: m.candidate.phone,
-        candidatePosition: m.candidate.position,
-        candidateStatus: m.candidate.status,
-        score: m.score,
-        label: m.label,
-        reason: m.reason,
-        computedAt: m.computedAt,
-      })),
-    });
+    return NextResponse.json({ jobId, total: stored.length, matches: stored });
   } catch (e) {
     console.error("Match computation error:", e);
     return NextResponse.json(

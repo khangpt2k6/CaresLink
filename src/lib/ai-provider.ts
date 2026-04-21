@@ -105,18 +105,8 @@ export async function getProvider(): Promise<AIProvider> {
     return _cachedProvider;
   }
 
-  try {
-    const { prisma } = await import("./db");
-    const settings = await prisma.settings.findUnique({ where: { id: "default" } });
-    const provider = (settings as Record<string, unknown>)?.aiProvider;
-    if (provider === "groq" || provider === "anthropic") {
-      _cachedProvider = provider;
-      _cacheTime = Date.now();
-      return provider;
-    }
-  } catch {
-    // DB not available, fall through to default
-  }
+  // Settings table does not exist on Flutter production DB; provider is driven
+  // purely by environment for now. Override via env.AI_PROVIDER if needed.
 
   _cachedProvider = "anthropic";
   _cacheTime = Date.now();
@@ -310,22 +300,21 @@ function logUsage(data: {
   const costCents = estimateCostCents(data.model, data.inputTokens, data.outputTokens);
 
   import("./db").then(({ prisma }) =>
-    prisma.aIUsageLog.create({
+    prisma.ai_usage_log.create({
       data: {
         provider: data.provider,
         model: data.model,
-        inputTokens: data.inputTokens,
-        outputTokens: data.outputTokens,
-        totalTokens,
-        costCents,
-        durationMs: data.durationMs,
+        input_tokens: data.inputTokens,
+        output_tokens: data.outputTokens,
+        total_tokens: totalTokens,
+        cost_cents: costCents,
+        duration_ms: data.durationMs,
         endpoint: data.endpoint,
-        userId: data.userId,
-        candidateId: data.candidateId,
+        user_id: data.userId,
         success: data.success,
-        errorMessage: data.errorMessage,
+        error_message: data.errorMessage,
       },
-    }).catch((e) => console.error("Failed to log AI usage:", e))
+    }).catch((e: unknown) => console.error("Failed to log AI usage:", e))
   );
 }
 

@@ -1,0 +1,548 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  EMPLOYER
+  CANDIDATE
+}
+
+model User {
+  id             String    @id @default(cuid())
+  clerkId        String?   @unique  // Clerk user ID - links to Clerk
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  password       String?
+  role           Role?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  accounts              Account[]
+  sessions              Session[]
+  candidateAvailability CandidateAvailability[]
+  profile               CandidateProfile?
+  subscription          UserSubscription?
+  agentMemories         AgentMemory[]
+  credentialChecks      CredentialCheck[]
+  semanticFacts         SemanticFact[]
+}
+
+model UserSubscription {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  stripePriceId        String?
+  status               String   @default("inactive") // active | trialing | past_due | canceled | unpaid | incomplete
+  currentPeriodEnd     DateTime?
+  premiumUntil         DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// Candidate profile (LinkedIn-style)
+model CandidateProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline      String?  // e.g. "Executive Leadership"
+  summary       String?  // About / bio
+  phone         String?
+  city          String?
+  state         String?
+  country       String?  @default("United States")
+  referralCode    String?  @unique @default(cuid())
+  resumeUrl       String?  // link to uploaded resume
+  resumeTemplate  String?  @default("healthcare-pro") // healthcare-pro | modern | classic | minimal
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  experiences    Experience[]
+  educations     Education[]
+  skills         Skill[]
+  certifications Certification[]
+  licenses       License[]
+  preferences    JobPreferences?
+}
+
+model JobPreferences {
+  id            String           @id @default(cuid())
+  profileId     String           @unique
+  profile       CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  roles         String[]         // ["CNA", "LPN", "RN", ...]
+  businessUnits String[]         // ["Home Care", "Assisted Living", ...]
+  jobTypes      String[]         // ["Full-time", "Contract", "PRN", ...]
+  shifts        String[]         // ["Weekday", "Night", ...]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model Experience {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  title       String            // e.g. "LPN"
+  company     String            // e.g. "Moffitt"
+  description String?
+  startDate   DateTime
+  endDate     DateTime?         // null = "Present"
+  current     Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model Education {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  school      String
+  degree      String?           // e.g. "Bachelor of Science"
+  field       String?           // e.g. "Nursing"
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model Skill {
+  id        String            @id @default(cuid())
+  profileId String
+  profile   CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime          @default(now())
+
+  @@unique([profileId, name])
+}
+
+model Certification {
+  id          String            @id @default(cuid())
+  profileId   String
+  profile     CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name        String            // e.g. "Registered Nurse (RN)"
+  issuer      String?           // e.g. "Florida Board of Nursing"
+  issueDate   DateTime?
+  expiryDate  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model License {
+  id                String            @id @default(cuid())
+  profileId         String
+  profile           CandidateProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  type              String            // e.g. "RN", "CNA", "LPN"
+  licenseNumber     String            // credential number for verification
+  licenseState      String            // e.g. "FL" — issuing state board
+  boardName         String?           // e.g. "Florida Board of Nursing"
+  status            String?           // e.g. "Active", "Inactive", "Expired"
+  issueDate         DateTime?
+  expiryDate        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  title       String
+  department  String?
+  location    String   @default("Remote")
+  type        String   @default("Full-time") // Full-time, Part-time, Contract
+  description String?
+  status      String   @default("open") // open, closed, paused
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  matches     JobMatch[]
+  jobEmbedding JobEmbedding?
+}
+
+model Candidate {
+  id          String   @id @default(cuid())
+  name        String
+  email       String
+  phone       String?
+  position    String
+  status      String   @default("applied")
+  fitStatus   String?  // linkedin | not_a_fit | good_fit | waitlist — recruiter classification for template emails
+  appliedAt   DateTime @default(now())
+  autoApplied Boolean  @default(false) // true = applied by AI agent
+
+  interviews Interview[]
+  events     Event[]
+  matches    JobMatch[]
+  candidateEmbedding CandidateEmbedding?
+}
+
+model Interview {
+  id              String   @id @default(cuid())
+  candidateId     String
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  position        String
+  scheduledAt     DateTime
+  duration        Int      @default(60)
+  location        String   @default("Video Call")
+  reminderSent    Boolean  @default(false)
+  completed       Boolean  @default(false)
+  noShow          Boolean  @default(false)
+  calendarEventId String?
+  calendarLink    String?
+  meetLink        String?
+  cancelled       Boolean  @default(false)
+  confirmed       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  events      Event[]
+  transcripts InterviewTranscript[]
+  notes       InterviewNote[]
+  summary     InterviewSummary?
+  screening   Screening?
+}
+
+// HR weekly availability (recurring schedule)
+model Availability {
+  id        String  @id @default(cuid())
+  dayOfWeek Int     // 0=Sunday, 1=Monday, ... 6=Saturday
+  startHour Float   // e.g. 9 = 9:00 AM, 9.5 = 9:30 AM
+  endHour   Float   // e.g. 17 = 5:00 PM, 17.5 = 5:30 PM
+  enabled   Boolean @default(true)
+
+  @@unique([dayOfWeek])
+}
+
+// One-off date overrides (block specific dates or add extra availability)
+model DateOverride {
+  id        String   @id @default(cuid())
+  date      DateTime // the specific date
+  available Boolean  @default(false) // false = blocked, true = available override
+  startHour Float?   // optional custom hours for that day (e.g. 9.5 = 9:30am)
+  endHour   Float?
+  reason    String?  // e.g. "Holiday", "Out of office"
+  createdAt DateTime @default(now())
+
+  @@unique([date])
+}
+
+// Platform settings (single row, key-value)
+model Settings {
+  id              String  @id @default("default")
+  timezone        String  @default("America/New_York") // IANA timezone
+  defaultDuration Int     @default(60) // interview duration in minutes (30, 45, 60, 90)
+  videoPlatform   String  @default("jitsi") // jitsi, zoom, google_meet, ms_teams
+  videoLink       String? // custom meeting link for zoom/teams (optional)
+  scheduleVersion Int     @default(0) // bumped when recruiter updates availability
+  emailTemplates  Json?   // { linkedin: {subject,body}, not_a_fit: {...}, good_fit: {...}, waitlist: {...} }
+  aiProvider      String  @default("anthropic") // "anthropic" or "groq"
+  groqModel       String? // override Groq model (default: llama-3.3-70b-versatile)
+
+  // Rate limits (user-configurable)
+  rateLimitPerMinute  Int @default(30)  // max AI requests per minute
+  rateLimitPerDay     Int @default(1000) // max AI requests per day
+  monthlyBudgetCents  Int @default(2000) // monthly spending cap in cents ($20 default)
+}
+
+// AI usage tracking per request
+model AIUsageLog {
+  id              String   @id @default(cuid())
+  provider        String   // "anthropic" or "groq"
+  model           String   // model used (e.g. "claude-sonnet-4-6", "llama-3.3-70b-versatile")
+  inputTokens     Int      @default(0)
+  outputTokens    Int      @default(0)
+  totalTokens     Int      @default(0)
+  costCents       Float    @default(0) // estimated cost in cents
+  durationMs      Int      @default(0) // request duration
+  endpoint        String?  // which feature triggered this (e.g. "agent", "screening", "matching")
+  candidateId     String?  // optional link to candidate
+  userId          String?  // who triggered it
+  success         Boolean  @default(true)
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([provider])
+}
+
+// Google Calendar OAuth tokens (single row for the recruiter)
+model GoogleCalendarToken {
+  id           String   @id @default("default")
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  email        String?  // connected Google account email
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Microsoft (Outlook/365) Calendar OAuth tokens (single row for the recruiter)
+model MicrosoftCalendarToken {
+  id           String   @id @default("default")
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  email        String?  // connected Microsoft account email
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Candidate weekly availability (recurring schedule per user)
+model CandidateAvailability {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek Int     // 0=Sunday, 1=Monday, ... 6=Saturday
+  startHour Float   // e.g. 9 = 9:00 AM, 9.5 = 9:30 AM
+  endHour   Float   // e.g. 17 = 5:00 PM, 17.5 = 5:30 PM
+  enabled   Boolean @default(true)
+
+  @@unique([userId, dayOfWeek])
+}
+
+model AgentRun {
+  id          String   @id @default(cuid())
+  trigger     String   // "cron" | "manual"
+  report      String
+  startedAt   DateTime
+  completedAt DateTime
+  createdAt   DateTime @default(now())
+}
+
+model AgentMemory {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  history   Json     // Anthropic MessageParam[] format
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Event {
+  id          String     @id @default(cuid())
+  type        String
+  candidateId String?
+  candidate   Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  interviewId String?
+  interview   Interview? @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  channel     String?
+  metadata    String?
+  cost        Float      @default(0)
+  createdAt   DateTime   @default(now())
+}
+
+// ─── Interview Intelligence ──────────────────────────────────
+
+model InterviewTranscript {
+  id          String   @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  speaker     String   // "interviewer" | "candidate" | "unknown"
+  content     String
+  timestampMs Int      // milliseconds from start of recording
+  confidence  Float?   // 0-1 from Deepgram
+  createdAt   DateTime @default(now())
+
+  @@index([interviewId, timestampMs])
+}
+
+model InterviewNote {
+  id          String   @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  content     String
+  category    String?  // "strength" | "concern" | "follow_up" | "general"
+  source      String   @default("manual") // "manual" | "ai"
+  timestampMs Int?     // optional link to transcript moment
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([interviewId])
+}
+
+model InterviewSummary {
+  id             String   @id @default(cuid())
+  interviewId    String   @unique
+  interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  summary        String   // overall narrative summary
+  strengths      Json     // string[]
+  concerns       Json     // string[]
+  recommendation String?  // "strong_hire" | "hire" | "no_hire" | "strong_no_hire"
+  technicalRating   Int?  // 1-5
+  communicationRating Int? // 1-5
+  cultureFitRating  Int?  // 1-5
+  overallRating     Int?  // 1-5
+  nextSteps      Json?    // string[] — suggested actions
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// ─── Job Matching (pre-computed AI scores) ──────────────────
+model JobMatch {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  score       Int       // 0-100
+  label       String    // "Excellent fit" | "Good fit" | "Partial fit" | "Weak fit" | "Not a fit"
+  reason      String    // 1-2 sentence explanation
+  computedAt  DateTime  @default(now())
+
+  @@unique([jobId, candidateId])
+  @@index([jobId, score(sort: Desc)])
+}
+
+// ─── Credential Verification ─────────────────────────────────
+
+enum CredentialRoleType {
+  NURSE
+  CNA
+}
+
+enum CredentialCheckStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model CredentialCheck {
+  id            String                @id @default(cuid())
+  employerId    String
+  employer      User                  @relation(fields: [employerId], references: [id], onDelete: Cascade)
+
+  // Candidate info (parsed from resume or CSV)
+  firstName     String
+  middleName    String?
+  lastName      String
+  email         String?
+  phone         String?
+  address       String?
+  licenseNumber String?
+  licenseState  String?
+
+  roleType      CredentialRoleType
+  targetState   String               @default("FLORIDA")
+
+  // Raw verification data (JSON per source)
+  nursysData     Json?    // NursysResult
+  oigData        Json?    // OIGResult
+  floridaDohData Json?    // FloridaDOHResult
+  samGovData     Json?    // SAMGovResult
+
+  // AI employability analysis
+  aiRecommendation String?   // "EMPLOYABLE" | "REVIEW_REQUIRED" | "NOT_EMPLOYABLE"
+  aiSummary        String?
+
+  // Recruiter review / override
+  reviewedAt         DateTime?
+  reviewedBy         String?     // Name of the recruiter who reviewed
+  recruiterDecision  String?     // "APPROVED" | "REJECTED" | null
+  recruiterNote      String?     // Optional note from recruiter
+
+  status        CredentialCheckStatus @default(PENDING)
+  errorMessage  String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([employerId])
+}
+
+// AI Screening — automated pre-interview screening chat
+model Screening {
+  id           String   @id @default(cuid())
+  interviewId  String   @unique
+  interview    Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  status       String   @default("pending") // pending | in_progress | completed
+  messages     Json     @default("[]") // Array of {role, content, timestamp}
+  answers      Json?    // Structured answers: {name, introduction, whyApply, strengths, immigration, ...}
+  aiSummary    String?  // AI-generated screening summary
+  flagged      Boolean  @default(false) // flagged for recruiter review
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── RAG: Vector Embeddings & Semantic Memory ────────────────
+
+model CandidateEmbedding {
+  id          String    @id @default(cuid())
+  candidateId String    @unique
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  content     String    // concatenated text that was embedded
+  embedding   Unsupported("vector(384)")
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+}
+
+model JobEmbedding {
+  id        String   @id @default(cuid())
+  jobId     String   @unique
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  content   String   // concatenated text that was embedded
+  embedding Unsupported("vector(384)")
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+model SemanticFact {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fact       String   // e.g. "Employer prefers candidates with BLS certification for ICU"
+  category   String   // preference | candidate_note | job_requirement | workflow | general
+  entityId   String?  // optional link to candidate/job ID
+  entityType String?  // "candidate" | "job" | null
+  embedding  Unsupported("vector(384)")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+}

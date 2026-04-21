@@ -6,10 +6,14 @@ export async function GET(req: NextRequest) {
   if (result.error) return result.error;
   const { user } = result;
 
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || null;
   return NextResponse.json({
     id: user.id,
     email: user.email,
-    name: user.name,
+    name,
+    firstName: user.first_name,
+    lastName: user.last_name,
+    userType: user.user_type,
     role: user.role,
   });
 }

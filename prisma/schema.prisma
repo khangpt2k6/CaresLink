@@ -1896,6 +1896,8 @@ model profile {
   UserLicenses                                    UserLicenses[]
   agent_memory                                    agent_memory[]
   ai_usage_log                                    ai_usage_log[]
+  credential_checks_as_employer                   credential_checks[]           @relation("credential_checks_employer")
+  credential_checks_as_candidate                  credential_checks[]           @relation("credential_checks_candidate")
   cohort_members_cohort_members_added_byToprofile cohort_members[]              @relation("cohort_members_added_byToprofile")
   cohort_members_cohort_members_user_idToprofile  cohort_members[]              @relation("cohort_members_user_idToprofile")
   cohorts                                         cohorts[]
@@ -2325,5 +2327,32 @@ enum entity_type_enum {
   expiring_credential
   credential
 
+  @@schema("public")
+}
+
+model credential_checks {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime @default(now()) @db.Timestamptz(6)
+  created_by_user_id    String   @db.Uuid
+  candidate_profile_id  String?  @db.Uuid
+  candidate_first_name  String?
+  candidate_middle_name String?
+  candidate_last_name   String
+  candidate_email       String?
+  candidate_phone       String?
+  license_number        String?
+  role_type             String
+  state                 String   @default("FL")
+  status                String   @default("pending")
+  source_results        Json?
+  ai_recommendation     String?
+  ai_reason             String?
+
+  employer  profile  @relation("credential_checks_employer", fields: [created_by_user_id], references: [id], onDelete: Cascade)
+  candidate profile? @relation("credential_checks_candidate", fields: [candidate_profile_id], references: [id], onDelete: SetNull)
+
+  @@index([created_by_user_id, created_at(sort: Desc)], map: "idx_credential_checks_created_by")
+  @@index([candidate_profile_id], map: "idx_credential_checks_candidate")
   @@schema("public")
 }

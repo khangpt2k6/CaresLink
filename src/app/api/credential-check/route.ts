@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/clerk-auth";
+import { prisma } from "@/lib/db";
 
-// Flutter's production Supabase does not have a CredentialCheck table.
-// Endpoint is stubbed until a backing schema is agreed (either a new
-// Supabase migration or storing results in ai_usage_log).
-
-export async function POST(req: NextRequest) {
-  const auth = await requireUser(req);
-  if (auth.error) return auth.error;
-  return NextResponse.json(
-    { error: "credential-check is not wired to Flutter production DB yet." },
-    { status: 501 }
-  );
-}
-
+// GET /api/credential-check — list current employer's credential checks.
+// Optional ?limit=50.
 export async function GET(req: NextRequest) {
   const auth = await requireUser(req);
   if (auth.error) return auth.error;
-  return NextResponse.json({ checks: [] });
+
+  const { searchParams } = new URL(req.url);
+  const limit = Math.min(
+    Math.max(parseInt(searchParams.get("limit") || "50", 10) || 50, 1),
+    200
+  );
+
+  const rows = await prisma.credential_checks.findMany({
+    where: { created_by_user_id: auth.user.id },
+    orderBy: { created_at: "desc" },
+    take: limit,
+  });
+  return NextResponse.json({ checks: rows });
 }

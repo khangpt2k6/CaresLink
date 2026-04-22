@@ -47,12 +47,19 @@ export async function POST(
     },
   };
 
+  // `status` is CHECK-constrained to ('pending','completed','error'), so the
+  // recruiter decision lives in source_results.recruiterDecision and is
+  // mirrored to ai_recommendation for list-view filtering. We also normalize
+  // status → 'completed' to scrub legacy rows that earlier code wrote
+  // 'approved'/'rejected' into (any UPDATE on such a row otherwise re-fails
+  // the CHECK against the existing bad value).
   const updated = await prisma.credential_checks.update({
     where: { id },
     data: {
       source_results: merged as object,
-      // Mirror in `status` so list views can filter without parsing JSON.
-      status: decision === "approved" ? "approved" : "rejected",
+      status: "completed",
+      ai_recommendation:
+        decision === "approved" ? "employable" : "not_employable",
     },
   });
 

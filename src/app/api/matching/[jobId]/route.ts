@@ -64,7 +64,26 @@ export async function POST(
 
   try {
     const stored = await computeAndStoreMatches(jobId);
-    return NextResponse.json({ jobId, total: stored.length, matches: stored });
+    // Shape the response the same way GET does — the raw Prisma rows include
+    // BigInt fields (country_id, state_id, ...) that JSON.stringify cannot
+    // serialize, and Flutter wants a stable candidate-centric shape anyway.
+    return NextResponse.json({
+      jobId,
+      total: stored.length,
+      matches: stored.map((m) => ({
+        id: m.id,
+        candidateId: m.profile_id,
+        candidateName: profileName(m.profile),
+        candidateEmail: m.profile.email,
+        candidatePhone: m.profile.phone_number,
+        candidateRole: m.profile.role,
+        candidateUserType: m.profile.user_type,
+        score: m.score,
+        label: m.label,
+        reason: m.reason,
+        computedAt: m.computed_at,
+      })),
+    });
   } catch (e) {
     console.error("Match computation error:", e);
     return NextResponse.json(

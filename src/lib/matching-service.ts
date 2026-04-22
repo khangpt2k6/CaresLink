@@ -120,22 +120,23 @@ Return the JSON array sorted by score descending.`;
   const valid = matches.filter((m) => validIds.has(m.candidateId));
 
   const now = new Date();
-  await Promise.all(
-    valid.map((m) =>
-      prisma.job_match_scores.upsert({
-        where: { job_id_profile_id: { job_id: job.job_id, profile_id: m.candidateId } },
-        create: {
-          job_id: job.job_id,
-          profile_id: m.candidateId,
-          score: m.score,
-          label: m.label,
-          reason: m.reason,
-          computed_at: now,
-        },
-        update: { score: m.score, label: m.label, reason: m.reason, computed_at: now },
-      })
-    )
-  );
+  // Serial upserts: pgBouncer transaction mode rotates connections between
+  // concurrent Prisma calls and throws P1017 ("Server has closed the connection").
+  // 5-200 rows is fast enough without parallelism.
+  for (const m of valid) {
+    await prisma.job_match_scores.upsert({
+      where: { job_id_profile_id: { job_id: job.job_id, profile_id: m.candidateId } },
+      create: {
+        job_id: job.job_id,
+        profile_id: m.candidateId,
+        score: m.score,
+        label: m.label,
+        reason: m.reason,
+        computed_at: now,
+      },
+      update: { score: m.score, label: m.label, reason: m.reason, computed_at: now },
+    });
+  }
 
   return valid;
 }

@@ -44,8 +44,8 @@ export async function recallFacts(
  * Delete a specific fact from long-term memory.
  */
 export async function deleteFact(factId: string, userId: string): Promise<boolean> {
-  const result = await prisma.semanticFact.deleteMany({
-    where: { id: factId, userId },
+  const result = await prisma.semantic_facts.deleteMany({
+    where: { id: factId, user_id: userId },
   });
   return result.count > 0;
 }
@@ -57,12 +57,18 @@ export async function listFacts(
   userId: string,
   category?: string
 ): Promise<{ id: string; fact: string; category: string; createdAt: Date }[]> {
-  return prisma.semanticFact.findMany({
+  const rows = await prisma.semantic_facts.findMany({
     where: {
-      userId,
+      user_id: userId,
       ...(category ? { category } : {}),
     },
-    select: { id: true, fact: true, category: true, createdAt: true },
-    orderBy: { createdAt: "desc" },
+    select: { id: true, fact: true, category: true, created_at: true },
+    orderBy: { created_at: "desc" },
   });
+  return rows.map((r) => ({
+    id: r.id,
+    fact: r.fact,
+    category: r.category,
+    createdAt: r.created_at,
+  }));
 }

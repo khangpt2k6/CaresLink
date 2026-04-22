@@ -1,85 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireEmployer } from "@/lib/clerk-auth";
+import { requireUser } from "@/lib/clerk-auth";
 import { prisma } from "@/lib/db";
 
-// GET /api/credential-check — list all checks for this employer
+// GET /api/credential-check — list current employer's credential checks.
+// Optional ?limit=50.
 export async function GET(req: NextRequest) {
-  const auth = await requireEmployer(req);
-  if ("error" in auth) return auth.error;
+  const auth = await requireUser(req);
+  if (auth.error) return auth.error;
 
-  const checks = await prisma.credentialCheck.findMany({
-    where: { employerId: auth.user.id },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      firstName: true,
-      middleName: true,
-      lastName: true,
-      email: true,
-      licenseState: true,
-      roleType: true,
-      targetState: true,
-      status: true,
-      aiRecommendation: true,
-      recruiterDecision: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+  const { searchParams } = new URL(req.url);
+  const limit = Math.min(
+    Math.max(parseInt(searchParams.get("limit") || "50", 10) || 50, 1),
+    200
+  );
+
+  const rows = await prisma.credential_checks.findMany({
+    where: { created_by_user_id: auth.user.id },
+    orderBy: { created_at: "desc" },
+    take: limit,
   });
-
-  return NextResponse.json(checks);
-}
-
-// POST /api/credential-check — create a new credential check record
-export async function POST(req: NextRequest) {
-  const auth = await requireEmployer(req);
-  if ("error" in auth) return auth.error;
-
-  try {
-    const body = await req.json();
-    const {
-      firstName,
-      middleName,
-      lastName,
-      email,
-      phone,
-      address,
-      licenseNumber,
-      licenseState,
-      roleType,
-      targetState,
-    } = body;
-
-    if (!firstName || !lastName || !roleType) {
-      return NextResponse.json(
-        { error: "firstName, lastName, and roleType are required" },
-        { status: 400 }
-      );
-    }
-    if (!["NURSE", "CNA"].includes(roleType)) {
-      return NextResponse.json({ error: "roleType must be NURSE or CNA" }, { status: 400 });
-    }
-
-    const check = await prisma.credentialCheck.create({
-      data: {
-        employerId: auth.user.id,
-        firstName: firstName.trim(),
-        middleName: middleName?.trim() || null,
-        lastName: lastName.trim(),
-        email: email?.trim() || null,
-        phone: phone?.trim() || null,
-        address: address?.trim() || null,
-        licenseNumber: licenseNumber?.trim() || null,
-        licenseState: licenseState?.trim() || null,
-        roleType,
-        targetState: targetState || "FLORIDA",
-        status: "PENDING",
-      },
-    });
-
-    return NextResponse.json(check, { status: 201 });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Failed to create credential check" }, { status: 500 });
-  }
+  return NextResponse.json({ checks: rows });
 }

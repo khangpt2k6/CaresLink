@@ -1,18 +1,7 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 
+// agentRun table does not exist on Flutter production DB. Return empty list
+// until we decide whether to derive from ai_usage_log or add a new table.
 export async function GET() {
-  const runs = await prisma.agentRun.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 10,
-    select: {
-      id: true,
-      trigger: true,
-      report: true,
-      startedAt: true,
-      completedAt: true,
-      createdAt: true,
-    },
-  });
-  return NextResponse.json({ runs });
+  return NextResponse.json({ runs: [] });
 }

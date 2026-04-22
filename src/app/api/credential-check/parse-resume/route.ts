@@ -1,85 +1,206 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireEmployer } from "@/lib/clerk-auth";
+import { requireUser } from "@/lib/clerk-auth";
 import { textCompletion } from "@/lib/ai-provider";
 
 // POST /api/credential-check/parse-resume
-// Accepts multipart/form-data with a "file" field (PDF or DOCX)
-// Returns extracted candidate fields
+// Multipart upload (`file`) of a PDF / DOCX / TXT resume.
+// Extracts text, asks Claude for structured candidate fields, and returns:
+// { firstName, middleName, lastName, email, phone, licenseNumber, roleType }
+// Any field may come back as an empty string when not found.
 export async function POST(req: NextRequest) {
-  const auth = await requireEmployer(req);
-  if ("error" in auth) return auth.error;
+  const auth = await requireUser(req);
+  if (auth.error) return auth.error;
 
+  let form: FormData;
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
+    form = await req.formData();
+  } catch {
+    return NextResponse.json(
+      { error: "Expected multipart/form-data with a 'file' field." },
+      { status: 400 },
+    );
+  }
 
-    const mimeType = file.type;
-    const buffer = Buffer.from(await file.arrayBuffer());
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return NextResponse.json(
+      { error: "Missing 'file' upload." },
+      { status: 400 },
+    );
+  }
+  if (file.size === 0) {
+    return NextResponse.json({ error: "File is empty." }, { status: 400 });
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return NextResponse.json(
+      { error: "File too large (max 10MB)." },
+      { status: 413 },
+    );
+  }
 
-    let textContent = "";
+  const bytes = Buffer.from(await file.arrayBuffer());
+  let text: string;
+  try {
+    text = await extractText(file.name, file.type, bytes);
+  } catch (e) {
+    return NextResponse.json(
+      { error: `Could not read file: ${(e as Error).message}` },
+      { status: 400 },
+    );
+  }
 
-    if (mimeType === "application/pdf" || file.name.endsWith(".pdf")) {
-      // Use pdf-parse to extract text
-      const { PDFParse } = await import("pdf-parse");
-      const parser = new PDFParse({ data: buffer });
-      const data = await parser.getText();
-      textContent = data.text;
-    } else if (
-      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      file.name.endsWith(".docx")
-    ) {
-      // Use mammoth for DOCX
-      const mammoth = await import("mammoth");
-      const result = await mammoth.extractRawText({ buffer });
-      textContent = result.value;
-    } else {
-      return NextResponse.json({ error: "Unsupported file type. Use PDF or DOCX." }, { status: 400 });
-    }
+  const trimmed = text.trim();
+  if (trimmed.length < 30) {
+    return NextResponse.json(
+      { error: "Resume text was too short to parse." },
+      { status: 422 },
+    );
+  }
 
-    if (!textContent.trim()) {
-      return NextResponse.json({ error: "Could not extract text from file" }, { status: 422 });
-    }
+  // Truncate to keep prompt small and cheap. ~12k chars covers most resumes.
+  const snippet = trimmed.slice(0, 12_000);
 
-    // Use AI to extract structured data
-    const raw = await textCompletion({
-      model: "claude-sonnet-4-6",
-      maxTokens: 600,
+  const system = [
+    "You extract structured candidate info from healthcare resumes.",
+    "Reply with ONLY a JSON object, no prose, no code fences.",
+    "Schema:",
+    "{",
+    '  "firstName": string,',
+    '  "middleName": string,',
+    '  "lastName": string,',
+    '  "email": string,',
+    '  "phone": string,',
+    '  "licenseNumber": string,',
+    '  "roleType": "RN" | "LPN" | "CNA"',
+    "}",
+    'Use empty string "" for missing fields. roleType: pick the candidate\'s primary nursing license — RN for registered nurse, LPN for licensed practical nurse, CNA for nursing assistant. If unclear, use "RN".',
+  ].join("\n");
+
+  let raw: string;
+  try {
+    raw = await textCompletion({
+      system,
       messages: [
         {
           role: "user",
-          content: `Extract the following fields from this healthcare resume/document. Return ONLY valid JSON with these exact keys (use null for missing fields):
-{
-  "firstName": string | null,
-  "middleName": string | null,
-  "lastName": string | null,
-  "email": string | null,
-  "phone": string | null,
-  "address": string | null,
-  "licenseNumber": string | null,
-  "licenseState": string | null,
-  "roleType": "NURSE" | "CNA" | null
-}
-
-For licenseState, use 2-letter state abbreviation (e.g. "FL", "TX").
-For roleType: use "NURSE" if the person is an RN/LPN/LVN, "CNA" if they are a CNA/Nurse Aide.
-
-Resume text:
-${textContent.slice(0, 4000)}`,
+          content: `Resume text:\n\n${snippet}\n\nReturn the JSON now.`,
         },
       ],
+      maxTokens: 600,
     });
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: "AI could not parse resume" }, { status: 422 });
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    return NextResponse.json(parsed);
   } catch (e) {
-    console.error("Resume parse error:", e);
-    return NextResponse.json({ error: "Failed to parse resume" }, { status: 500 });
+    return NextResponse.json(
+      { error: `AI extraction failed: ${(e as Error).message}` },
+      { status: 502 },
+    );
   }
+
+  const parsed = safeParseJson(raw);
+  if (!parsed) {
+    return NextResponse.json(
+      { error: "AI returned invalid JSON.", raw },
+      { status: 502 },
+    );
+  }
+
+  const result = normalize(parsed);
+  return NextResponse.json(result);
+}
+
+async function extractText(
+  fileName: string,
+  mimeType: string,
+  bytes: Buffer,
+): Promise<string> {
+  const lower = fileName.toLowerCase();
+  const isPdf =
+    mimeType === "application/pdf" || lower.endsWith(".pdf");
+  const isDocx =
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    lower.endsWith(".docx");
+  const isTxt = mimeType.startsWith("text/") || lower.endsWith(".txt");
+
+  if (isPdf) {
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(bytes) });
+    try {
+      const out = await parser.getText();
+      return out.text ?? "";
+    } finally {
+      await parser.destroy();
+    }
+  }
+  if (isDocx) {
+    const mammoth = await import("mammoth");
+    const out = await mammoth.extractRawText({ buffer: bytes });
+    return out.value ?? "";
+  }
+  if (isTxt) {
+    return bytes.toString("utf8");
+  }
+  throw new Error(
+    `Unsupported file type. Expected PDF, DOCX, or TXT (got ${mimeType || "unknown"}).`,
+  );
+}
+
+function safeParseJson(raw: string): unknown {
+  const trimmed = raw.trim();
+  // Strip markdown fences if the model added them despite instructions.
+  const stripped = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  try {
+    return JSON.parse(stripped);
+  } catch {
+    // Last-ditch: find the first { ... } block.
+    const start = stripped.indexOf("{");
+    const end = stripped.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(stripped.slice(start, end + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function normalize(raw: unknown): {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  licenseNumber: string;
+  roleType: "RN" | "LPN" | "CNA";
+} {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  const s = (k: string) =>
+    typeof obj[k] === "string" ? (obj[k] as string).trim() : "";
+
+  const roleRaw = s("roleType").toUpperCase();
+  let roleType: "RN" | "LPN" | "CNA" = "RN";
+  if (roleRaw === "LPN") roleType = "LPN";
+  else if (
+    roleRaw === "CNA" ||
+    roleRaw.includes("NURSING ASSISTANT")
+  )
+    roleType = "CNA";
+  else if (roleRaw === "RN" || roleRaw.includes("REGISTERED")) roleType = "RN";
+
+  return {
+    firstName: s("firstName"),
+    middleName: s("middleName"),
+    lastName: s("lastName"),
+    email: s("email"),
+    phone: s("phone"),
+    licenseNumber: s("licenseNumber"),
+    roleType,
+  };
 }
